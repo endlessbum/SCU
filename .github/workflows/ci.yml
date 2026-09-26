@@ -1,0 +1,83 @@
+# CI SCU (п. 18 аудита): secret-scan -> build -> tests -> artifacts.
+# Бесплатно на GitHub Actions для публичного репозитория.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks сканирует всю историю
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # CI-сборка ScannerCore — dev-режим пиннинга: сертификата подписи в CI нет,
+      # вшитый пин потребовал бы подписанного бинарника. Production-сборка
+      # с настоящим thumbprint остаётся на машине издателя.
+      - name: Remove signing pin (CI dev mode)
+        run: |
+          if (Test-Path SecurityScanner/signing/thumbprint.txt) {
+            Remove-Item SecurityScanner/signing/thumbprint.txt
+            Write-Host "thumbprint.txt removed for CI dev-mode build"
+          }
+        shell: pwsh
+
+      - name: Build ScannerCore (cmake)
+        run: |
+          cmake -S SecurityScanner -B SecurityScanner/build -A x64
+          cmake --build SecurityScanner/build --config Release
+        shell: pwsh
+
+      # Приватный ключ базы не в git (.gitignore); в CI он восстанавливается
+      # из секрета DB_SIGNING_KEY (base64 от pem). Без секрета шаг падает:
+      # db-тесты без ключа всё равно упали бы, лучше сразу с понятной ошибкой.
+      - name: Restore database signing key
+        env:
+          DB_SIGNING_KEY: ${{ secrets.DB_SIGNING_KEY }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:DB_SIGNING_KEY)) {
+            Write-Host "::error::Секрет DB_SIGNING_KEY не задан. Settings -> Secrets and variables -> Actions -> New repository secret (base64 от db-signing-private.pem)."
+            exit 1
+          }
+          $bytes = [Convert]::FromBase64String($env:DB_SIGNING_KEY)
+          [IO.File]::WriteAllBytes("SecurityScanner/tools/database-builder/db-signing-private.pem", $bytes)
+          Write-Host "db-signing-private.pem restored from secret"
+        shell: pwsh
+
+      - name: Run tests
+        run: dotnet test SCU.Tests/SCU.Tests.csproj -v q --nologo
+        shell: pwsh
+
+      - name: Collect artifacts
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item SecurityScanner/out/Release/ScannerCore.exe artifacts/
+          $hash = (Get-FileHash artifacts/ScannerCore.exe -Algorithm SHA256).Hash
+          "$hash  ScannerCore.exe" | Set-Content artifacts/SHA256SUMS.txt
+          Get-Content artifacts/SHA256SUMS.txt
+        shell: pwsh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-core
+          path: artifacts/
