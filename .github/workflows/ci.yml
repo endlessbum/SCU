@@ -63,6 +63,14 @@ jobs:
           Write-Host "db-signing-private.pem restored from secret"
         shell: pwsh
 
+      # Сид базы для интеграционных тестов (update-путь пишет в каталог рядом
+      # с exe; в свежей сборке его нет — создаём из исходной базы).
+      - name: Seed default database
+        run: |
+          New-Item -ItemType Directory -Force -Path SecurityScanner/out/Release/security/database | Out-Null
+          Copy-Item SecurityScanner/database/* SecurityScanner/out/Release/security/database/
+        shell: pwsh
+
       - name: Run tests
         run: dotnet test SCU.Tests/SCU.Tests.csproj -v n --nologo --logger trx
         shell: pwsh
