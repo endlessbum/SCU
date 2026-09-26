@@ -36,4 +36,4 @@ installer/
 SecurityScanner/signing/*.pfx
 SecurityScanner/signing/*.pvk
 
-SecurityScanner/tools/database-builder/db-signing-private.pem*.exe
+SecurityScanner/tools/database-builder/db-signing-private.pem
