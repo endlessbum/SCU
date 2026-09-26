@@ -1,0 +1,129 @@
+﻿<UserControl x:Class="SCU.Views.Sections.BloatView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:SCU.Views.Controls"
+             mc:Ignorable="d"
+             d:DesignHeight="620" d:DesignWidth="900">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <WrapPanel Grid.Row="0" Margin="0,0,0,12">
+            <Button Content="{DynamicResource S_BloatRemoveAll}"
+                    Style="{StaticResource DangerButton}"
+                    ToolTip="{DynamicResource S_BloatRemoveAllTip}"
+                    ToolTipService.InitialShowDelay="250"
+                    ToolTipService.ShowOnDisabled="True"
+                    Command="{Binding RemoveAllCommand}" />
+        </WrapPanel>
+
+        <!-- Описание раздела -->
+        <TextBlock Grid.Row="1"
+                   Style="{StaticResource SectionDescription}"
+                   Text="{DynamicResource S_BloatDesc}" />
+
+        <!-- Карточка приложения: название, ниже пакеты, справа кнопка «Удалить»
+             или галочка, если пакеты уже удалены -->
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding Rows}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource SectionCard}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource RowHeaderText}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding Title}" />
+                                <TextBlock Style="{StaticResource RowActionText}"
+                                           Text="{Binding RemoveNames}" />
+                            </StackPanel>
+                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                <Button Content="{DynamicResource S_Remove}"
+                                        IsEnabled="{Binding CanRemove}"
+                                        ToolTipService.ShowOnDisabled="True"
+                                        Command="{Binding DataContext.RemoveAppCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}">
+                                    <Button.Style>
+                                        <!-- BasedOn: наследуем SmallButton темы, иначе кнопка выглядит по-дефолтному -->
+                                        <Style TargetType="Button" BasedOn="{StaticResource SmallButton}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding CanRemove}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <TextBlock FontFamily="{DynamicResource IconFontFamily}"
+                                           FontSize="20"
+                                           Foreground="{DynamicResource AccentFillBrush}"
+                                           Text="&#xE73E;"
+                                           VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRemoved}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Text="{Binding DisplayText}"
+                                           VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsUnknown}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <StackPanel Grid.Row="2" HorizontalAlignment="Center" Margin="0,24,0,8">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Rows.Count}" Value="0">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <TextBlock Style="{StaticResource EmptyStateIcon}" Text="&#xE946;" />
+            <TextBlock Style="{StaticResource EmptyStateText}"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       Text="{DynamicResource S_EmptyState}" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="3">
+            <TextBlock Margin="0,8,0,0"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       TextWrapping="Wrap"
+                       Text="{Binding StatusText}" />
+            <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

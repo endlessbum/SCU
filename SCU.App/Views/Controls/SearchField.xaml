@@ -1,0 +1,46 @@
+﻿<UserControl x:Class="SCU.Views.Controls.SearchField"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="Root">
+    <!-- Единое поле поиска «Главной» и «Приложений»: один контрол — один набор
+         параметров (стиль SearchFieldStyle, отступы, иконка, плейсхолдер).
+         Изменение вида здесь меняет оба поля сразу. Поведение (что именно
+         ищет поле) определяется привязкой SearchText у места использования. -->
+    <Grid>
+        <TextBox x:Name="Field"
+                 Style="{StaticResource SearchFieldStyle}"
+                 Padding="38,8,12,8"
+                 VerticalContentAlignment="Center"
+                 Text="{Binding SearchText, ElementName=Root, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=200}"
+                 AutomationProperties.Name="{Binding Placeholder, ElementName=Root}" />
+        <!-- Значок поверх поля: TextBox непрозрачен и перекрыл бы его, будь он
+             ниже по z-порядку. IsHitTestVisible=False — клики мимо иконки
+             доходят до поля и ставят в него фокус. -->
+        <TextBlock Margin="16,0,0,0"
+                   VerticalAlignment="Center"
+                   IsHitTestVisible="False"
+                   FontFamily="{DynamicResource IconFontFamily}"
+                   FontSize="15"
+                   Foreground="{DynamicResource AccentFillBrush}"
+                   Text="&#xE721;" />
+        <!-- Подсказка-плейсхолдер поверх пустого поля: видна и при фокусе —
+             текстовый курсор мигает слева от подсказки. Уходит, как только
+             набран первый символ, и возвращается при очистке строки. -->
+        <TextBlock Margin="38,0,14,0"
+                   VerticalAlignment="Center"
+                   IsHitTestVisible="False"
+                   FontSize="16"
+                   Text="{Binding Placeholder, ElementName=Root}">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Text, ElementName=Field}" Value="">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+    </Grid>
+</UserControl>

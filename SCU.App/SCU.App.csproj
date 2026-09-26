@@ -1,0 +1,98 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <OutputType Condition="'$(Configuration)' == 'Debug'">Exe</OutputType>
+    <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
+    <EnableDefaultApplicationDefinition>true</EnableDefaultApplicationDefinition>
+    <AssemblyName>SCU</AssemblyName>
+    <ApplicationIcon>..\SCU.ico</ApplicationIcon>
+    <RootNamespace>SCU</RootNamespace>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <!-- Версия сборки: показывается в «Настройки → О приложении» (три части). -->
+    <Version>2.1.1</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="System.Management" Version="10.0.12" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SCU.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Assets\SCU.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\Utilities.bat">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\SCU.png" />
+    <Resource Include="Assets\ScreenSaver.png" />
+    <Resource Include="..\SCU.ico" Link="SCU.ico" />
+  </ItemGroup>
+
+  <!-- ScannerCore.exe (C++/CMake, SecurityScanner/) кладётся в вывод приложения.
+       Бинарник собирается отдельно командой cmake build SecurityScanner/build (Release).
+       Если бинарника нет — сборка SCU не падает, вкладка покажет «ScannerCore.exe не найден». -->
+  <Target Name="CopyScannerCore" AfterTargets="Build" Condition="Exists('..\SecurityScanner\out\Release\ScannerCore.exe')">
+    <Copy SourceFiles="..\SecurityScanner\out\Release\ScannerCore.exe" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Пиннинг сертификата подписи ScannerCore (документ п. 48):
+       отпечаток из SecurityScanner\signing\thumbprint.txt вшивается в SCU.dll.
+       Файла нет — Thumbprint == "", dev-режим без пин-проверки. -->
+  <PropertyGroup>
+    <ScannerSigningThumbprint Condition="Exists('..\SecurityScanner\signing\thumbprint.txt')">$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\SecurityScanner\signing\thumbprint.txt').Trim())</ScannerSigningThumbprint>
+  </PropertyGroup>
+  <Target Name="GenerateScannerSigningPin" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <_PinValue Condition="'$(ScannerSigningThumbprint)' != ''">$(ScannerSigningThumbprint)</_PinValue>
+      <_PinValue Condition="'$(_PinValue)' == ''"></_PinValue>
+    </PropertyGroup>
+    <PropertyGroup>
+      <_PinSource>namespace SCU.Interop
+{
+    internal static partial class ScannerSigningPin
+    {
+        internal const string Thumbprint = "$(_PinValue)"%3B
+    }
+}</_PinSource>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(IntermediateOutputPath)ScannerSigningPin.g.cs" Lines="$(_PinSource)" Overwrite="true" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)ScannerSigningPin.g.cs" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Publish: ScannerCore.exe и база по умолчанию идут рядом со SCU.exe
+       (ScannerRunner ищет по AppContext.BaseDirectory; setup.iss пакует
+       publish\* рекурсивно). -->
+  <Target Name="PublishScannerRuntime" AfterTargets="Publish">
+    <Copy SourceFiles="..\SecurityScanner\out\Release\ScannerCore.exe"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('..\SecurityScanner\out\Release\ScannerCore.exe')" />
+    <ItemGroup>
+      <_ScannerDatabase Include="..\SecurityScanner\database\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ScannerDatabase)"
+          DestinationFiles="@(_ScannerDatabase -> '$(PublishDir)security\database\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

@@ -1,0 +1,95 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+      Светлая тема: дизайн-система iOS 27 / Liquid Glass.
+      Набор ключей идентичен Colors.Dark.xaml — подмена словаря выполняется ThemeManager'ом.
+      Поверхностные кисти (glass/control/popup) здесь — значения режима «Прозрачный»;
+      ThemeManager перекрывает их при выборе «Матовый» (см. ApplySurfaceBrushes).
+      Акцентные кисти — fallback; при запуске ThemeManager подставляет акцент из настроек.
+    -->
+
+    <!-- База и слои -->
+    <SolidColorBrush x:Key="SolidRootBrush" Color="#FFF2F2F7" />
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#FFF2F2F7" />
+    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#59F9F9FB" />
+    <SolidColorBrush x:Key="GlassFillBrush" Color="#7AFFFFFF" />
+    <SolidColorBrush x:Key="GlassFillStrongBrush" Color="#99FFFFFF" />
+    <SolidColorBrush x:Key="GlassStrokeBrush" Color="#17000000" />
+    <SolidColorBrush x:Key="GlassStrokeBrightBrush" Color="#2B000000" />
+    <SolidColorBrush x:Key="RootStrokeBrush" Color="#17000000" />
+    <SolidColorBrush x:Key="ControlFillBrush" Color="#B3FFFFFF" />
+    <SolidColorBrush x:Key="ControlFillSecondaryBrush" Color="#A6F2F2F7" />
+    <SolidColorBrush x:Key="ControlFillTertiaryBrush" Color="#8CE4E4EA" />
+    <SolidColorBrush x:Key="ControlStrokeBrush" Color="#1F000000" />
+    <SolidColorBrush x:Key="SubtleFillSecondaryBrush" Color="#0F000000" />
+    <SolidColorBrush x:Key="SubtleFillTertiaryBrush" Color="#06000000" />
+    <SolidColorBrush x:Key="SeparatorBrush" Color="#1F000000" />
+    <SolidColorBrush x:Key="PopupBackgroundBrush" Color="#F2FCFCFE" />
+    <!-- Окно подтверждения UAC: в светлой теме — светлый попап (ключ введён
+         ради тёмной темы, где диалог цвета плашек #2B2B2B). -->
+    <SolidColorBrush x:Key="DialogBackgroundBrush" Color="#F2FCFCFE" />
+    <SolidColorBrush x:Key="OverlayBrush" Color="#66000000" />
+
+    <!-- Лёгкое затемнение всего окна при активном поиске на «Главной»: в светлой
+         теме слабее, чем в тёмной — иначе затемнение выглядит грязным. -->
+    <SolidColorBrush x:Key="SearchScrimBrush" Color="#1F000000" />
+
+    <!-- Иерархия карточек: primary — главный результат/действие раздела,
+         secondary — спокойный уровень для групп, не конкурирующих с primary. -->
+    <SolidColorBrush x:Key="SectionCardPrimaryFillBrush" Color="#B8FFFFFF" />
+    <SolidColorBrush x:Key="SectionCardSecondaryFillBrush" Color="#4DFFFFFF" />
+
+    <!-- Выделенная вкладка меню: в светлой теме — акцентная тонировка (fallback;
+         ThemeManager подставляет акцент из настроек). В тёмной теме ключ указывает
+         на нейтральную плашку #2B2B2B — см. Colors.Dark.xaml. -->
+    <SolidColorBrush x:Key="NavSelectedFillBrush" Color="#1A007AFF" />
+
+    <!-- Текст: система iOS — почти чёрный primary, серые secondary/tertiary.
+         Контраст выверен на светлом фоне (#F2F2F7), п. 16 аудита: secondary и
+         tertiary непрозрачны и дают ≥4.5:1 (secondary ≈ 7:1, tertiary ≈ 4.6:1) —
+         вторичность передаётся оттенком, а не прозрачностью; disabled заметно
+         бледнее и не теряется полностью (WCAG исключает disabled из порога). -->
+    <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F01C1C1E" />
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="#FF4A4A4E" />
+    <SolidColorBrush x:Key="TertiaryTextBrush" Color="#FF5E5E63" />
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="#4D3C3C43" />
+    <SolidColorBrush x:Key="TextSelectionBrush" Color="#33007AFF" />
+
+    <!-- Акцент: системный синий iOS (fallback: системный подставляется ThemeManager'ом) -->
+    <SolidColorBrush x:Key="AccentFillBrush" Color="#FF007AFF" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#FF0071EB" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#FF0062CC" />
+    <SolidColorBrush x:Key="AccentTextBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="AccentTintBrush" Color="#1A007AFF" />
+    <SolidColorBrush x:Key="AccentStrokeBrush" Color="#66007AFF" />
+
+    <!-- Опасное действие: системный красный iOS -->
+    <SolidColorBrush x:Key="DangerTintBrush" Color="#1AFF3B30" />
+    <SolidColorBrush x:Key="DangerStrokeBrush" Color="#4DFF3B30" />
+    <SolidColorBrush x:Key="DangerFillBrush" Color="#FFFF3B30" />
+    <SolidColorBrush x:Key="DangerPressedBrush" Color="#FFE03427" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#FFE0302A" />
+
+    <!-- Семантика состояний -->
+    <SolidColorBrush x:Key="SuccessBrush" Color="#FF248A3D" />
+    <SolidColorBrush x:Key="WarnBrush" Color="#FFB25000" />
+    <SolidColorBrush x:Key="WarnFillBrush" Color="#26FF9500" />
+    <SolidColorBrush x:Key="WarnTextBrush" Color="#F01C1C1E" />
+    <SolidColorBrush x:Key="StateRunningBrush" Color="#FF248A3D" />
+    <SolidColorBrush x:Key="StateDisabledBrush" Color="#B34A4A4E" />
+    <SolidColorBrush x:Key="StateMissingBrush" Color="#996D6D72" />
+
+    <!-- Кнопки строки заголовка -->
+    <SolidColorBrush x:Key="CaptionCloseHoverBrush" Color="#FFFF3B30" />
+    <SolidColorBrush x:Key="CaptionClosePressedBrush" Color="#FFE03427" />
+
+    <!-- Фиксированный белый: текст поверх красной заливки и ручка тумблера в ON.
+         Ручка тумблера в OFF — тоже белая: трек серый (#E4E4EA), как в iOS. -->
+    <SolidColorBrush x:Key="OnDangerTextBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="SwitchKnobBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="SwitchKnobOffBrush" Color="#FFFFFFFF" />
+    <!-- Трек тумблера в OFF: полупрозрачный серый iOS (#787880) — заметен и на фоне
+         окна, и на стекле карточек при обоих режимах прозрачности. -->
+    <SolidColorBrush x:Key="SwitchTrackOffBrush" Color="#51787880" />
+</ResourceDictionary>

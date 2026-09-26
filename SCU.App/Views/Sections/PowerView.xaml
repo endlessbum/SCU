@@ -1,0 +1,400 @@
+﻿<UserControl x:Class="SCU.Views.Sections.PowerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:SCU.Views.Controls"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="800">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Шапка раздела: операции и объединённая подсказка ⓘ (описания раздела во view нет).
+             Активная схема подсвечивается акцентом через DataTrigger по ActivePlanKey. -->
+        <WrapPanel Grid.Row="0" Margin="0,0,0,12">
+            <Button Content="{DynamicResource S_PlanHigh}"
+                    Margin="0,0,8,8"
+                    Command="{Binding SetPlanHighCommand}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.ActivePlanKey, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="high">
+                                <Setter Property="Tag" Value="accent" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <Button Content="{DynamicResource S_PlanUltimate}"
+                    Margin="0,0,8,8"
+                    Command="{Binding SetPlanUltimateCommand}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.ActivePlanKey, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="ultimate">
+                                <Setter Property="Tag" Value="accent" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <Button Content="{DynamicResource S_PlanBalanced}"
+                    Margin="0,0,8,8"
+                    Command="{Binding SetPlanBalancedCommand}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.ActivePlanKey, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="balanced">
+                                <Setter Property="Tag" Value="accent" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <Button Content="{DynamicResource S_PlanPowerSaver}"
+                    Margin="0,0,8,8"
+                    Command="{Binding SetPlanPowerSaverCommand}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.ActivePlanKey, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="powersaver">
+                                <Setter Property="Tag" Value="accent" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <Button Content="{DynamicResource S_PlanBitsum}"
+                    Margin="0,0,8,8"
+                    Command="{Binding SetPlanBitsumCommand}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.ActivePlanKey, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="bitsum">
+                                <Setter Property="Tag" Value="accent" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <controls:InfoGlyph x:Name="HeaderInfoGlyph" Margin="6,0,0,8" VerticalAlignment="Center" />
+        </WrapPanel>
+            <StackPanel Grid.Row="1">
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource BodyStrongText}"
+                                   Text="{DynamicResource S_PowerHbFbTitle}" />
+
+                        <Grid Margin="0,16,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{DynamicResource S_PowerHibernation}" />
+                                    <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource S_PowerHibernationDesc}" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource RowActionText}"
+                                           Text="{Binding HibernationActionText}" />
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource SystemToggleSwitch}"
+                                          AutomationProperties.Name="{DynamicResource S_PowerHibernation}"
+                                          IsChecked="{Binding HibernationEnabled, Mode=TwoWay}"
+                                          IsEnabled="{Binding IsInteractive}"
+                                          Command="{Binding ToggleHibernationCommand}"
+                                          ToolTip="{DynamicResource S_PowerHibernationTip}" />
+                        </Grid>
+
+                        <Border Margin="0,16,0,0"
+                                Height="1"
+                                Background="{DynamicResource SeparatorBrush}" />
+
+                        <Grid Margin="0,16,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{DynamicResource S_PowerFastBoot}" />
+                                    <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource S_PowerFastBootDesc}" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource RowActionText}"
+                                           Text="{Binding FastBootActionText}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                       Margin="0,0,6,0"
+                                       Style="{StaticResource StateBadgeText}"
+                                       ToolTip="{DynamicResource S_PowerStateBadgeTip}"
+                                       Text="{Binding FastBootStateBadge}" />
+                            <ToggleButton Grid.Column="2"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource SystemToggleSwitch}"
+                                          AutomationProperties.Name="{DynamicResource S_PowerFastBoot}"
+                                          IsChecked="{Binding FastBootEnabled, Mode=TwoWay}"
+                                          IsEnabled="{Binding CanToggleFastBoot}"
+                                          Command="{Binding ToggleFastBootCommand}"
+                                          ToolTip="{DynamicResource S_PowerFastBootTip}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_PowerMemTitle}" />
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{DynamicResource S_PowerMemCompression}" />
+                                    <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource S_PowerMemCompressionDesc}" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource RowActionText}"
+                                           Text="{Binding MemoryCompressionActionText}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                       Margin="0,0,6,0"
+                                       Style="{StaticResource StateBadgeText}"
+                                       ToolTip="{DynamicResource S_PowerStateBadgeTip}"
+                                       Text="{Binding MemoryCompressionStateBadge}" />
+                            <ToggleButton Grid.Column="2"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource SystemToggleSwitch}"
+                                          AutomationProperties.Name="{DynamicResource S_PowerMemCompression}"
+                                          IsChecked="{Binding MemoryCompressionEnabled, Mode=TwoWay}"
+                                          IsEnabled="{Binding CanToggleMemoryCompression}"
+                                          Command="{Binding ToggleMemoryCompressionCommand}" />
+                        </Grid>
+
+                        <Border Margin="0,12,0,0" Height="1" Background="{DynamicResource SeparatorBrush}" />
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{DynamicResource S_PowerSysMain}" />
+                                    <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource S_PowerSysMainDesc}" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource RowActionText}"
+                                           Text="{Binding SysMainActionText}" />
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource SystemToggleSwitch}"
+                                          AutomationProperties.Name="{DynamicResource S_PowerSysMain}"
+                                          IsChecked="{Binding SysMainEnabled, Mode=TwoWay}"
+                                          IsEnabled="{Binding IsInteractive}"
+                                          Command="{Binding ToggleSysMainCommand}" />
+                        </Grid>
+
+                        <Border Margin="0,12,0,0" Height="1" Background="{DynamicResource SeparatorBrush}" />
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{DynamicResource S_Power8dot3}" />
+                                    <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource S_Power8dot3Desc}" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource RowActionText}"
+                                           Text="{Binding ShortNamesActionText}" />
+                                <TextBlock Margin="0,2,0,0"
+                                           Style="{StaticResource CaptionText}"
+                                           TextWrapping="Wrap"
+                                           Text="{Binding ShortNamesDetailText}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                       Margin="0,0,6,0"
+                                       Style="{StaticResource StateBadgeText}"
+                                       ToolTip="{DynamicResource S_PowerStateBadgeTip}"
+                                       Text="{Binding ShortNamesStateBadge}" />
+                            <ToggleButton Grid.Column="2"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource SystemToggleSwitch}"
+                                          AutomationProperties.Name="{DynamicResource S_Power8dot3}"
+                                          IsChecked="{Binding ShortNamesEnabled, Mode=TwoWay}"
+                                          IsEnabled="{Binding CanToggleShortNames}"
+                                          Command="{Binding ToggleShortNamesCommand}" />
+                        </Grid>
+
+                        <Border Margin="0,12,0,0" Height="1" Background="{DynamicResource SeparatorBrush}" />
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{DynamicResource S_PowerLastAccess}" />
+                                    <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource S_PowerLastAccessDesc}" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource RowActionText}"
+                                           Text="{Binding LastAccessActionText}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                       Margin="0,0,6,0"
+                                       Style="{StaticResource StateBadgeText}"
+                                       ToolTip="{DynamicResource S_PowerStateBadgeTip}"
+                                       Text="{Binding LastAccessStateBadge}" />
+                            <ToggleButton Grid.Column="2"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource SystemToggleSwitch}"
+                                          AutomationProperties.Name="{DynamicResource S_PowerLastAccess}"
+                                          IsChecked="{Binding LastAccessEnabled, Mode=TwoWay}"
+                                          IsEnabled="{Binding CanToggleLastAccess}"
+                                          Command="{Binding ToggleLastAccessCommand}" />
+                        </Grid>
+
+                        <Border Margin="0,12,0,0" Height="1" Background="{DynamicResource SeparatorBrush}" />
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{DynamicResource S_PowerPrefetcher}" />
+                                    <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource S_PowerPrefetcherDesc}" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource RowActionText}"
+                                           Text="{Binding PrefetcherActionText}" />
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource SystemToggleSwitch}"
+                                          AutomationProperties.Name="{DynamicResource S_PowerPrefetcher}"
+                                          IsChecked="{Binding PrefetcherEnabled, Mode=TwoWay}"
+                                          IsEnabled="{Binding IsInteractive}"
+                                          Command="{Binding TogglePrefetcherCommand}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_PowerPageFileTitle}" />
+                            <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource I_PowerPageFile}" />
+                        </StackPanel>
+                        <!-- Активный пресет подкачки подсвечивается акцентом через DataTrigger по ActivePageFileKey -->
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button Content="{DynamicResource S_PowerPageFile4}"
+                                    Margin="0,0,8,8"
+                                    Command="{Binding SetPageFileCommand}"
+                                    CommandParameter="6144">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ActivePageFileKey}" Value="6144">
+                                                <Setter Property="Tag" Value="accent" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="{DynamicResource S_PowerPageFile8}"
+                                    Margin="0,0,8,8"
+                                    Command="{Binding SetPageFileCommand}"
+                                    CommandParameter="8192">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ActivePageFileKey}" Value="8192">
+                                                <Setter Property="Tag" Value="accent" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="{DynamicResource S_PowerPageFile16}"
+                                    Margin="0,0,8,8"
+                                    Command="{Binding SetPageFileCommand}"
+                                    CommandParameter="4096">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ActivePageFileKey}" Value="4096">
+                                                <Setter Property="Tag" Value="accent" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="{DynamicResource S_PowerPageFile32}"
+                                    Margin="0,0,8,8"
+                                    Command="{Binding SetPageFileCommand}"
+                                    CommandParameter="2048">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ActivePageFileKey}" Value="2048">
+                                                <Setter Property="Tag" Value="accent" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="{DynamicResource S_PowerPageFileSystemManaged}"
+                                    Margin="0,0,8,8"
+                                    Command="{Binding SetSystemManagedPageFileCommand}">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ActivePageFileKey}" Value="system">
+                                                <Setter Property="Tag" Value="accent" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </WrapPanel>
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{Binding PageFileSummaryText}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_PowerCpuTitle}" />
+                            <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource I_PowerCpuClear}" />
+                        </StackPanel>
+                        <Button Content="{DynamicResource S_PowerCpuClear}"
+                                Margin="0,8,0,0"
+                                HorizontalAlignment="Left"
+                                Command="{Binding ClearCpuLimitsCommand}" />
+                        <TextBlock Style="{StaticResource SectionStatusText}"
+                                   Text="{Binding CpuLimitsText}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+        <StackPanel Grid.Row="2">
+            <TextBlock Style="{StaticResource SectionStatusText}" Text="{Binding StatusText}" />
+            <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

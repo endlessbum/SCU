@@ -1,0 +1,1459 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:SCU.Views.Controls"
+                    xmlns:vm="clr-namespace:SCU.ViewModels.Sections">
+
+    <!--
+      Дизайн-система iOS 27 / Liquid Glass.
+      Геометрия: кнопки/поля 12, карточки 16, popup 14, диалог 20, навигация 12,
+      тумблеры — капсулы. Отступы кратны 4 (4/8/12/16/20/24/32).
+      Цвета — только токены из Colors.Dark/Light.xaml; плотность поверхностей
+      (Прозрачный/Матовый) управляется централизованно ThemeManager'ом.
+    -->
+
+    <!-- Шрифты: Segoe UI Variable (ближайший системный аналог SF Pro,
+         полная поддержка кириллицы), иконки Fluent/MDL2, моно для журнала -->
+    <FontFamily x:Key="AppFontFamily">Segoe UI Variable Display, Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="IconFontFamily">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    <FontFamily x:Key="MonoFontFamily">Cascadia Mono, Consolas</FontFamily>
+
+    <!-- ===================== Типографика ===================== -->
+    <!-- Иерархия: Display/PageTitle 26 → Subtitle 14 → Body 14/13 → Caption 12.
+         Два веса (Regular/SemiBold), как в системной типографике iOS. -->
+    <Style x:Key="PageTitleText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="26" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <!-- Длинные заголовки (в т.ч. EN-переводы) переносятся, а не обрезаются. -->
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="PageSubtitleText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="Regular" />
+        <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- Заголовок строки-карточки (имя приложения, службы, задачи, настройки) -->
+    <Style x:Key="RowHeaderText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+    </Style>
+
+    <Style x:Key="BodyStrongText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+    </Style>
+
+    <Style x:Key="BodyText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+    </Style>
+
+    <!-- Заголовок блока/карточки внутри раздела -->
+    <Style x:Key="SectionGroupHeader" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongText}">
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
+    <Style x:Key="CaptionText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="Regular" />
+        <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+    </Style>
+
+    <!-- Единый красный статус: заголовки ошибок, «not found», ошибочные глифы -->
+    <Style x:Key="DangerText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+    </Style>
+
+    <!-- ===================== Пустое состояние ===================== -->
+    <!-- Иконка-заглушка: та же, что в окне-заглушке MainWindow -->
+    <Style x:Key="EmptyStateIcon" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{DynamicResource IconFontFamily}" />
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Текст пустого состояния/пустого списка: третичный, переносится -->
+    <Style x:Key="EmptyStateText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,8,0,0" />
+    </Style>
+
+    <!-- Строка списка-таблицы: единый вертикальный шаг -->
+    <Style x:Key="ListRowGrid" TargetType="Grid">
+        <Setter Property="Margin" Value="0,2" />
+    </Style>
+
+    <!-- Единый текстовый шрифт приложения (моно — только в терминале) -->
+    <Style x:Key="MonoText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+    </Style>
+
+    <!-- ===================== Видимый фокус с клавиатуры ===================== -->
+    <!-- Пунктирная рамка акцентной кистью: заметна в светлой и тёмной темах,
+         рисуется поверх контрола с выносом наружу (Margin -3), поэтому не ломает
+         скруглённые углы и не конфликтует с hover/pressed. Классический Windows
+         dotted rectangle не используется. -->
+    <Style x:Key="AppFocusVisual">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-3"
+                               RadiusX="8"
+                               RadiusY="8"
+                               StrokeThickness="1"
+                               Stroke="{DynamicResource AccentFillBrush}"
+                               StrokeDashArray="1 2"
+                               SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Базовая кнопка =====================
+         Единые пропорции всех кнопок: высота 36, MinWidth 120 — ширина
+         автоматически растягивается под текст (MinWidth только не даёт
+         кнопке стать уже стандарта), поэтому текст не обрезается. -->
+    <Style TargetType="Button">
+        <Setter Property="Background" Value="{DynamicResource ControlFillBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="16,0" />
+        <Setter Property="MinWidth" Value="120" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            CornerRadius="12"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}">
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          RecognizesAccessKey="True"
+                                          SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <!-- Ховер/нажатие меняют фон только у «обычных» кнопок (Tag пуст).
+                             Кнопка в активном состоянии (параметр применён, Tag="accent",
+                             фон задан DataTrigger'ом раздела) при наведении цвет НЕ меняет. -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="Tag" Value="{x:Null}" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillTertiaryBrush}" />
+                        </MultiTrigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsPressed" Value="True" />
+                                <Condition Property="Tag" Value="{x:Null}" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillTertiaryBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ControlFillTertiaryBrush}" />
+                        </MultiTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <!-- Hand — только у активной кнопки: отключённые элементы не интерактивны. -->
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="True">
+                <Setter Property="Cursor" Value="Hand" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Акцентная кнопка: заливка акцентом, текст TextOnAccent.
+         Пропорции — как у базовой кнопки: 36 × MinWidth 120. -->
+    <Style x:Key="AccentButton" TargetType="Button">
+        <Setter Property="Background" Value="{DynamicResource AccentFillBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentFillBrush}" />
+        <Setter Property="Padding" Value="16,0" />
+        <Setter Property="MinWidth" Value="120" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            CornerRadius="12"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1">
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentPressedBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentPressedBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <!-- Hand — только у активной кнопки: отключённые элементы не интерактивны. -->
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="True">
+                <Setter Property="Cursor" Value="Hand" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Опасное действие: в покое стандартная, hover/pressed — красная -->
+    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            CornerRadius="12"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1">
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource DangerFillBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="Transparent" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnDangerTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource DangerPressedBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="Transparent" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnDangerTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Компактная кнопка для таблиц и InfoBar: высота/ширина и отступы —
+         общие с базовой кнопкой (единые пропорции), отличие только в шрифте. -->
+    <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- ===================== Кнопки строки заголовка =====================
+         Hover/pressed — скруглённая вставка внутри ячейки: мягкие состояния
+         вместо прямоугольной заливки на всю высоту строки заголовка. -->
+    <Style x:Key="WindowButton" TargetType="Button">
+        <Setter Property="Width" Value="46" />
+        <Setter Property="Height" Value="38" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border x:Name="Bd"
+                                Margin="5,3"
+                                CornerRadius="10"
+                                Background="{TemplateBinding Background}" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillSecondaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillTertiaryBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="CloseWindowButton" TargetType="Button" BasedOn="{StaticResource WindowButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border x:Name="Bd"
+                                Margin="5,3"
+                                CornerRadius="10"
+                                Background="{TemplateBinding Background}" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CaptionCloseHoverBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnDangerTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CaptionClosePressedBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnDangerTextBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Поле ввода: rounded input, фокус — акцентная рамка =====================
+         Единые пропорции всех полей ввода: высота 36, MinWidth 120 (ширина
+         растягивается под содержимое), отступы 12,7. -->
+    <Style TargetType="TextBox">
+        <Setter Property="Background" Value="{DynamicResource ControlFillBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CaretBrush" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource AccentFillBrush}" />
+        <Setter Property="SelectionOpacity" Value="0.4" />
+        <Setter Property="MinWidth" Value="120" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bd"
+                                CornerRadius="12"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <!-- Без Margin=Padding: TextBoxBase сам подставляет Padding
+                                 в PART_ContentHost, дублирование раздувало поле (и всю
+                                 строку WrapPanel с ним) до ~47 px вместо 36. -->
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
+                        </Trigger>
+                        <!-- Акцентная рамка — только у редактируемых полей (readonly-журнал её не показывает) -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsKeyboardFocusWithin" Value="True" />
+                                <Condition Property="IsReadOnly" Value="False" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentFillBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
+                        </MultiTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="True">
+                <Setter Property="Cursor" Value="IBeam" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ===================== Поле поиска: капсула в стиле Apple search =====================
+     Общий стиль для полей поиска «Главной» и «Приложений» (контрол SearchField).
+     Высота 44 — как у пункта меню (NavListItem); шрифт 16 — крупнее обычных полей.
+     Ширина задаёт разметка (MaxWidth 720). Скругление 22 — полная капсула при
+     высоте 44; стеклянная заливка. В активном состоянии вместо сплошной
+     акцентной рамки вокруг капсулы рисуется статичный пунктир — тот же, что
+     у drop-зоны раздела «Сканер» (Border не умеет StrokeDashArray). -->
+    <Style x:Key="SearchFieldStyle" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="BorderBrush" Value="{DynamicResource GlassStrokeBrush}" />
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="MinHeight" Value="44" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Grid>
+                        <Border x:Name="Bd"
+                                CornerRadius="22"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <!-- Без Margin=Padding: см. комментарий в шаблоне TextBox. -->
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <!-- Пунктир активного состояния: линия по центру штриха,
+                             Margin 1 прячет внешний полупиксель за границей капсулы. -->
+                        <Rectangle x:Name="FocusOutline"
+                                   Margin="1"
+                                   Fill="Transparent"
+                                   IsHitTestVisible="False"
+                                   RadiusX="22"
+                                   RadiusY="22"
+                                   Stroke="{DynamicResource AccentFillBrush}"
+                                   StrokeDashArray="6 4"
+                                   StrokeDashCap="Flat"
+                                   StrokeThickness="1.5"
+                                   Visibility="Collapsed" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="FocusOutline" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== ToggleSwitch: капсула iOS 44×26 ===================== -->
+    <Style x:Key="SystemToggleSwitch" TargetType="ToggleButton">
+        <Setter Property="Width" Value="44" />
+        <Setter Property="Height" Value="26" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Grid Background="Transparent">
+                        <Border x:Name="Track"
+                                CornerRadius="13"
+                                Background="{DynamicResource SwitchTrackOffBrush}" />
+                        <Ellipse x:Name="Knob"
+                                 Width="22"
+                                 Height="22"
+                                 Margin="2,0,0,0"
+                                 HorizontalAlignment="Left"
+                                 VerticalAlignment="Center"
+                                 Fill="{DynamicResource SwitchKnobOffBrush}">
+                            <Ellipse.Effect>
+                                <DropShadowEffect BlurRadius="6"
+                                                  ShadowDepth="1"
+                                                  Direction="270"
+                                                  Opacity="0.25"
+                                                  Color="#000000" />
+                            </Ellipse.Effect>
+                        </Ellipse>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentFillBrush}" />
+                            <Setter TargetName="Knob" Property="Margin" Value="20,0,0,0" />
+                            <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource SwitchKnobBrush}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <ThicknessAnimation Storyboard.TargetName="Knob"
+                                                            Storyboard.TargetProperty="Margin"
+                                                            To="20,0,0,0"
+                                                            Duration="0:0:0.15" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <ThicknessAnimation Storyboard.TargetName="Knob"
+                                                            Storyboard.TargetProperty="Margin"
+                                                            To="2,0,0,0"
+                                                            Duration="0:0:0.15" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="False" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource ControlFillTertiaryBrush}" />
+                        </MultiTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="True">
+                <Setter Property="Cursor" Value="Hand" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Большой выключатель «Состояния ПК» — тот же SystemToggleSwitch, масштаб 5×
+         (220×130, ручка 110): пропорции и шаги затемнения один в один, как у
+         тумблера во вкладках; анимация ручки чуть дольше, чтобы двигалась заметно. -->
+    <Style x:Key="BigToggleSwitch" TargetType="ToggleButton">
+        <Setter Property="Width" Value="220" />
+        <Setter Property="Height" Value="130" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Grid Background="Transparent">
+                        <Border x:Name="Track"
+                                CornerRadius="65"
+                                Background="{DynamicResource SwitchTrackOffBrush}" />
+                        <Ellipse x:Name="Knob"
+                                 Width="110"
+                                 Height="110"
+                                 Margin="10,0,0,0"
+                                 HorizontalAlignment="Left"
+                                 VerticalAlignment="Center"
+                                 Fill="{DynamicResource SwitchKnobOffBrush}">
+                            <Ellipse.Effect>
+                                <DropShadowEffect BlurRadius="20"
+                                                  ShadowDepth="3"
+                                                  Direction="270"
+                                                  Opacity="0.25"
+                                                  Color="#000000" />
+                            </Ellipse.Effect>
+                        </Ellipse>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentFillBrush}" />
+                            <Setter TargetName="Knob" Property="Margin" Value="100,0,0,0" />
+                            <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource SwitchKnobBrush}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <ThicknessAnimation Storyboard.TargetName="Knob"
+                                                            Storyboard.TargetProperty="Margin"
+                                                            To="100,0,0,0"
+                                                            Duration="0:0:0.2" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <ThicknessAnimation Storyboard.TargetName="Knob"
+                                                            Storyboard.TargetProperty="Margin"
+                                                            To="10,0,0,0"
+                                                            Duration="0:0:0.2" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="False" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource ControlFillTertiaryBrush}" />
+                        </MultiTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="True">
+                <Setter Property="Cursor" Value="Hand" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ===================== CheckBox 20×20, checked = акцентная заливка ===================== -->
+    <!-- Отмеченное поле — заполненный акцентом квадрат с белой галочкой,
+         как системный чекбокс iOS. Галочка — фиксированный белый: цвет акцента
+         меняется в «Настройках», белая галочка читается на любом акценте. -->
+    <Style TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Border x:Name="Box"
+                                Width="20"
+                                Height="20"
+                                CornerRadius="6"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource ControlFillBrush}"
+                                BorderBrush="{DynamicResource ControlStrokeBrush}"
+                                BorderThickness="1">
+                            <Path x:Name="Check"
+                                  Data="M3,7 L6.5,10.5 L12,3.5"
+                                  Stroke="{DynamicResource OnDangerTextBrush}"
+                                  StrokeThickness="1.8"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Width="12"
+                                  Height="12"
+                                  Stretch="None"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Opacity="0" />
+                        </Border>
+                        <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentFillBrush}" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentFillBrush}" />
+                            <Setter TargetName="Check" Property="Opacity" Value="1" />
+                        </Trigger>
+                        <!-- Ховер — только у непомеченного поля: акцентное поле отмеченного
+                             чекбокса при наведении не перекрашивается. -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="False" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ControlFillTertiaryBrush}" />
+                            <Setter TargetName="Box" Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
+                        </MultiTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="True">
+                <Setter Property="Cursor" Value="Hand" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ===================== ComboBox (высота 36) ===================== -->
+    <Style TargetType="ComboBox">
+        <Setter Property="Background" Value="{DynamicResource ControlFillBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
+        <Setter Property="Height" Value="36" />
+        <Setter Property="MinWidth" Value="120" />
+        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton x:Name="Toggle"
+                                      Focusable="False"
+                                      ClickMode="Press"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border Background="Transparent" />
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+
+                        <Border x:Name="Bd"
+                                CornerRadius="12"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1"
+                                IsHitTestVisible="False" />
+
+                        <ContentPresenter IsHitTestVisible="False"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                          Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="Left"
+                                          VerticalAlignment="Center" />
+
+                        <TextBlock x:Name="Chevron"
+                                   IsHitTestVisible="False"
+                                   HorizontalAlignment="Right"
+                                   Margin="0,0,14,0"
+                                   VerticalAlignment="Center"
+                                   FontFamily="{DynamicResource IconFontFamily}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                   Text="&#xE70D;" />
+
+                        <Popup x:Name="PART_Popup"
+                               IsOpen="{TemplateBinding IsDropDownOpen}"
+                               Placement="Bottom"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade"
+                               Focusable="False">
+                            <Border MinWidth="{TemplateBinding ActualWidth}"
+                                    MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                    Margin="0,6,0,12"
+                                    CornerRadius="14"
+                                    Background="{DynamicResource PopupBackgroundBrush}"
+                                    BorderBrush="{DynamicResource GlassStrokeBrush}"
+                                    BorderThickness="1">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="24"
+                                                      ShadowDepth="4"
+                                                      Direction="270"
+                                                      Opacity="0.30"
+                                                      Color="#000000" />
+                                </Border.Effect>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="6">
+                                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsDropDownOpen" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentFillBrush}" />
+                            <Setter TargetName="Chevron" Property="Foreground" Value="{DynamicResource AccentFillBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="True">
+                <Setter Property="Cursor" Value="Hand" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Bd"
+                            CornerRadius="9"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillSecondaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Сегментированный контроль (iOS) ===================== -->
+    <!-- Капсула-подложка со скруглёнными сегментами; выбранный сегмент —
+         «всплывающая» поверхность с мягкой тенью. Используется с ListBox +
+         SelectedIndex, как ComboBox-настройки раздела «Настройки». -->
+    <Style x:Key="SegmentedControl" TargetType="ListBox">
+        <Setter Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="3" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBox">
+                    <Border CornerRadius="12"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}">
+                        <ItemsPresenter />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="ItemsPanel">
+            <Setter.Value>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="2" />
+                </ItemsPanelTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SegmentedItem" TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Margin" Value="2" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Bd"
+                            CornerRadius="10"
+                            Background="{TemplateBinding Background}"
+                            Padding="16,6">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PopupBackgroundBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                            <Setter TargetName="Bd" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect BlurRadius="8"
+                                                      ShadowDepth="1"
+                                                      Direction="270"
+                                                      Opacity="0.20"
+                                                      Color="#000000" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Списки ===================== -->
+    <Style TargetType="ListBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+    </Style>
+
+    <!-- Пункт списка (общий): высота 36, мягкое скругление, спокойный selection -->
+    <Style TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Height" Value="36" />
+        <Setter Property="Margin" Value="4,2" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Bd"
+                            CornerRadius="10"
+                            Background="{TemplateBinding Background}">
+                        <ContentPresenter Margin="12,0"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillSecondaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillSecondaryBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Пункт навигации (сайдбар): высота 44, радиус 12, выбран — плашка
+         (в светлой теме с акцентной тонировкой, в тёмной — нейтральная #2B2B2B)
+         + мягкая «пилюля» слева. Боковой отступ 20 px
+         оставляет место свечению подсветки внутри вьюпорта списка. -->
+    <Style x:Key="NavListItem" TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Height" Value="44" />
+        <Setter Property="Margin" Value="20,3" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Grid>
+                        <Border x:Name="Bd"
+                                CornerRadius="12"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter Margin="14,0"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <Rectangle x:Name="Pill"
+                                   Width="3"
+                                   Height="18"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Center"
+                                   RadiusX="1.5"
+                                   RadiusY="1.5"
+                                   Fill="{DynamicResource AccentFillBrush}"
+                                   Opacity="0" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillSecondaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NavSelectedFillBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                            <Setter TargetName="Pill" Property="Opacity" Value="1" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== AccentSpinner (круговой индикатор загрузки) ===================== -->
+    <!-- Дуга акцентного цвета вращается, пока контрол видим (Enter/ExitActions:
+         скрытый спиннер не крутится). Размер по умолчанию 20x20 — производные
+         стили ComponentsView только переключают видимость. -->
+    <Style x:Key="AccentSpinner" TargetType="Control">
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Height" Value="20" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Control">
+                    <Grid>
+                        <Ellipse Stroke="{DynamicResource ControlStrokeBrush}"
+                                 StrokeThickness="2" />
+                        <Path x:Name="Arc"
+                              Stroke="{DynamicResource AccentFillBrush}"
+                              StrokeThickness="2"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              RenderTransformOrigin="0.5,0.5">
+                            <Path.Data>
+                                <PathGeometry>
+                                    <PathFigure StartPoint="10,1">
+                                        <ArcSegment Point="1,10"
+                                                    Size="9,9"
+                                                    IsLargeArc="True"
+                                                    SweepDirection="Clockwise" />
+                                    </PathFigure>
+                                </PathGeometry>
+                            </Path.Data>
+                            <Path.RenderTransform>
+                                <RotateTransform Angle="0" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsVisible" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard x:Name="Spin">
+                                    <Storyboard>
+                                        <DoubleAnimation
+                                            Storyboard.TargetName="Arc"
+                                            Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                            From="0" To="360"
+                                            Duration="0:0:0.9"
+                                            RepeatBehavior="Forever" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <RemoveStoryboard BeginStoryboardName="Spin" />
+                            </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== ScrollBar (тонкая капсула, авто-скрытие) =====================
+         Ползунок невидим, пока курсор не наведён на окно (ScrollViewer-хозяин),
+         затем плавно проявляется и так же плавно исчезает. -->
+    <Style TargetType="ScrollBar">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Width" Value="12" />
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Grid Background="Transparent">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                            <Track.Thumb>
+                                <Thumb>
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Border x:Name="ThumbBd"
+                                                    Width="4"
+                                                    Margin="4,0"
+                                                    CornerRadius="2"
+                                                    HorizontalAlignment="Center"
+                                                    Background="{DynamicResource TertiaryTextBrush}" />
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="ThumbBd" Property="Width" Value="6" />
+                                                    <Setter TargetName="ThumbBd" Property="Background" Value="{DynamicResource SecondaryTextBrush}" />
+                                                </Trigger>
+                                                <Trigger Property="IsDragging" Value="True">
+                                                    <Setter TargetName="ThumbBd" Property="Background" Value="{DynamicResource PrimaryTextBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False" />
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Orientation" Value="Horizontal">
+                            <Setter Property="Width" Value="Auto" />
+                            <Setter Property="Height" Value="12" />
+                            <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Width" Value="Auto" />
+                <Setter Property="Height" Value="12" />
+            </Trigger>
+            <!-- Наведение на хозяина: ближайший ScrollViewer (список, журнал, контент
+                 раздела). Вне окна — прозрачность 0, при наведении — плавное появление. -->
+            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollViewer}}" Value="True">
+                <Setter Property="Opacity" Value="1" />
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard>
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                             To="1"
+                                             Duration="0:0:0.15" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <BeginStoryboard>
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                             To="0"
+                                             Duration="0:0:0.35" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ===================== Значок ⓘ у утилиты ===================== -->
+    <!-- Серая иконка «i» после названия утилиты: нажатие (мышь или Space/Enter —
+         это ToggleButton) открывает панель с описанием (InfoText), повторное
+         нажатие/Escape/клик мимо закрывает. 20×20, видимый клавиатурный фокус,
+         имя автоматизации берётся из InfoText (см. InfoGlyph.cs). -->
+    <Style TargetType="{x:Type controls:InfoGlyph}">
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Height" Value="20" />
+        <!-- Отступ вправо от заголовка строки; варианты 6,0,0,8 / 6,0,0,0
+             (шапки разделов в WrapPanel) переопределяют его локально. -->
+        <Setter Property="Margin" Value="6,1,0,0" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type controls:InfoGlyph}">
+                    <Grid Background="Transparent">
+                        <TextBlock x:Name="Glyph"
+                                   FontFamily="{DynamicResource IconFontFamily}"
+                                   FontSize="13"
+                                   Foreground="{TemplateBinding Foreground}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Text="&#xE946;" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource AccentFillBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== ToolTip ===================== -->
+    <Style TargetType="ToolTip">
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border CornerRadius="10"
+                            Background="{DynamicResource PopupBackgroundBrush}"
+                            BorderBrush="{DynamicResource GlassStrokeBrush}"
+                            BorderThickness="1"
+                            Padding="12,8">
+                        <ContentPresenter />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Единая сетка разделов ===================== -->
+    <!-- Карточка раздела: одинаковые рамка, заливка, радиус и отступы во всех вкладках -->
+    <Style x:Key="SectionCard" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource GlassFillBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource GlassStrokeBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="16" />
+        <Setter Property="Padding" Value="20,16" />
+        <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+
+    <!-- Первичный уровень иерархии: главный результат или важное действие раздела.
+         Плотнее заливка и заметнее обводка — карточка выделяется на фоне остальных. -->
+    <Style x:Key="SectionCardPrimary" TargetType="Border" BasedOn="{StaticResource SectionCard}">
+        <Setter Property="Background" Value="{DynamicResource SectionCardPrimaryFillBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource GlassStrokeBrightBrush}" />
+    </Style>
+
+    <!-- Вторичный уровень: группы, которые не должны конкурировать с primary —
+         спокойнее заливка, обводка уровня обычных карточек. -->
+    <Style x:Key="SectionCardSecondary" TargetType="Border" BasedOn="{StaticResource SectionCard}">
+        <Setter Property="Background" Value="{DynamicResource SectionCardSecondaryFillBrush}" />
+    </Style>
+
+    <!-- Описание вверху раздела -->
+    <Style x:Key="SectionDescription" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+
+    <!-- Футер раздела: статус и подсказка о правах -->
+    <Style x:Key="SectionStatusText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,8,0,0" />
+    </Style>
+
+    <Style x:Key="SectionWarnText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,8,0,0" />
+        <Setter Property="Visibility" Value="Collapsed" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsAdmin}" Value="False">
+                <Setter Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <!-- Разделы, работающие через SCU.ps1 (Startup/Tasks), предупреждают
+                 и при недоступном скрипте; у остальных VM свойства нет — биндинг
+                 просто не срабатывает и триггер не активируется. -->
+            <DataTrigger Binding="{Binding IsSCUAvailable}" Value="False">
+                <Setter Property="Visibility" Value="Visible" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ===================== Общие элементы карточек ===================== -->
+
+    <!-- Кнопка-пресет с состоянием «активна» (планы питания, pagefile, QoS, NetBIOS).
+         Раздел помечает активный вариант через Tag="accent" в своём DataTrigger,
+         оформление активного состояния берётся отсюда. -->
+    <Style x:Key="AccentPresetButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Style.Triggers>
+            <Trigger Property="Tag" Value="accent">
+                <Setter Property="Background" Value="{DynamicResource AccentFillBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentStrokeBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Вводное описание карточки: вторичный текст с отступом до содержимого -->
+    <Style x:Key="CardIntroText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,4,0,12" />
+    </Style>
+
+    <!-- Описание под заголовком строки (действие/постоянное описание настройки): третичный текст -->
+    <Style x:Key="RowActionText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,4,0,0" />
+    </Style>
+
+    <!-- Бейдж effective state («?»/«*»/«≠») рядом с тумблером -->
+    <Style x:Key="StateBadgeText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+    </Style>
+
+    <!-- Инфопанель-предупреждение (нет прав / недоступен SCU.ps1): одинаковые
+         заливка, радиус и внутренние отступы в окне и во всех разделах -->
+    <Style x:Key="InfoBanner" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource WarnFillBrush}" />
+        <Setter Property="Padding" Value="16,12" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+
+    <!-- Вложенная под-карточка (диски в «Сведениях»): та же рамка, плотнее отступы.
+         Заливка #363636 (SectionCardSecondaryFillBrush) — правило «плашка в плашке»,
+         чтобы под-карточка читалась внутри карточки цвета меню #2B2B2B. -->
+    <Style x:Key="SubCard" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource SectionCardSecondaryFillBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource GlassStrokeBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="16,12" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
+
+    <!-- ===================== Expander (строка «Профиль», раздел «Состояние ПК») ===================== -->
+    <!-- Круглый фон системной стрелки убран: шеврон — акцентным цветом приложения,
+         без рамки/заливки вокруг него. -->
+    <Style TargetType="Expander">
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                    <StackPanel>
+                        <ToggleButton x:Name="HeaderSite"
+                                      ClickMode="Press"
+                                      Cursor="Hand"
+                                      HorizontalContentAlignment="Stretch"
+                                      IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Grid Background="Transparent">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="Chevron"
+                                                   Grid.Column="0"
+                                                   Margin="0,0,6,0"
+                                                   VerticalAlignment="Center"
+                                                   FontFamily="{DynamicResource IconFontFamily}"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource AccentFillBrush}"
+                                                   RenderTransformOrigin="0.5,0.5"
+                                                   Text="&#xE70D;">
+                                            <TextBlock.RenderTransform>
+                                                <RotateTransform Angle="0" />
+                                            </TextBlock.RenderTransform>
+                                        </TextBlock>
+                                        <ContentPresenter Grid.Column="1"
+                                                          VerticalAlignment="Center"
+                                                          SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Chevron" Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <RotateTransform Angle="-180" />
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Chevron" Property="Foreground" Value="{DynamicResource AccentHoverBrush}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                            <ContentPresenter Content="{TemplateBinding Header}"
+                                              ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                              RecognizesAccessKey="True" />
+                        </ToggleButton>
+                        <ContentPresenter x:Name="ExpandSite"
+                                          Margin="{TemplateBinding Padding}"
+                                          Visibility="Collapsed"
+                                          Focusable="False" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Карточка-строка с тумблером: DataContext = SwitchRow (Title/Description/IsOn);
+         команды раздела берутся у UserControl (ToggleSwitchCommand, IsInteractive). -->
+    <Style x:Key="SwitchRowCard" TargetType="ContentControl">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContentControl">
+                    <Border Margin="0,0,0,10"
+                            Padding="16,12"
+                            Background="{DynamicResource GlassFillBrush}"
+                            BorderBrush="{DynamicResource GlassStrokeBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource RowHeaderText}" Text="{Binding LocalizedTitle}" />
+                                <!-- Действие текущего положения тумблера («Включить: …» /
+                                     «Отключить: …»), меняется вместе с IsOn. -->
+                                <TextBlock Margin="0,4,0,0"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TertiaryTextBrush}"
+                                           TextWrapping="Wrap"
+                                           Text="{Binding ActionDescription}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasActionDescription}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource SystemToggleSwitch}"
+                                          IsChecked="{Binding IsOn, Mode=TwoWay}"
+                                          IsEnabled="{Binding DataContext.IsInteractive, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          Command="{Binding DataContext.ToggleSwitchCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          CommandParameter="{Binding}"
+                                          ToolTipService.ShowOnDisabled="True" />
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Строка события истории ===================== -->
+    <!-- Общий шаблон для «Истории» и блока «Последние события» на дашборде:
+         колонки время/категория/операция/значок успеха-ошибки. Подключается
+         неявно по типу строки (HistoryEventRow) в обоих разделах. -->
+    <DataTemplate DataType="{x:Type vm:HistoryEventRow}">
+        <Grid Style="{StaticResource ListRowGrid}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="118" />
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0"
+                       FontSize="12"
+                       Foreground="{DynamicResource TertiaryTextBrush}"
+                       Text="{Binding TimeText}" />
+            <TextBlock Grid.Column="1"
+                       FontSize="12"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       TextTrimming="CharacterEllipsis"
+                       Text="{Binding Category}" />
+            <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                <TextBlock FontSize="12"
+                           TextTrimming="CharacterEllipsis"
+                           Text="{Binding Operation}" />
+                <!-- Пометка «Резерв: RP-12345» для событий с идентификатором резерва -->
+                <TextBlock FontSize="12"
+                           Foreground="{DynamicResource TertiaryTextBrush}"
+                           Text="{Binding BackupText}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasBackup}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+            <!-- Пометка ошибки текстом цветом времени операции; у успешных
+                 операций пометки нет -->
+            <TextBlock Grid.Column="3"
+                       FontSize="12"
+                       Margin="4,0,0,0"
+                       Text="{Binding StatusText}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsFail}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>

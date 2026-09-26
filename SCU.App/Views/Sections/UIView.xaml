@@ -1,0 +1,113 @@
+﻿<UserControl x:Class="SCU.Views.Sections.UIView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="640" d:DesignWidth="860">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Шапка раздела: операции.
+             Активный пресет задержки меню подсвечивается акцентом через DataTrigger. -->
+        <WrapPanel Grid.Row="0" Margin="0,0,0,12">
+            <Button Content="{DynamicResource S_UiMenuDelay20}"
+                    Margin="0,0,8,8"
+                    Command="{Binding SetMenuDelayCommand}"
+                    CommandParameter="20">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ActiveMenuDelayKey}" Value="20">
+                                <Setter Property="Tag" Value="accent" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <Button Content="{DynamicResource S_UiMenuDelay400}"
+                    Margin="0,0,8,8"
+                    Command="{Binding SetMenuDelayCommand}"
+                    CommandParameter="400">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ActiveMenuDelayKey}" Value="400">
+                                <Setter Property="Tag" Value="accent" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <Button Content="{DynamicResource S_UiRestartExplorer}"
+                    Margin="0,0,8,8"
+                    Command="{Binding RestartExplorerCommand}" />
+            <Button Content="{DynamicResource S_UiClearTaskbar}"
+                    Margin="0,0,8,8"
+                    Command="{Binding ClearTaskbarCommand}" />
+            <Button Content="{DynamicResource S_UiRestoreTaskbar}"
+                    Margin="0,0,8,8"
+                    Command="{Binding RestoreTaskbarCommand}" />
+        </WrapPanel>
+            <StackPanel Grid.Row="1" Margin="0">
+                <TextBlock Style="{StaticResource BodyStrongText}"
+                           Margin="0,0,0,8"
+                           Text="{DynamicResource S_UiGroupExplorer}" />
+                <ItemsControl Margin="0" ItemsSource="{Binding ExplorerRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ContentControl Style="{StaticResource SwitchRowCard}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Style="{StaticResource BodyStrongText}"
+                           Margin="0,0,0,8"
+                           Text="{DynamicResource S_UiGroupVisualFx}" />
+                <ItemsControl Margin="0" ItemsSource="{Binding VisualFxRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ContentControl Style="{StaticResource SwitchRowCard}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Style="{StaticResource BodyStrongText}"
+                           Margin="0,0,0,8"
+                           Text="{DynamicResource S_UiGroupStartMenu}" />
+                <ContentControl DataContext="{Binding RecommendedRow}" Style="{StaticResource SwitchRowCard}" />
+
+                <!-- Пустые группы переключателей -->
+                <StackPanel HorizontalAlignment="Center" Margin="0,24,0,8">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding ExplorerRows.Count}" Value="0" />
+                                        <Condition Binding="{Binding VisualFxRows.Count}" Value="0" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Style="{StaticResource EmptyStateIcon}" Text="&#xE946;" />
+                    <TextBlock Style="{StaticResource EmptyStateText}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               Text="{DynamicResource S_EmptyState}" />
+                </StackPanel>
+            </StackPanel>
+
+        <StackPanel Grid.Row="2">
+            <TextBlock Style="{StaticResource SectionStatusText}" Text="{Binding StatusText}" />
+            <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

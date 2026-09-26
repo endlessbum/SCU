@@ -1,0 +1,386 @@
+﻿<UserControl x:Class="SCU.Views.Sections.NetworkView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:SCU.Views.Controls"
+             mc:Ignorable="d"
+             d:DesignHeight="640" d:DesignWidth="860">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Шапка раздела: операции и объединённая подсказка ⓘ (описания раздела во view нет) -->
+        <WrapPanel Grid.Row="0" Margin="0,0,0,12">
+            <Button Content="{DynamicResource S_NetResetAll}"
+                    Margin="0,0,8,8"
+                    Command="{Binding ResetAllCommand}" />
+            <controls:InfoGlyph x:Name="HeaderInfoGlyph" Margin="6,0,0,8" VerticalAlignment="Center" />
+        </WrapPanel>
+            <StackPanel Grid.Row="1">
+                <Border Style="{StaticResource SectionCard}">
+                    <!-- П.14+П.16: профиль для игр — в начале вкладки. Обе кнопки видны всегда:
+                         профиль применён → «Применить» неактивна, не применён → «Откатить» неактивна. -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetGamingProfile}" />
+                                <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource I_NetGamingProfile}" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource CardIntroText}"
+                                       Text="{DynamicResource S_NetGamingProfileDesc}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="{DynamicResource S_Rollback}"
+                                    Margin="0,0,8,0"
+                                    Command="{Binding RollbackGamingProfileCommand}"
+                                    ToolTipService.ShowOnDisabled="True">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="IsEnabled" Value="False" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsGamingActive}" Value="True">
+                                                <Setter Property="IsEnabled" Value="True" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="{DynamicResource S_Apply}"
+                                    Command="{Binding GamingProfileCommand}"
+                                    ToolTipService.ShowOnDisabled="True">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="IsEnabled" Value="True" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsGamingActive}" Value="True">
+                                                <Setter Property="IsEnabled" Value="False" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+                <Border Style="{StaticResource SectionCard}">
+                    <!-- Профиль сетевого адаптера: слева описание, справа кнопки «Откатить»/«Применить» -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetAdapterProfileTitle}" />
+                                <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource I_NetAdapterProfileApply}" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource CardIntroText}"
+                                       Text="{DynamicResource S_NetAdapterProfileDesc}" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Style="{StaticResource RowActionText}"
+                                       Text="{DynamicResource S_NetAdapterProfileSettings}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="{DynamicResource S_Rollback}"
+                                    Margin="0,0,8,0"
+                                    Command="{Binding RestoreAdapterProfileCommand}"
+                                    ToolTipService.ShowOnDisabled="True">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsAdapterProfileRestoreAvailable}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="{DynamicResource S_Apply}"
+                                    Command="{Binding ApplyUniversalAdapterProfileCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetTcpTitle}" />
+                            <controls:InfoGlyph x:Name="TcpInfoGlyph" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <!-- П.5: информеры актуальных значений удалены — ComboBox выставляется по факту -->
+                        <WrapPanel Margin="0,8,0,0" VerticalAlignment="Center">
+                            <TextBlock Margin="0,0,8,8" VerticalAlignment="Center" Text="{DynamicResource S_NetAutoTuningLabel}" />
+                            <ComboBox
+                                      Margin="0,0,8,8"
+                                      ItemsSource="{Binding AutoTuningValues}"
+                                      SelectedItem="{Binding SelectedAutoTuning}" />
+                            <Button Content="{DynamicResource S_NetApplyAutoTuning}"
+                                    Margin="0,0,8,8"
+                                    Command="{Binding ApplyAutoTuningCommand}" />
+                            <TextBlock Margin="0,0,8,8" VerticalAlignment="Center" Text="{DynamicResource S_NetEcnLabel}" />
+                            <ComboBox
+                                      Margin="0,0,8,8"
+                                      ItemsSource="{Binding EcnValues}"
+                                      SelectedItem="{Binding SelectedEcn}" />
+                            <Button Content="{DynamicResource S_NetApplyEcn}"
+                                    Margin="0,0,8,8"
+                                    Command="{Binding ApplyEcnCommand}" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetMtuTitle}" />
+                            <controls:InfoGlyph x:Name="MtuInfoGlyph" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <!-- Список только для просмотра: ItemContainerStyle без шаблона убирает
+                             ховер/выделение, но выбор сохранён — MTU-кнопки используют SelectedInterface -->
+                        <ListBox MaxHeight="160"
+                                 Margin="0,8,0,0"
+                                 HorizontalAlignment="Stretch"
+                                 ItemsSource="{Binding Interfaces}"
+                                 SelectedItem="{Binding SelectedInterface}">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <ContentPresenter />
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Display}" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <WrapPanel Margin="0,8,0,0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                                <Button Content="{DynamicResource S_NetMtu1500}"
+                                        Command="{Binding SetMtuCommand}"
+                                        CommandParameter="1500" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                                <Button Content="{DynamicResource S_NetMtu1472}"
+                                        Command="{Binding SetMtuCommand}"
+                                        CommandParameter="1472" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                                <Button Content="{DynamicResource S_NetMtu1400}"
+                                        Command="{Binding SetMtuCommand}"
+                                        CommandParameter="1400" />
+                            </StackPanel>
+                            <TextBox
+                                     Margin="0,0,8,8"
+                                    
+                                     VerticalContentAlignment="Center"
+                                     Text="{Binding MtuText, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="{DynamicResource S_NetMtuHint}"
+                                     ToolTipService.InitialShowDelay="250" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,20,8">
+                                <Button Content="{DynamicResource S_NetMtuCustom}"
+                                        Command="{Binding SetMtuCommand}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                                <Button Content="{DynamicResource S_NetMtuRestore}"
+                                        Command="{Binding RestoreMtuCommand}" />
+                            </StackPanel>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetQosTitle}" />
+                            <controls:InfoGlyph x:Name="QosInfoGlyph" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <!-- Активный вариант QoS подсвечивается акцентом через DataTrigger по ActiveQosKey -->
+                        <WrapPanel Margin="0,8,0,0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                                <Button Content="{DynamicResource S_NetQosZero}"
+                                        Command="{Binding QosZeroCommand}">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ActiveQosKey}" Value="0">
+                                                    <Setter Property="Tag" Value="accent" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                                <Button Content="{DynamicResource S_NetQosTwenty}"
+                                        Command="{Binding QosTwentyCommand}">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ActiveQosKey}" Value="20">
+                                                    <Setter Property="Tag" Value="accent" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                                <Button Content="{DynamicResource S_NetQosRemove}"
+                                        Command="{Binding QosRemoveCommand}">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ActiveQosKey}" Value="none">
+                                                    <Setter Property="Tag" Value="accent" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="12,0,8,8">
+                                <Button Content="{DynamicResource S_NetQosRestore}"
+                                        Command="{Binding QosRestoreCommand}" />
+                            </StackPanel>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetNetBiosTitle}" />
+                            <controls:InfoGlyph x:Name="NetBiosInfoGlyph" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <!-- П.13: строка с актуальными режимами удалена — состояние видно по подсветке кнопки -->
+                        <WrapPanel Margin="0,8,0,0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                                <Button Content="{DynamicResource S_NetNetBiosDisable}"
+                                        Command="{Binding NetBiosDisableCommand}">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ActiveNetBiosKey}" Value="disable">
+                                                    <Setter Property="Tag" Value="accent" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                                <Button Content="{DynamicResource S_NetNetBiosDhcp}"
+                                        Command="{Binding NetBiosDhcpCommand}">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ActiveNetBiosKey}" Value="dhcp">
+                                                    <Setter Property="Tag" Value="accent" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                                <Button Content="{DynamicResource S_NetNetBiosFlush}"
+                                        Command="{Binding FlushNetBiosCacheCommand}" />
+                            </StackPanel>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetDnsTitle}" />
+                            <TextBlock Style="{StaticResource CardIntroText}"
+                                       TextWrapping="Wrap"
+                                       Text="{DynamicResource S_NetDnsDesc}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="{DynamicResource S_NetDnsFlush}"
+                                    Command="{Binding FlushDnsCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetCertTitle}" />
+                            <TextBlock Style="{StaticResource CardIntroText}"
+                                       TextWrapping="Wrap"
+                                       Text="{DynamicResource S_NetCertDesc}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Кнопка активна, только если сертификат найден в хранилищах;
+                                 проверка выполняется при каждом обновлении состояния вкладки. -->
+                            <Button Content="{DynamicResource S_NetCertRemove}"
+                                    Command="{Binding RemoveMinCifraCertCommand}"
+                                    ToolTipService.ShowOnDisabled="True">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="IsEnabled" Value="False" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsMinCifraCertInstalled}" Value="True">
+                                                <Setter Property="IsEnabled" Value="True" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+            <!-- Сетевые адаптеры не получены -->
+            <StackPanel HorizontalAlignment="Center" Margin="0,24,0,8">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Interfaces.Count}" Value="0">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <TextBlock Style="{StaticResource EmptyStateIcon}" Text="&#xE946;" />
+                <TextBlock Style="{StaticResource EmptyStateText}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           Text="{DynamicResource S_EmptyState}" />
+            </StackPanel>
+
+        </StackPanel>
+
+        <StackPanel Grid.Row="2">
+            <TextBlock Style="{StaticResource SectionStatusText}" Text="{Binding StatusText}" />
+            <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

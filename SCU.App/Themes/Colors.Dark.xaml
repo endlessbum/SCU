@@ -1,0 +1,99 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+      Тёмная тема: дизайн-система iOS 27 / Liquid Glass.
+      Набор ключей идентичен Colors.Light.xaml — подмена словаря выполняется ThemeManager'ом.
+      Поверхностные кисти (glass/control/popup) здесь — значения режима «Прозрачный»;
+      ThemeManager перекрывает их при выборе «Матовый» (см. ApplySurfaceBrushes).
+      Акцентные кисти — fallback; при запуске ThemeManager подставляет акцент из настроек.
+    -->
+
+    <!-- База и слои. Нейтральная палитра: #202020 — фон окна, #2B2B2B — плашки,
+         панели и окна функций (карточки разделов), #363636 — плашка в плашке
+         (вложенные поверхности, popups) и кнопки; выделенная вкладка меню — #383838. -->
+    <SolidColorBrush x:Key="SolidRootBrush" Color="#FF202020" />
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#FF202020" />
+    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#992B2B2B" />
+    <!-- Окна функций — та же кисть, что у панели меню: карточки разделов визуально
+         совпадают с сайдбаром в обоих режимах прозрачности. -->
+    <SolidColorBrush x:Key="GlassFillBrush" Color="#992B2B2B" />
+    <SolidColorBrush x:Key="GlassFillStrongBrush" Color="#992B2B2B" />
+    <SolidColorBrush x:Key="GlassStrokeBrush" Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="GlassStrokeBrightBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="RootStrokeBrush" Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="ControlFillBrush" Color="#80363636" />
+    <SolidColorBrush x:Key="ControlFillSecondaryBrush" Color="#99363636" />
+    <!-- Hover/pressed кнопок: заметно ярче заливки (#80363636 ≈ #303030 на плашке) —
+         раньше была почти того же тона, и наведение визуально не читалось. -->
+    <SolidColorBrush x:Key="ControlFillTertiaryBrush" Color="#FF414141" />
+    <SolidColorBrush x:Key="ControlStrokeBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="SubtleFillSecondaryBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="SubtleFillTertiaryBrush" Color="#0AFFFFFF" />
+    <SolidColorBrush x:Key="SeparatorBrush" Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="PopupBackgroundBrush" Color="#F2363636" />
+
+    <!-- Окно подтверждения UAC: цвет плашек #2B2B2B (отдельный ключ — попапам
+         оставлен #363636 по правилу «плашка в плашке»). -->
+    <SolidColorBrush x:Key="DialogBackgroundBrush" Color="#FF2B2B2B" />
+    <SolidColorBrush x:Key="OverlayBrush" Color="#66000000" />
+
+    <!-- Лёгкое затемнение всего окна при активном поиске на «Главной»: мягче
+         модального OverlayBrush — контент должен оставаться различимым. -->
+    <SolidColorBrush x:Key="SearchScrimBrush" Color="#28000000" />
+
+    <!-- Иерархия карточек: primary — главный результат/действие раздела,
+         secondary — спокойный уровень для групп, не конкурирующих с primary. -->
+    <SolidColorBrush x:Key="SectionCardPrimaryFillBrush" Color="#B32B2B2B" />
+    <SolidColorBrush x:Key="SectionCardSecondaryFillBrush" Color="#66363636" />
+
+    <!-- Выделенная вкладка меню: нейтральная плашка #383838; выбор
+         дополнительно подсвечивает акцентная «пилюля». -->
+    <SolidColorBrush x:Key="NavSelectedFillBrush" Color="#FF383838" />
+
+    <!-- Текст: система iOS — белый primary, серые secondary/tertiary. П. 16 аудита:
+         secondary/tertiary непрозрачны и дают ≥4.5:1 на #202020 (tertiary ≈ 5.9:1);
+         вторичность передаётся оттенком, а не прозрачностью. -->
+    <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F2FFFFFF" />
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="#DDFFFFFF" />
+    <SolidColorBrush x:Key="TertiaryTextBrush" Color="#FF9D9DA8" />
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="#5C8E8E99" />
+    <!-- 35 % белого: при #4D контраст выделения с белым текстом заметно хуже светлой темы. -->
+    <SolidColorBrush x:Key="TextSelectionBrush" Color="#59FFFFFF" />
+
+    <!-- Акцент: системный синий iOS для тёмной темы (fallback подставляется ThemeManager'ом) -->
+    <SolidColorBrush x:Key="AccentFillBrush" Color="#FF0A84FF" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#FF339CFF" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#FF0973D6" />
+    <SolidColorBrush x:Key="AccentTextBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="AccentTintBrush" Color="#2E0A84FF" />
+    <SolidColorBrush x:Key="AccentStrokeBrush" Color="#660A84FF" />
+
+    <!-- Опасное действие: системный красный iOS для тёмной темы -->
+    <SolidColorBrush x:Key="DangerTintBrush" Color="#1AFF453A" />
+    <SolidColorBrush x:Key="DangerStrokeBrush" Color="#4DFF453A" />
+    <SolidColorBrush x:Key="DangerFillBrush" Color="#FFFF453A" />
+    <SolidColorBrush x:Key="DangerPressedBrush" Color="#FFE63B31" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#FFFF6961" />
+
+    <!-- Семантика состояний -->
+    <SolidColorBrush x:Key="SuccessBrush" Color="#FF30D158" />
+    <SolidColorBrush x:Key="WarnBrush" Color="#FFFFD60A" />
+    <SolidColorBrush x:Key="WarnFillBrush" Color="#26FFD60A" />
+    <SolidColorBrush x:Key="WarnTextBrush" Color="#F2FFFFFF" />
+    <SolidColorBrush x:Key="StateRunningBrush" Color="#FF30D158" />
+    <SolidColorBrush x:Key="StateDisabledBrush" Color="#C7EBEBF5" />
+    <SolidColorBrush x:Key="StateMissingBrush" Color="#8B9D9DA8" />
+
+    <!-- Кнопки строки заголовка -->
+    <SolidColorBrush x:Key="CaptionCloseHoverBrush" Color="#FFFF453A" />
+    <SolidColorBrush x:Key="CaptionClosePressedBrush" Color="#FFE63B31" />
+
+    <!-- Фиксированный белый: текст поверх красной заливки и ручка тумблера в ON/OFF
+         (на тёмном треке читается белый). -->
+    <SolidColorBrush x:Key="OnDangerTextBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="SwitchKnobBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="SwitchKnobOffBrush" Color="#FFFFFFFF" />
+    <!-- Трек тумблера в OFF: полупрозрачный серый iOS (#787880). -->
+    <SolidColorBrush x:Key="SwitchTrackOffBrush" Color="#66787880" />
+</ResourceDictionary>

@@ -1,0 +1,597 @@
+﻿<Window x:Class="SCU.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:SCU.Views.Controls"
+        xmlns:sections="clr-namespace:SCU.Views.Sections"
+        Title="SCU"
+        Width="1280"
+        Height="820"
+        MinWidth="1040"
+        MinHeight="700"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
+        WindowStyle="None"
+        AllowsTransparency="False"
+        Background="Transparent"
+        Icon="SCU.ico"
+        Foreground="{DynamicResource PrimaryTextBrush}"
+        FontFamily="{DynamicResource AppFontFamily}"
+        FontSize="14"
+        ResizeMode="CanResize">
+    <WindowChrome.WindowChrome>
+        <!-- Заголовок ниже прежних 48 px, но выше системного: фон строки —
+             прозрачный, поэтому она сливается с фоном приложения (Mica/тема). -->
+        <shell:WindowChrome CaptionHeight="38"
+                            ResizeBorderThickness="8"
+                            GlassFrameThickness="-1"
+                            CornerRadius="0"
+                            UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="38" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition x:Name="JournalRow" Height="150" MinHeight="120" MaxHeight="480" />
+        </Grid.RowDefinitions>
+
+        <!-- ===================== Строка заголовка (38 px) ===================== -->
+        <Grid Grid.Row="0" Background="Transparent">
+            <StackPanel Margin="12,0,0,0"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center">
+                <Image x:Name="TitleIcon"
+                       Height="18"
+                       Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       VerticalAlignment="Center" />
+                <TextBlock Margin="8,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           Text="SCU" />
+            </StackPanel>
+
+            <StackPanel HorizontalAlignment="Right"
+                        Orientation="Horizontal">
+                <Button Style="{StaticResource WindowButton}"
+                        WindowChrome.IsHitTestVisibleInChrome="True"
+                        Click="OnMinimizeClick"
+                        ToolTip="{DynamicResource S_CaptionMinimize}"
+                        AutomationProperties.Name="{DynamicResource S_CaptionMinimize}">
+                    <TextBlock FontFamily="{DynamicResource IconFontFamily}" FontSize="10" Text="&#xE921;" />
+                </Button>
+                <Button Style="{StaticResource WindowButton}"
+                        WindowChrome.IsHitTestVisibleInChrome="True"
+                        Click="OnMaximizeRestoreClick"
+                        ToolTip="{DynamicResource S_CaptionMaximize}"
+                        AutomationProperties.Name="{DynamicResource S_CaptionMaximize}">
+                    <TextBlock x:Name="MaximizeGlyph"
+                               FontFamily="{DynamicResource IconFontFamily}"
+                               FontSize="10"
+                               Text="&#xE922;" />
+                </Button>
+                <Button Style="{StaticResource CloseWindowButton}"
+                        WindowChrome.IsHitTestVisibleInChrome="True"
+                        Click="OnCloseClick"
+                        ToolTip="{DynamicResource S_CaptionClose}"
+                        AutomationProperties.Name="{DynamicResource S_CaptionClose}">
+                    <TextBlock FontFamily="{DynamicResource IconFontFamily}" FontSize="10" Text="&#xE8BB;" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- ===================== Тело: сайдбар + контент ===================== -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" MinWidth="260" MaxWidth="360" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Сайдбар: плавающая стеклянная поверхность (Liquid Glass) со скруглением;
+                 снизу — переключатель темы -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0"
+                        Margin="12,8,8,8"
+                        Background="{DynamicResource PanelBackgroundBrush}"
+                        BorderBrush="{DynamicResource GlassStrokeBrush}"
+                        BorderThickness="1"
+                        CornerRadius="18">
+                    <ListBox x:Name="SidebarList"
+                             Margin="4,6,4,8"
+                             ItemsSource="{Binding Sections}"
+                             SelectedItem="{Binding CurrentSection, Mode=TwoWay}"
+                             ItemContainerStyle="{StaticResource NavListItem}"
+                             VirtualizingPanel.ScrollUnit="Pixel">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Title}"
+                                           FontSize="14"
+                                           TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </Grid>
+
+            <!-- Перетаскивание меняет ширину сайдбара -->
+            <GridSplitter Grid.Column="1"
+                          Width="8"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Background="Transparent"
+                          ResizeBehavior="PreviousAndNext"
+                          ResizeDirection="Columns" />
+
+            <!-- Контент раздела: заголовок, описание, InfoBar, затем разделы -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Margin="32,12,32,0">
+                    <!-- Заголовок страницы: скрыт у «Главной» (заголовок раздела виден в сайдбаре) -->
+                    <TextBlock Text="{Binding CurrentSection.Title}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource PageTitleText}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDashboardSection}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <!-- Подпись под заголовком: скрыта у разделов без описания -->
+                    <TextBlock Margin="0,4,0,0"
+                               Text="{Binding CurrentSection.Description}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource PageSubtitleText}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentSection.Description}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- InfoBar: предупреждение о запуске без прав администратора -->
+                <Border Grid.Row="1"
+                        Margin="32,12,32,0">
+                    <Border.Style>
+                        <Style TargetType="Border" BasedOn="{StaticResource InfoBanner}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsAdmin}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <!-- Grid вместо горизонтального StackPanel: StackPanel измеряет детей
+                         по бесконечной ширине — TextWrapping не срабатывал никогда, и
+                         баннер выезжал за окно при сужении или 125–150 % DPI. -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   FontFamily="{DynamicResource IconFontFamily}"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource WarnBrush}"
+                                   VerticalAlignment="Center"
+                                   Text="&#xE7BA;" />
+                        <TextBlock Grid.Column="1"
+                                   Margin="12,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource WarnTextBrush}"
+                                   TextWrapping="Wrap"
+                                   Text="{DynamicResource S_NotAdminInfo}" />
+                        <!-- Подсказка ⓘ после текста, а не при кнопке -->
+                        <controls:InfoGlyph Grid.Column="2" Margin="6,0,0,0" VerticalAlignment="Center" InfoText="{DynamicResource I_RunAsAdmin}" />
+                        <Button Grid.Column="3"
+                                Margin="16,0,0,0"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource SmallButton}"
+                                Content="{DynamicResource S_RunAsAdmin}"
+                                Command="{Binding RelaunchAsAdminCommand}" />
+                    </Grid>
+                </Border>
+
+                <ScrollViewer x:Name="ContentScroll"
+                              Grid.Row="2"
+                              Margin="32,12,32,8"
+                              HorizontalAlignment="Stretch"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              PreviewMouseWheel="OnContentScrollPreviewMouseWheel">
+                    <!-- Padding отступает карточки от краёв вьюпорта: свечение
+                         подсветки (до 17 px за границей карточки) иначе срезается -->
+                    <Border Padding="20,0,20,8">
+                    <Grid>
+                        <!-- Раздел 0 «Состояние ПК» — агрегатор поверх существующих разделов -->
+                        <sections:DashboardView DataContext="{Binding Dashboard}">
+                            <sections:DashboardView.Style>
+                                <Style TargetType="sections:DashboardView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsDashboardSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:DashboardView.Style>
+                        </sections:DashboardView>
+
+                        <!-- Раздел 20 «Бэнчмарк»: индекс состояния и подтверждённые изменения -->
+                        <sections:BenchmarkView DataContext="{Binding Benchmark}">
+                            <sections:BenchmarkView.Style>
+                                <Style TargetType="sections:BenchmarkView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsBenchmarkSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:BenchmarkView.Style>
+                        </sections:BenchmarkView>
+
+                        <sections:InfoView DataContext="{Binding Info}">
+                            <sections:InfoView.Style>
+                                <Style TargetType="sections:InfoView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsInfoSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:InfoView.Style>
+                        </sections:InfoView>
+
+                        <sections:ComponentsView DataContext="{Binding Components}">
+                            <sections:ComponentsView.Style>
+                                <Style TargetType="sections:ComponentsView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsComponentsSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:ComponentsView.Style>
+                        </sections:ComponentsView>
+
+                        <sections:CleanupView DataContext="{Binding Cleanup}">
+                            <sections:CleanupView.Style>
+                                <Style TargetType="sections:CleanupView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsCleanupSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:CleanupView.Style>
+                        </sections:CleanupView>
+
+                        <sections:PrivacyView DataContext="{Binding Privacy}">
+                            <sections:PrivacyView.Style>
+                                <Style TargetType="sections:PrivacyView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsPrivacySection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:PrivacyView.Style>
+                        </sections:PrivacyView>
+
+                        <sections:PowerView DataContext="{Binding Power}">
+                            <sections:PowerView.Style>
+                                <Style TargetType="sections:PowerView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsPowerSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:PowerView.Style>
+                        </sections:PowerView>
+
+                        <sections:NetworkView DataContext="{Binding Network}">
+                            <sections:NetworkView.Style>
+                                <Style TargetType="sections:NetworkView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsNetworkSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:NetworkView.Style>
+                        </sections:NetworkView>
+
+                        <sections:UIView DataContext="{Binding Ui}">
+                            <sections:UIView.Style>
+                                <Style TargetType="sections:UIView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsUISection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:UIView.Style>
+                        </sections:UIView>
+
+                        <sections:InputView DataContext="{Binding Input}">
+                            <sections:InputView.Style>
+                                <Style TargetType="sections:InputView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsInputSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:InputView.Style>
+                        </sections:InputView>
+
+                        <sections:ServicesView DataContext="{Binding Services}">
+                            <sections:ServicesView.Style>
+                                <Style TargetType="sections:ServicesView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsServiceSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:ServicesView.Style>
+                        </sections:ServicesView>
+
+                        <!-- Раздел 19 «Приложения»: полный список установленных программ -->
+                        <sections:AppsView DataContext="{Binding Apps}">
+                            <sections:AppsView.Style>
+                                <Style TargetType="sections:AppsView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsAppsSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:AppsView.Style>
+                        </sections:AppsView>
+
+                        <sections:StartupView DataContext="{Binding Startup}">
+                            <sections:StartupView.Style>
+                                <Style TargetType="sections:StartupView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsStartupSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:StartupView.Style>
+                        </sections:StartupView>
+
+                        <sections:TasksView DataContext="{Binding Tasks}">
+                            <sections:TasksView.Style>
+                                <Style TargetType="sections:TasksView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsTaskSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:TasksView.Style>
+                        </sections:TasksView>
+
+                        <sections:UpdateView DataContext="{Binding Update}">
+                            <sections:UpdateView.Style>
+                                <Style TargetType="sections:UpdateView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsUpdateSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:UpdateView.Style>
+                        </sections:UpdateView>
+
+                        <!-- Раздел 17 «Настройки»: DataContext — сам MainViewModel (тема и акцент) -->
+                        <sections:SettingsView>
+                            <sections:SettingsView.Style>
+                                <Style TargetType="sections:SettingsView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsSettingsSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:SettingsView.Style>
+                        </sections:SettingsView>
+
+                        <!-- Раздел 18 «История»: полная история операций -->
+                        <sections:HistoryView DataContext="{Binding HistorySection}">
+                            <sections:HistoryView.Style>
+                                <Style TargetType="sections:HistoryView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsHistorySection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:HistoryView.Style>
+                        </sections:HistoryView>
+
+                        <sections:BloatView DataContext="{Binding Bloat}">
+                            <sections:BloatView.Style>
+                                <Style TargetType="sections:BloatView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsBloatSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:BloatView.Style>
+                        </sections:BloatView>
+
+                        <sections:MaintenanceView DataContext="{Binding Maintenance}">
+                            <sections:MaintenanceView.Style>
+                                <Style TargetType="sections:MaintenanceView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsMaintenanceSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:MaintenanceView.Style>
+                        </sections:MaintenanceView>
+
+                        <sections:SecurityView DataContext="{Binding Security}">
+                            <sections:SecurityView.Style>
+                                <Style TargetType="sections:SecurityView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsSecuritySection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:SecurityView.Style>
+                        </sections:SecurityView>
+
+                        <!-- Раздел 21 «Сканер»: on-demand сканер, drop-зона -->
+                        <sections:ScannerView DataContext="{Binding Scanner}">
+                            <sections:ScannerView.Style>
+                                <Style TargetType="sections:ScannerView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsScannerSection, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </sections:ScannerView.Style>
+                        </sections:ScannerView>
+
+                        <!-- Заглушка для ещё не реализованных разделов: единый EmptyState -->
+                        <StackPanel VerticalAlignment="Center" MaxWidth="640">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsPlaceholderSection}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <Border HorizontalAlignment="Center"
+                                    Width="52"
+                                    Height="52"
+                                    CornerRadius="12"
+                                    Background="{DynamicResource SubtleFillSecondaryBrush}"
+                                    BorderBrush="{DynamicResource ControlStrokeBrush}"
+                                    BorderThickness="1">
+                                <TextBlock Style="{StaticResource EmptyStateIcon}"
+                                           Text="&#xE946;" />
+                            </Border>
+                            <TextBlock Margin="0,16,0,0"
+                                       Style="{StaticResource PageTitleText}"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       Text="{DynamicResource S_PlaceholderTitle}" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Style="{StaticResource PageSubtitleText}"
+                                       TextAlignment="Center"
+                                       Text="{DynamicResource S_PlaceholderDesc}" />
+
+                            <StackPanel Margin="0,16,0,0" HorizontalAlignment="Center" Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource CaptionText}" Text="{DynamicResource S_Ps1Label}" />
+                                <TextBlock Margin="8,0,0,0"
+                                           Style="{StaticResource RowHeaderText}"
+                                           Text="{Binding ScuStatusText}" />
+                            </StackPanel>
+
+                            <StackPanel Margin="0,8,0,0" HorizontalAlignment="Center" Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource CaptionText}" Text="{DynamicResource S_LogFileLabel}" />
+                                <TextBlock Margin="8,0,0,0" Text="{Binding LogFilePath}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                    </Border>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+
+        <!-- Перетаскивание меняет высоту журнала -->
+        <GridSplitter x:Name="JournalSplitter" Grid.Row="2"
+                      Height="8"
+                      HorizontalAlignment="Stretch"
+                      Background="Transparent"
+                      ResizeBehavior="PreviousAndNext"
+                      ResizeDirection="Rows" />
+
+        <!-- Журнал: панель с разделителем сверху, не карточка -->
+        <Border Grid.Row="3"
+                Background="Transparent"
+                BorderBrush="{DynamicResource SeparatorBrush}"
+                BorderThickness="0,1,0,0">
+            <controls:LogPane DataContext="{Binding}" />
+        </Border>
+
+        <!-- Затемнение фона при активном поиске на «Главной» или в «Приложениях»:
+             слегка темнее всё приложение, акцент остаётся на поле поиска
+             (и подсказках на «Главной»: Popup живёт в отдельном окне и затемнения
+             не касается). Пропускает мышь — не мешает работе с интерфейсом. -->
+        <Border Grid.Row="0" Grid.RowSpan="4">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background" Value="{DynamicResource SearchScrimBrush}" />
+                    <Setter Property="IsHitTestVisible" Value="False" />
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Dashboard.IsSearchActive}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Apps.IsSearchActive}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+        </Border>
+    </Grid>
+</Window>

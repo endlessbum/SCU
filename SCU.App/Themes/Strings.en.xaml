@@ -1,0 +1,473 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- English UI strings. Keys are identical to Strings.ru.xaml; the dictionary is swapped by Localization.SetLanguage. -->
+
+    <!-- ===================== Navigation (sections 0..18) ===================== -->
+    <sys:String x:Key="S_Section00_Title">Home</sys:String>
+    <sys:String x:Key="S_Section01_Title">System Information</sys:String>
+    <sys:String x:Key="S_Section01_Desc">Summary of the OS, hardware and environment</sys:String>
+    <sys:String x:Key="S_Section02_Title">Component Installation</sys:String>
+    <sys:String x:Key="S_Section02_Desc">DirectX, VC++ and .NET</sys:String>
+    <sys:String x:Key="S_Section03_Title">System and Disk Cleanup</sys:String>
+    <sys:String x:Key="S_Section03_Desc">Recycle Bin, temp, browsers and system cleanup</sys:String>
+    <sys:String x:Key="S_Section04_Title">Bloatware Removal</sys:String>
+    <sys:String x:Key="S_Section04_Desc">AppX and other optional components</sys:String>
+    <sys:String x:Key="S_Section05_Title">Privacy and Telemetry</sys:String>
+    <sys:String x:Key="S_Section05_Desc">Telemetry, notifications and related settings</sys:String>
+    <sys:String x:Key="S_Section06_Title">Windows Services</sys:String>
+    <sys:String x:Key="S_Section06_Desc">Status and management of selected services</sys:String>
+    <sys:String x:Key="S_Section07_Title">Startup</sys:String>
+    <sys:String x:Key="S_Section07_Desc">Run/RunOnce and Startup folders</sys:String>
+    <sys:String x:Key="S_Section08_Title">Power, Memory, CPU</sys:String>
+    <sys:String x:Key="S_Section08_Desc">PowerCfg, page file and BCD</sys:String>
+    <sys:String x:Key="S_Section09_Title">Network</sys:String>
+    <sys:String x:Key="S_Section09_Desc">TCP, ECN, MTU, QoS and NetBIOS</sys:String>
+    <sys:String x:Key="S_Section10_Title">Interface and Explorer</sys:String>
+    <sys:String x:Key="S_Section10_Desc">Explorer, context menu and extension settings</sys:String>
+    <sys:String x:Key="S_Section11_Title">Input, Browser and Games</sys:String>
+    <sys:String x:Key="S_Section11_Desc">Mouse, Edge, Game Bar and DVR</sys:String>
+    <sys:String x:Key="S_Section12_Title">Search and Integrity</sys:String>
+    <sys:String x:Key="S_Section12_Desc">Indexing, DISM and SFC</sys:String>
+    <sys:String x:Key="S_Section13_Title">Security (UAC)</sys:String>
+    <sys:String x:Key="S_Section13_Desc">User Account Control settings</sys:String>
+    <sys:String x:Key="S_Section21_Title">Scanner</sys:String>
+    <sys:String x:Key="S_Section21_Desc">On-demand scanning, quarantine and safe viewing</sys:String>
+    <sys:String x:Key="S_ScannerDropTitle">Drag and drop a file or folder here</sys:String>
+    <sys:String x:Key="S_ScannerDropHint">Scanning starts immediately, no internet needed</sys:String>
+    <sys:String x:Key="S_ScannerScanTitle">Scan a file or folder</sys:String>
+    <sys:String x:Key="S_ScannerScanDesc">ScannerCore on-demand scanner: signatures, PE analysis, hash database. Runs alongside Defender, not instead of it.</sys:String>
+    <sys:String x:Key="S_ScannerScanFile">Choose file…</sys:String>
+    <sys:String x:Key="S_ScannerCancel">Cancel</sys:String>
+    <sys:String x:Key="S_ScannerQuarantine">Quarantine</sys:String>
+    <sys:String x:Key="S_ScannerQuarantineTitle">Quarantine</sys:String>
+    <sys:String x:Key="S_ScannerRestore">Restore</sys:String>
+    <sys:String x:Key="S_ScannerDeleteForever">Delete permanently</sys:String>
+    <sys:String x:Key="S_ScannerView">View</sys:String>
+    <sys:String x:Key="S_ScannerViewFile">View file…</sys:String>
+    <sys:String x:Key="S_ScannerViewFolder">View folder…</sys:String>
+    <sys:String x:Key="S_ScannerViewerTitle">Scanner — safe viewer</sys:String>
+    <sys:String x:Key="S_ScannerTabHex">Hex</sys:String>
+    <sys:String x:Key="S_ScannerTabText">Text</sys:String>
+    <sys:String x:Key="S_ScannerTabStrings">Strings</sys:String>
+    <sys:String x:Key="S_ScannerUp">Up</sys:String>
+    <sys:String x:Key="S_ScannerInstallDb">Install database package…</sys:String>
+    <sys:String x:Key="S_ScannerUpdateOnline">Update database</sys:String>
+    <sys:String x:Key="S_Section15_Title">Scheduled Tasks</sys:String>
+    <sys:String x:Key="S_Section15_Desc">Backup, disabling and rollback of selected tasks</sys:String>
+    <sys:String x:Key="S_Section16_Title">Windows Updates</sys:String>
+    <sys:String x:Key="S_Section16_Desc">Pause, drivers and update service blocking</sys:String>
+    <sys:String x:Key="S_Section17_Title">Settings</sys:String>
+    <sys:String x:Key="S_Section17_Desc">App theme and accent color</sys:String>
+    <sys:String x:Key="S_Section18_Title">History</sys:String>
+    <sys:String x:Key="S_Section18_Desc">Full operation history by category</sys:String>
+    <sys:String x:Key="S_Section19_Title">Apps</sys:String>
+    <sys:String x:Key="S_Section19_Desc">All programs installed on the system</sys:String>
+
+    <sys:String x:Key="S_CaptionMinimize">Minimize</sys:String>
+    <sys:String x:Key="S_CaptionMaximize">Maximize</sys:String>
+    <sys:String x:Key="S_CaptionClose">Close</sys:String>
+    <sys:String x:Key="S_NotAdminInfo">The app is running without administrator rights. The window is open, but modifying operations are unavailable.</sys:String>
+    <sys:String x:Key="S_RunAsAdmin">Run as administrator</sys:String>
+
+
+    <sys:String x:Key="S_PlaceholderTitle">Section under development</sys:String>
+    <sys:String x:Key="S_PlaceholderDesc">Modifying operations for this section are added step by step after the previous iteration is verified. Other sections already work.</sys:String>
+    <sys:String x:Key="S_Ps1Label">SCU.ps1:</sys:String>
+    <sys:String x:Key="S_LogFileLabel">Log:</sys:String>
+
+    <sys:String x:Key="S_LogHeader">Terminal</sys:String>
+
+    <sys:String x:Key="S_SettingsTheme">Theme</sys:String>
+    <sys:String x:Key="S_SettingsThemeDesc">«As in system» follows the Windows setting.</sys:String>
+    <sys:String x:Key="S_ThemeAuto">As in system</sys:String>
+    <sys:String x:Key="S_ThemeLight">Light</sys:String>
+    <sys:String x:Key="S_ThemeDark">Dark</sys:String>
+
+    <sys:String x:Key="S_SettingsTransparency">Interface transparency</sys:String>
+    <sys:String x:Key="S_SettingsTransparencyDesc">Transparent — Liquid Glass effect; matte — dense surfaces.</sys:String>
+    <sys:String x:Key="S_TransparencyTransparent">Transparent</sys:String>
+    <sys:String x:Key="S_TransparencyMatte">Matte</sys:String>
+
+    <sys:String x:Key="S_SettingsAccent">Accent color</sys:String>
+    <sys:String x:Key="S_SettingsAccentDesc">The color of selection, toggles and accent buttons.</sys:String>
+    <sys:String x:Key="S_AccentBlue">Blue</sys:String>
+    <sys:String x:Key="S_AccentSkyBlue">Sky blue</sys:String>
+    <sys:String x:Key="S_AccentPurple">Purple</sys:String>
+    <sys:String x:Key="S_AccentGreen">Green</sys:String>
+    <sys:String x:Key="S_AccentOrange">Orange</sys:String>
+    <sys:String x:Key="S_AccentPreview">Current accent</sys:String>
+
+
+    <sys:String x:Key="S_SettingsLanguage">Interface language</sys:String>
+    <sys:String x:Key="S_SettingsLanguageDesc">Applied immediately. On first install the setup wizard language is used.</sys:String>
+    <sys:String x:Key="S_LangRu">Русский</sys:String>
+    <sys:String x:Key="S_LangEn">English</sys:String>
+
+    <sys:String x:Key="S_SettingsFooter">Settings are saved to %AppData%\SCU\settings.json and applied at the next launch.</sys:String>
+
+    <sys:String x:Key="S_UiMenuDelay20">Menu delay: 20 ms</sys:String>
+    <sys:String x:Key="S_UiMenuDelay400">Menu delay: 400 ms</sys:String>
+    <sys:String x:Key="S_UiRestartExplorer">Restart Explorer</sys:String>
+    <sys:String x:Key="S_UiRestoreTaskbar">Restore taskbar pins</sys:String>
+    <sys:String x:Key="S_UiClearTaskbar">Clear taskbar pins</sys:String>
+    <sys:String x:Key="S_UiGroupExplorer">Explorer</sys:String>
+    <sys:String x:Key="S_UiGroupVisualFx">Visual effects</sys:String>
+    <sys:String x:Key="S_UiGroupStartMenu">Start menu</sys:String>
+
+    <sys:String x:Key="S_PrivacyQuietMode">Quiet mode (all at once)</sys:String>
+    <sys:String x:Key="S_PrivacyToggleTip">Toggles the category. Original values are saved to a backup before disabling.</sys:String>
+
+    <sys:String x:Key="S_UacTitle">User Account Control (UAC)</sys:String>
+    <sys:String x:Key="S_UacDesc">PromptOnSecureDesktop = 1, ConsentPromptBehaviorAdmin = 5 — Windows defaults. Weakening requires confirmation and stores the original values in a backup.</sys:String>
+    <sys:String x:Key="S_UacToggleTip">The standard level is on — the toggle above. Weakening turns off the secure desktop and confirmation prompts for administrators.</sys:String>
+
+    <sys:String x:Key="S_PlanHigh">High performance</sys:String>
+    <sys:String x:Key="S_PlanUltimate">Ultimate performance</sys:String>
+    <sys:String x:Key="S_PlanBalanced">Balanced</sys:String>
+    <sys:String x:Key="S_PowerHbFbTitle">Hibernation and fast startup</sys:String>
+    <sys:String x:Key="S_PlanPowerSaver">Power saver</sys:String>
+    <sys:String x:Key="S_PlanBitsum">Bitsum Highest Performance</sys:String>
+    <sys:String x:Key="S_PowerHibernation">Hibernation</sys:String>
+    <sys:String x:Key="S_PowerHibernationDesc">Saves the full system state to disk (hiberfil.sys) and adds a Hibernation entry to the power menu. Disabling frees space on the system volume but removes hibernation and may affect Fast Startup. Worth disabling if you never use hibernation and want a hiberfile-free disk.</sys:String>
+    <sys:String x:Key="S_PowerHibernationTip">Managed via powercfg /h. Original state can be restored from backup.</sys:String>
+    <sys:String x:Key="S_PowerFastBoot">Fast startup</sys:String>
+    <sys:String x:Key="S_PowerFastBootDesc">Uses a reduced hibernation file to speed up the next boot after shutdown. Disabling may increase boot time but avoids hybrid shutdown. On modern SSDs it is usually left enabled unless you need a full cold boot or are troubleshooting drivers.</sys:String>
+    <sys:String x:Key="S_PowerFastBootTip">Registry HiberbootEnabled plus availability checks via powercfg. A reboot may be required for the change to fully apply.</sys:String>
+    <sys:String x:Key="S_PowerStateBadgeTip">Badges: ? — unknown; * — reboot required; ≠ — mixed or partial; — — unavailable.</sys:String>
+    <sys:String x:Key="S_PowerMemTitle">Memory and file system</sys:String>
+    <sys:String x:Key="S_PowerMemCompression">Memory compression</sys:String>
+    <sys:String x:Key="S_PowerMemCompressionDesc">Windows compresses infrequently used pages in RAM instead of immediately paging them to disk (MMAgent). Disabling increases pagefile pressure when RAM is tight; enabling is the default. Does not guarantee higher FPS or free RAM.</sys:String>
+    <sys:String x:Key="S_PowerSysMain">SysMain (Superfetch)</sys:String>
+    <sys:String x:Key="S_PowerSysMainDesc">Preloads frequently used programs into RAM. Disabling reduces background disk and CPU load — common on SSDs and low-end PCs. On HDDs with a stable app set it is often better left on. Does not promise FPS gains.</sys:String>
+    <sys:String x:Key="S_Power8dot3">8.3 names (SHORT_NAMES)</sys:String>
+    <sys:String x:Key="S_Power8dot3Desc">Creates short (8.3) file names for compatibility with older software. Global modes: all volumes / disabled / per-volume / except system volume. Disabling creation does not strip existing 8.3 names. Full application of the mode may require a reboot.</sys:String>
+    <sys:String x:Key="S_PowerLastAccess">Last access timestamp</sys:String>
+    <sys:String x:Key="S_PowerLastAccessDesc">Updates the last-access time on files (NTFS). Disabling may slightly reduce extra file activity, but some apps or audit tools may rely on current timestamps. Does not claim a guaranteed performance boost.</sys:String>
+    <sys:String x:Key="S_PowerPrefetcher">Prefetcher</sys:String>
+    <sys:String x:Key="S_PowerPrefetcherDesc">Launch traces (.pf) that can speed up subsequent app starts. On SSDs the benefit is usually small; on HDDs it can help. Disabling reduces write of service data to disk.</sys:String>
+    <sys:String x:Key="S_PowerPageFileSystemManaged">System managed</sys:String>
+    <sys:String x:Key="S_PowerPageFileTitle">Page file (after reboot)</sys:String>
+    <sys:String x:Key="S_PowerPageFile4">Fixed size 6144 MB</sys:String>
+    <sys:String x:Key="S_PowerPageFile8">Fixed size 8192 MB</sys:String>
+    <sys:String x:Key="S_PowerPageFile16">Fixed size 4096 MB</sys:String>
+    <sys:String x:Key="S_PowerPageFile32">Fixed size 2048 MB</sys:String>
+    <sys:String x:Key="S_PowerCpuTitle">CPU and RAM limits (bcdedit)</sys:String>
+    <sys:String x:Key="S_PowerCpuClear">Remove numproc / truncatememory limits</sys:String>
+
+    <sys:String x:Key="S_NetAdapterProfileTitle">Network adapter profile</sys:String>
+    <sys:String x:Key="S_NetAdapterProfileDesc">Universal balanced profile for physical NICs. Unsupported driver properties are skipped; other adapter settings are left unchanged.</sys:String>
+    <sys:String x:Key="S_NetAdapterProfileSettings">RSS — enabled; Checksum Offload — Rx &amp; Tx; LSOv2 — enabled; Interrupt Moderation — enabled; Flow Control — Rx &amp; Tx; Jumbo Packet — disabled (1514 bytes); Energy Efficient Ethernet — disabled. Where supported, Interrupt Moderation Rate is set to Adaptive.</sys:String>
+    <sys:String x:Key="S_NetGamingProfile">Gaming profile</sys:String>
+    <sys:String x:Key="S_NetGamingProfileDesc">Includes settings that improve the gaming experience</sys:String>
+    <sys:String x:Key="S_NetResetAll">Reset everything to defaults</sys:String>
+    <sys:String x:Key="S_NetTcpTitle">TCP Global (netsh int tcp)</sys:String>
+    <sys:String x:Key="S_NetApplyAutoTuning">Apply Auto-Tuning</sys:String>
+    <sys:String x:Key="S_NetApplyEcn">Apply ECN</sys:String>
+    <sys:String x:Key="S_NetMtuTitle">Interface MTU (IPv4, store=persistent)</sys:String>
+    <sys:String x:Key="S_NetMtuCustom">Set custom</sys:String>
+    <sys:String x:Key="S_NetMtuRestore">Restore saved MTU</sys:String>
+    <sys:String x:Key="S_NetMtuHint">Leave the field empty and use MTU 1500 for ordinary Ethernet/Wi-Fi. 1472 is common for PPPoE/tunnels; the exact value depends on the network.</sys:String>
+    <sys:String x:Key="S_NetQosTitle">QoS policy (NonBestEffortLimit)</sys:String>
+    <sys:String x:Key="S_NetQosZero">Set 0%</sys:String>
+    <sys:String x:Key="S_NetQosTwenty">Set 20%</sys:String>
+    <sys:String x:Key="S_NetQosRemove">Delete override</sys:String>
+    <sys:String x:Key="S_NetQosRestore">Restore original</sys:String>
+    <sys:String x:Key="S_NetNetBiosDisable">Disable (mode 2)</sys:String>
+    <sys:String x:Key="S_NetNetBiosDhcp">Via DHCP (mode 0)</sys:String>
+    <sys:String x:Key="S_NetNetBiosFlush">Flush cache (nbtstat -R / -RR)</sys:String>
+    <sys:String x:Key="S_NetAutoTuningLabel">Auto-Tuning:</sys:String>
+    <sys:String x:Key="S_NetEcnLabel">ECN:</sys:String>
+    <sys:String x:Key="S_NetNetBiosTitle">NetBIOS over TCP/IP</sys:String>
+    <sys:String x:Key="S_NetMtu1500">MTU 1500</sys:String>
+    <sys:String x:Key="S_NetMtu1472">MTU 1472</sys:String>
+    <sys:String x:Key="S_NetMtu1400">MTU 1400</sys:String>
+    <sys:String x:Key="S_NetDnsTitle">DNS</sys:String>
+    <sys:String x:Key="S_NetDnsDesc">Erases the local history of network requests, hiding which domains your computer has contacted recently.</sys:String>
+    <sys:String x:Key="S_NetDnsFlush">Flush</sys:String>
+    <sys:String x:Key="S_NetCertTitle">Mincifry certificate</sys:String>
+    <sys:String x:Key="S_NetCertDesc">Full access to encrypted traffic: a root certificate is the highest level of trust for the system. Installing the Mincifry root certificate tells your computer: «I unconditionally trust any website signed with this certificate».</sys:String>
+    <sys:String x:Key="S_NetCertRemove">Remove</sys:String>
+    <sys:String x:Key="S_Uninstall">Uninstall</sys:String>
+    <sys:String x:Key="S_ComponentsNoUninstall">Silent uninstall is not supported for this component.</sys:String>
+    <sys:String x:Key="S_AppsRemoveHint">This application has no uninstaller.</sys:String>
+
+    <sys:String x:Key="S_MaintIndexingTitle">Search indexing</sys:String>
+    <sys:String x:Key="S_MaintIndexingDesc">Select drives — their contents will be marked «do not index» (attrib +I, recursively). Search becomes slightly slower; the Windows Search service is not fully disabled.</sys:String>
+    <sys:String x:Key="S_MaintIndexingDisable">Disable indexing on selected</sys:String>
+    <sys:String x:Key="S_MaintIntegrityTitle">Integrity check</sys:String>
+    <sys:String x:Key="S_MaintIntegrityDesc">DISM repairs the component store, then SFC verifies system files. Output goes to the log. The operation is long (10+ minutes); do not interrupt unnecessarily.</sys:String>
+    <sys:String x:Key="S_MaintIntegrityRun">Run DISM + SFC</sys:String>
+    <sys:String x:Key="S_MaintRpTitle">Restore points</sys:String>
+    <sys:String x:Key="S_MaintRpDesc">A safety net before deep changes: enabled system protection stores the state of files and the registry.</sys:String>
+    <sys:String x:Key="S_MaintRpCreate">Create a restore point</sys:String>
+    <sys:String x:Key="S_MaintRpRestore">Restore from a restore point</sys:String>
+    <sys:String x:Key="S_MaintRpRowRestore">Restore</sys:String>
+    <sys:String x:Key="S_Delete">Delete</sys:String>
+    <sys:String x:Key="S_MaintRpEmpty">No restore points found</sys:String>
+    <sys:String x:Key="S_MaintWinSxsTitle">Component store (WinSxS)</sys:String>
+    <sys:String x:Key="S_MaintWinSxsDesc">Analysis shows the real size and recommendations. Cleanup removes superseded component versions. /ResetBase compresses more, but installed updates can no longer be uninstalled.</sys:String>
+    <sys:String x:Key="S_MaintWinSxsAnalyze">Analyze</sys:String>
+    <sys:String x:Key="S_MaintWinSxsCleanup">Clean up</sys:String>
+    <sys:String x:Key="S_MaintWinSxsResetBase">Clean up + ResetBase</sys:String>
+    <sys:String x:Key="S_MaintWinSxsResetBaseTip">Removes superseded WinSxS components and disables rollback of already installed updates and servicing packages. The operation is irreversible and takes 10–40 minutes.</sys:String>
+    <sys:String x:Key="S_MaintMiscTitle">Service caches and compression</sys:String>
+    <sys:String x:Key="S_MaintDoCache">Delivery Optimization cache</sys:String>
+    <sys:String x:Key="S_MaintDumpsWer">Memory dumps and WER reports</sys:String>
+    <sys:String x:Key="S_MaintCompactOs">CompactOS (system file compression)</sys:String>
+    <sys:String x:Key="S_MaintCompactOsDesc">Saves disk space at the cost of slight CPU load when reading. Switching takes a while.</sys:String>
+    <sys:String x:Key="S_MaintCompactOsTip">compact /compactos:always|never</sys:String>
+
+    <sys:String x:Key="S_CleanupDesc">Only caches and temporary files are cleaned. Busy files are skipped; the state of update services is saved and restored automatically during the update cache cleanup.</sys:String>
+    <sys:String x:Key="S_CleanupQuick">Quick cleanup</sys:String>
+    <sys:String x:Key="S_CleanupRecycleBin">Recycle bin</sys:String>
+    <sys:String x:Key="S_CleanupTemp">Temp folders</sys:String>
+    <sys:String x:Key="S_CleanupBrowsers">Browser caches</sys:String>
+    <sys:String x:Key="S_CleanupServiceCaches">Service caches</sys:String>
+    <sys:String x:Key="S_CleanupUpdateCache">Windows Update download cache</sys:String>
+    <sys:String x:Key="S_Cancel">Cancel</sys:String>
+    <sys:String x:Key="S_Clean">Clean up</sys:String>
+    <sys:String x:Key="S_ColIndex">#</sys:String>
+    <sys:String x:Key="S_BloatDesc">The list is fixed (as in Utilities.bat): the scan shows actual presence. Store and Edge are marked as irreversible. Removal goes through SCU.ps1 with re-verification.</sys:String>
+    <sys:String x:Key="S_ServicesDesc">The list matches SVCLIST from Utilities.bat. Backup and restore go through SCU.ps1. The toggle enables/disables the service via the .NET API, after a backup.</sys:String>
+    <sys:String x:Key="S_SvcToggleTip">Enables and disables the service after a backup. Unavailable if the service is missing.</sys:String>
+    <sys:String x:Key="S_StartupDesc">The list and changes go only through SCU.ps1: StartupList, StartupDisable, StartupRestore. Direct registry edits are not used in this section.</sys:String>
+    <sys:String x:Key="S_TasksDesc">The list, backup, disable and restore go through SCU.ps1: TasksBackup, TasksDisable, TasksRestore. TasksBackup is created in the session before the first disable.</sys:String>
+    <sys:String x:Key="S_TasksToggleTip">Administrator rights are required. A backup is created before the first disable.</sys:String>
+
+    <sys:String x:Key="S_BloatRemoveAll">Remove everything listed (irreversible)</sys:String>
+    <sys:String x:Key="S_BloatRemoveAllTip">Removes all selected apps and packages from the list. System components remain. The action cannot be undone with a button: you would need manual cleanup or restore points.</sys:String>
+    <sys:String x:Key="S_ColApp">App</sys:String>
+    <sys:String x:Key="S_ColPackages">Packages</sys:String>
+    <sys:String x:Key="S_ColStatus">Status</sys:String>
+    <sys:String x:Key="S_ColAction">Action</sys:String>
+    <sys:String x:Key="S_Remove">Remove</sys:String>
+    <sys:String x:Key="S_Apply">Apply</sys:String>
+
+    <sys:String x:Key="S_ColName">Name</sys:String>
+    <sys:String x:Key="S_ColDescription">Description</sys:String>
+    <sys:String x:Key="S_ColInstalled">Installed</sys:String>
+    <sys:String x:Key="S_Install">Install</sys:String>
+
+    <sys:String x:Key="S_Backup">Backup</sys:String>
+    <sys:String x:Key="S_Rollback">Restore</sys:String>
+    <sys:String x:Key="S_SettingsLog">Journal</sys:String>
+    <sys:String x:Key="S_SettingsLogDesc">Show or hide the journal block below the window. Applied immediately.</sys:String>
+    <sys:String x:Key="S_SettingsUac">UAC</sys:String>
+    <sys:String x:Key="S_SettingsUacDesc">Risky action confirmation window</sys:String>
+    <sys:String x:Key="S_SettingsUpdates">Updates</sys:String>
+    <sys:String x:Key="S_SettingsUpdatesDesc">Check for updates</sys:String>
+    <sys:String x:Key="S_SettingsUpdatesButton">Check</sys:String>
+    <sys:String x:Key="S_Restore">Restore</sys:String>
+    <sys:String x:Key="S_ColSvcName">Name</sys:String>
+    <sys:String x:Key="S_ColDisplayName">Display name</sys:String>
+    <sys:String x:Key="S_ColState">State</sys:String>
+    <sys:String x:Key="S_ColStartType">Start type</sys:String>
+    <sys:String x:Key="S_ColDelayed">Delayed</sys:String>
+    <sys:String x:Key="S_ColToggle">On/Off</sys:String>
+
+    <sys:String x:Key="S_StartupRestore">Restore</sys:String>
+    <sys:String x:Key="S_ColSource">Source</sys:String>
+    <sys:String x:Key="S_ColCommand">Command</sys:String>
+    <sys:String x:Key="S_Disable">Disable</sys:String>
+
+    <sys:String x:Key="S_ColFolder">Folder</sys:String>
+
+    <sys:String x:Key="S_WuServicesTitle">Update services</sys:String>
+    <sys:String x:Key="S_WuServicesDesc">Blocking saves the original service state to a backup and sets them to «Disabled» (including Windows Update Medic, which would otherwise restore wuauserv). Unblocking uses the same backup.</sys:String>
+    <sys:String x:Key="S_WuBlock">Block updates</sys:String>
+    <sys:String x:Key="S_WuUnblock">Unblock updates</sys:String>
+    <sys:String x:Key="S_WuPauseTitle">Update pause</sys:String>
+    <sys:String x:Key="S_WuPauseDesc">The same values the Settings app writes: updates are not installed, but services stay enabled.</sys:String>
+    <sys:String x:Key="S_WuPause7">Pause for 7 days</sys:String>
+    <sys:String x:Key="S_WuUnpause">Resume updates</sys:String>
+    <sys:String x:Key="S_WuDriversTitle">Drivers via Windows Update</sys:String>
+    <sys:String x:Key="S_WuDriversDesc">Prevent drivers from being installed automatically with quality updates. Install drivers manually from the vendor's site.</sys:String>
+    <sys:String x:Key="S_WuDriversTip">ExcludeWUDriversInQualityUpdate</sys:String>
+
+    <sys:String x:Key="S_InfoLoading">Collecting system information (WMI)…</sys:String>
+    <sys:String x:Key="S_InfoErrorTitle">Failed to load data</sys:String>
+    <sys:String x:Key="S_InfoRetry">Retry</sys:String>
+    <sys:String x:Key="S_InfoSummary">System summary</sys:String>
+    <sys:String x:Key="S_InfoDisks">Logical drives</sys:String>
+    <sys:String x:Key="S_InfoDiskType">Type</sys:String>
+    <sys:String x:Key="S_InfoDiskSize">Size</sys:String>
+    <sys:String x:Key="S_InfoDiskFree">Free</sys:String>
+    <sys:String x:Key="S_InfoDiskUsed">Used</sys:String>
+    <sys:String x:Key="S_InfoVideo">Video adapters</sys:String>
+    <sys:String x:Key="S_InfoNetwork">Network adapters</sys:String>
+
+    <sys:String x:Key="S_DialogCancel">Cancel</sys:String>
+    <sys:String x:Key="S_DialogConfirmTitle">Confirmation</sys:String>
+    <sys:String x:Key="S_DialogConfirm">Confirm</sys:String>
+    <sys:String x:Key="S_EmptyState">Nothing here yet</sys:String>
+    <sys:String x:Key="S_EmptyStateStartup">No startup apps</sys:String>
+
+    <!-- ===================== Dashboard: one-click apply switch ===================== -->
+    <sys:String x:Key="D_BatchTitle">Apply optimization</sys:String>
+    <sys:String x:Key="D_BatchHint">One switch applies the selected utilities one by one. Customize the list with the gear below.</sys:String>
+    <sys:String x:Key="D_BatchSettings">Customize the utility list</sys:String>
+    <sys:String x:Key="S_BatchHibernationOff">Disable hibernation</sys:String>
+    <sys:String x:Key="S_BatchFastBootOn">Enable Fast Startup</sys:String>
+    <sys:String x:Key="S_BatchMemCompressionOn">Enable memory compression</sys:String>
+    <sys:String x:Key="S_BatchSysMainOff">Disable SysMain (Superfetch)</sys:String>
+    <sys:String x:Key="S_BatchShortNamesOff">Disable 8.3 short names</sys:String>
+    <sys:String x:Key="S_BatchLastAccessOff">Disable last-access updates</sys:String>
+    <sys:String x:Key="S_BatchPrefetcherOff">Disable Prefetcher</sys:String>
+    <sys:String x:Key="S_BatchCompactOsOff">Disable CompactOS</sys:String>
+    <sys:String x:Key="S_BatchUacStandardOn">Enable standard UAC level</sys:String>
+    <sys:String x:Key="S_BatchDriversExclude">Exclude drivers from Windows Update</sys:String>
+    <sys:String x:Key="S_BatchAutoTuningNormal">Auto-Tuning: normal</sys:String>
+    <sys:String x:Key="S_BatchEcnDefault">ECN: default</sys:String>
+    <sys:String x:Key="S_BatchRecommendedOff">Hide Start menu Recommended</sys:String>
+    <sys:String x:Key="S_BatchGameBarDvrOff">Disable Game Bar and DVR</sys:String>
+    <sys:String x:Key="S_BatchTargetOn">on</sys:String>
+    <sys:String x:Key="S_BatchTargetOff">off</sys:String>
+    <sys:String x:Key="S_SearchPlaceholder">Universal search…</sys:String>
+    <sys:String x:Key="S_AppsSearchPlaceholder">Search apps…</sys:String>
+    <sys:String x:Key="S_AboutTitle">About</sys:String>
+    <sys:String x:Key="S_AboutVersion">Build version</sys:String>
+    <sys:String x:Key="S_AboutSize">Build size</sys:String>
+    <sys:String x:Key="S_AboutChangelog">Changes since the previous build</sys:String>
+    <sys:String x:Key="S_AboutChangelogText" xml:space="preserve">• Home: utility search, "Ready to apply" counter, apply progress ring.&#10;• Settings: About block (version, size, changes, data paths).&#10;• Unified UI styling.</sys:String>
+    <sys:String x:Key="S_AboutPaths">Where the app writes data</sys:String>
+    <sys:String x:Key="S_AboutPathSettings">Settings</sys:String>
+    <sys:String x:Key="S_AboutPathState">State (switch list, history, snapshots)</sys:String>
+    <sys:String x:Key="S_AboutPathBackup">Registry and service change backups</sys:String>
+    <sys:String x:Key="S_AboutPathLog">Log</sys:String>
+
+    <!-- ===================== Раздел 0 «Состояние ПК» ===================== -->
+    <sys:String x:Key="D_DashboardScanButton">Scan PC</sys:String>
+    <sys:String x:Key="D_DashboardRefresh">Refresh</sys:String>
+    <sys:String x:Key="D_DashboardScanChecklist">Scan progress</sys:String>
+    <sys:String x:Key="D_DashboardOpen">Open →</sys:String>
+    <sys:String x:Key="D_DashboardRecommendationsHeader">Recommendations</sys:String>
+    <sys:String x:Key="D_DashboardEmptyRecs">Run «Scan PC» to collect the state and get recommendations.</sys:String>
+    <sys:String x:Key="D_DashboardHistoryHeader">Recent events</sys:String>
+    <sys:String x:Key="D_DashboardEmptyHistory">Events will appear after changes made in other sections.</sys:String>
+    <sys:String x:Key="D_DashboardOpenHistory">Open history</sys:String>
+
+    <sys:String x:Key="D_DashboardStatisticsHeader">Statistics</sys:String>
+    <sys:String x:Key="D_DashboardPeriodLabel">Period:</sys:String>
+    <sys:String x:Key="D_Period7Days">7 days</sys:String>
+    <sys:String x:Key="D_Period30Days">30 days</sys:String>
+    <sys:String x:Key="D_Period90Days">90 days</sys:String>
+    <sys:String x:Key="D_PeriodAllTime">All time</sys:String>
+    <sys:String x:Key="D_StatsEmpty">No events for the selected period.</sys:String>
+
+    <sys:String x:Key="D_DashboardBeforeAfterHeader">Before / After</sys:String>
+    <sys:String x:Key="D_DashboardBeforeAfterEmpty">No differences between the latest scans.</sys:String>
+
+    <sys:String x:Key="D_DashboardBaselineHeader">Baseline</sys:String>
+    <sys:String x:Key="D_DashboardCreateBaseline">Create baseline</sys:String>
+    <sys:String x:Key="D_DashboardClearBaseline">Delete baseline</sys:String>
+    <sys:String x:Key="D_DashboardBaselineHint">No baseline yet. Run «Scan PC», then save the state as a reference point with «Create baseline».</sys:String>
+
+    <!-- ===================== Profile (§33.8) ===================== -->
+    <sys:String x:Key="D_ProfileHeader">Profile</sys:String>
+    <sys:String x:Key="D_ProfileSelectLabel">Profile:</sys:String>
+    <sys:String x:Key="D_ProfileNone">— none —</sys:String>
+    <sys:String x:Key="D_ProfileGaming">Gaming</sys:String>
+    <sys:String x:Key="D_ProfileBalanced">Balanced</sys:String>
+    <sys:String x:Key="D_ProfilePrivacy">Privacy</sys:String>
+    <sys:String x:Key="D_ProfileCustom">Custom</sys:String>
+    <sys:String x:Key="D_ProfileApply">Apply profile</sys:String>
+    <sys:String x:Key="D_ProfileCustomHeader">Custom profile (own rules)</sys:String>
+    <sys:String x:Key="D_ProfileCustomSave">Save</sys:String>
+    <sys:String x:Key="D_ProfileCustomApply">Apply</sys:String>
+    <sys:String x:Key="D_ProfileDesireIgnore">Don't care</sys:String>
+    <sys:String x:Key="D_ProfileDesireOn">Turn on</sys:String>
+    <sys:String x:Key="D_ProfileDesireOff">Turn off</sys:String>
+
+    <!-- ===================== Trends (§34) ===================== -->
+    <sys:String x:Key="D_TrendsHeader">Trends</sys:String>
+    <sys:String x:Key="D_TrendsDiskHeader">Free space on the system drive (GB)</sys:String>
+    <sys:String x:Key="D_TrendsCleanupHeader">Freed by cleanups</sys:String>
+    <sys:String x:Key="D_TrendsDiskEmpty">Not enough data: run «Scan PC» again after some changes.</sys:String>
+    <sys:String x:Key="D_TrendsCleanupEmpty">No cleanups with measured size yet.</sys:String>
+    <sys:String x:Key="D_TrendsUnitKb">KB</sys:String>
+    <sys:String x:Key="D_TrendsUnitMb">MB</sys:String>
+    <sys:String x:Key="D_TrendsUnitGb">GB</sys:String>
+    <sys:String x:Key="D_TrendsUnitBytes">B</sys:String>
+
+    <!-- ===================== Section 18 «History» ===================== -->
+    <sys:String x:Key="D_HistoryFilterLabel">Category:</sys:String>
+    <sys:String x:Key="D_HistoryFilterAll">All categories</sys:String>
+    <sys:String x:Key="D_HistoryEmpty">History is empty — events will appear after operations in other sections.</sys:String>
+
+    <!-- ===================== ⓘ hints (what the utility does) ===================== -->
+
+    <sys:String x:Key="S_InfoGlyph_AutomationName">More information</sys:String>
+
+    <sys:String x:Key="I_RunAsAdmin">Restarts the application with administrator rights (UAC prompt). Without them, modifying operations are unavailable in every section.</sys:String>
+
+    <sys:String x:Key="I_UiMenuDelay">Reduces the delay before the Start menu and context menus open (the MenuShowDelay registry value). 20 ms is almost instant; 400 ms is the Windows default. Applied immediately.</sys:String>
+    <sys:String x:Key="I_UiRestartExplorer">Stops and restarts explorer.exe: the taskbar and open Explorer windows disappear for a few seconds. Use it to apply Explorer settings without a reboot.</sys:String>
+    <sys:String x:Key="I_UiClearTaskbar">Removes pinned icons and resets taskbar settings, then restarts Explorer. The state is saved to a backup — restore it with the «Restore taskbar» button.</sys:String>
+    <sys:String x:Key="I_UiRestoreTaskbar">Restores pinned icons and taskbar settings from the backup created by the last cleanup, and restarts Explorer.</sys:String>
+
+    <sys:String x:Key="I_PrivacyQuietMode">Disables everything listed below in one step: Windows tips, background UWP apps, telemetry/CEIP tasks, the DiagTrack service and Copilot. Original values are saved to a backup.</sys:String>
+
+    <sys:String x:Key="I_PlanHigh">Activates the «High performance» plan: the CPU no longer downclocks at idle. Power draw and heat are higher.</sys:String>
+    <sys:String x:Key="I_PlanUltimate">Activates the «Ultimate Performance» plan: nearly all power-saving mechanisms are disabled. For desktop PCs and plugged-in laptops.</sys:String>
+    <sys:String x:Key="I_PlanBalanced">Restores the standard «Balanced» plan — the recommended Windows value for most systems.</sys:String>
+    <sys:String x:Key="I_PlanPowerSaver">Activates the «Power saver» plan: trades performance for battery life. Not suitable for games or heavy workloads.</sys:String>
+    <sys:String x:Key="I_PlanBitsum">Creates and activates the Bitsum Highest Performance plan (as in Process Lasso): minimal CPU latency. Good for games; shortens battery life on laptops.</sys:String>
+    <sys:String x:Key="I_PowerPageFile">Sets a fixed page file size and disables Windows automatic management. Size depends on more than RAM alone: peak commit, crash dump settings, and free disk space. Prefer “System managed” unless you have a specific reason. Applies after a reboot.</sys:String>
+    <sys:String x:Key="I_PowerCpuClear">Removes the numproc and truncatememory parameters from the BCD boot loader (if set) — Windows will stop limiting the CPU count and RAM size. Applies after a reboot.</sys:String>
+
+    <sys:String x:Key="I_NetGamingProfile">Applies Auto-Tuning=disabled, ECN=disabled and a QoS override of 0%. Current values are saved to a backup; the «Restore» button returns TCP Global and QoS from the backup.</sys:String>
+    <sys:String x:Key="I_NetResetAll">Restores TCP Global, the QoS override, MTU and NetBIOS to the original values saved in the backups created by previous changes in this section.</sys:String>
+    <sys:String x:Key="I_NetAdapterProfileApply">Applies the universal balanced profile to all physical adapters (the setting list is above). Properties unsupported by the driver are skipped; connectivity may drop briefly. Every adapter's properties are saved to a backup before applying; «Restore» returns the original values.</sys:String>
+    <sys:String x:Key="I_NetApplyAutoTuning">Sets TCP Windows Auto-Tuning to the selected level. normal is usually safe; disabled sometimes helps with old routers but reduces download speed. Tip: normally keep Auto-Tuning = normal.</sys:String>
+    <sys:String x:Key="I_NetApplyEcn">Enables Explicit Congestion Notification (ECN) for TCP. Enable it only if your network and router support ECN. Tip: ECN — only on confirmed hardware (network/router).</sys:String>
+    <sys:String x:Key="I_NetMtu">Sets the MTU of the selected interface; the previous value is saved to a backup. The Ethernet/Wi-Fi standard is 1500; PPPoE and tunnels often use 1472. A wrong value causes packet fragmentation. Tip: 1500 is the standard; PPPoE and mobile networks use less; values are not guaranteed — go by your actual network.</sys:String>
+    <sys:String x:Key="I_NetMtuCustom">Applies a custom MTU from the field on the left (576..1500 allowed) to the selected interface.</sys:String>
+    <sys:String x:Key="I_NetMtuRestore">Restores the MTU values that were saved to the backup before the change.</sys:String>
+    <sys:String x:Key="I_NetQosSet">Reserves the given percentage of bandwidth for non-best-effort traffic (NonBestEffortLimit). 0% means Windows reserves nothing; it does not directly increase internet speed. Tip: reserve bandwidth only for multimedia purposes; on an ordinary home PC it is safer not to change it.</sys:String>
+    <sys:String x:Key="I_NetQosRemove">Removes the QoS override — the system default value is used again.</sys:String>
+    <sys:String x:Key="I_NetQosRestore">Restores the original QoS value from the backup.</sys:String>
+    <sys:String x:Key="I_NetNetBiosMode">Switches NetBIOS over TCP/IP on all interfaces: «Disable» turns the protocol off (usually safe on modern networks), «Via DHCP» returns the automatic mode. Tip: usually enabled on workplace networks; change it only if you understand SMB and network services.</sys:String>
+    <sys:String x:Key="I_NetNetBiosFlush">Flushes the NetBIOS name cache (nbtstat -R) and re-registers names (nbtstat -RR). Safe; helps after the network environment changes.</sys:String>
+
+    <sys:String x:Key="I_MaintDoCache">Deletes the Delivery Optimization cache — copies of Windows updates the system shares with other PCs on the network. The updates themselves are not removed.</sys:String>
+    <sys:String x:Key="I_MaintDumpsWer">Deletes memory dumps and the Windows Error Reporting queue. Diagnostic information from a crash (BSOD) will no longer be recoverable.</sys:String>
+
+    <sys:String x:Key="I_CleanupRecycleBin">Permanently empties the Recycle Bin on all drives.</sys:String>
+    <sys:String x:Key="I_CleanupTemp">Deletes temporary files from the user and Windows TEMP folders, Prefetch, Recent and INetCache. Busy files are skipped.</sys:String>
+    <sys:String x:Key="I_CleanupBrowsers">Deletes the cache of Chrome, Edge, Yandex Browser, Brave, Vivaldi, Firefox and Opera. Bookmarks, passwords and history are not affected; close the browsers first.</sys:String>
+    <sys:String x:Key="I_CleanupUpdateCache">Stops the update services (saving their state), cleans SoftwareDistribution\Download and the Delivery Optimization cache, then restores the services. Can free several GB.</sys:String>
+
+    <sys:String x:Key="I_SvcBackup">Saves the current start type and state of every service in the list to a backup file. Create one before making changes.</sys:String>
+    <sys:String x:Key="I_SvcRestore">Restores service start types and states from the backup file created by the «Backup» button.</sys:String>
+
+    <sys:String x:Key="I_TasksBackup">Saves the state of the selected scheduled tasks to a backup before disabling them.</sys:String>
+    <sys:String x:Key="I_TasksRestore">Restores the scheduled tasks to the state from the backup created by the «Backup» button.</sys:String>
+
+    <!-- ===================== Section 20 «Benchmark» ===================== -->
+    <sys:String x:Key="S_Section20_Title">Benchmark</sys:String>
+    <sys:String x:Key="S_Section20_Desc">System state index and confirmed changes</sys:String>
+    <sys:String x:Key="S_BenchIndexCaption">State index</sys:String>
+    <sys:String x:Key="S_BenchIndexHint">How well the current system state matches SCU's measurable targets. This is not a hardware performance score.</sys:String>
+    <sys:String x:Key="S_BenchRunButton">Run check</sys:String>
+    <sys:String x:Key="S_BenchPotentialHintShort">available potential for index change</sys:String>
+    <sys:String x:Key="S_BenchStale">The system state has changed — the index is stale. Run a check.</sys:String>
+    <sys:String x:Key="S_BenchBeforeAfterHeader">Before and after changes</sys:String>
+    <sys:String x:Key="S_BenchBefore">Before changes</sys:String>
+    <sys:String x:Key="S_BenchAfter">After changes</sys:String>
+    <sys:String x:Key="S_BenchBeforeAfterHint">Confirmed state change — a re-read of the system, not speed percentages</sys:String>
+    <sys:String x:Key="S_BenchCategoriesHeader">Categories (index · metrics verified)</sys:String>
+    <sys:String x:Key="S_BenchCoverageTooltip">Metrics read out of applicable</sys:String>
+    <sys:String x:Key="S_BenchMetricsHeader">Detailed metrics</sys:String>
+    <sys:String x:Key="S_BenchColumnMetric">Metric</sys:String>
+    <sys:String x:Key="S_BenchColumnValue">Value</sys:String>
+    <sys:String x:Key="S_BenchColumnConformity">Conformity</sys:String>
+    <sys:String x:Key="S_BenchColumnStatus">Status</sys:String>
+    <sys:String x:Key="S_BenchPotentialHeader">What SCU can improve</sys:String>
+    <sys:String x:Key="S_BenchPotentialHint">Available conformity points against target state for applicable metrics. This is index potential, not a performance promise.</sys:String>
+    <sys:String x:Key="S_BenchPotentialTotal">Index potential:</sys:String>
+    <sys:String x:Key="S_BenchOpen">Open →</sys:String>
+    <sys:String x:Key="S_BenchTrendsHeader">Index trend across checks</sys:String>
+    <sys:String x:Key="S_BenchPotentialEmpty">All applicable universal-profile targets are met — no available conformity points found.</sys:String>
+</ResourceDictionary>

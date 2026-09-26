@@ -1,0 +1,21 @@
+﻿<Window x:Class="SCU.SplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SCU"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        SizeToContent="WidthAndHeight">
+    <!-- Заставка стартового экрана: 1774×887 px (соотношение 2:1), отображается 640×320 —
+         компактный центр экрана без заметной потери резкости. Клики проходят сквозь
+         изображение в окно, которое появится под заставкой. -->
+    <Image Source="Assets/ScreenSaver.png"
+           Width="640" Height="320"
+           IsHitTestVisible="False"
+           RenderOptions.BitmapScalingMode="HighQuality" />
+</Window>

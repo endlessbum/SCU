@@ -1,0 +1,333 @@
+﻿<UserControl x:Class="SCU.Views.Sections.BenchmarkView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:SCU.Views.Controls"
+             mc:Ignorable="d"
+             d:DesignHeight="900" d:DesignWidth="860">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+
+    <!-- Прокрутка — внешний ContentScroll страницы, своего нет (как у остальных разделов) -->
+    <StackPanel MaxWidth="880" HorizontalAlignment="Stretch">
+
+        <!-- ===================== Индекс ===================== -->
+        <Border Style="{StaticResource SectionCard}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                   Text="{DynamicResource S_BenchIndexCaption}" />
+                        <TextBlock Text="{DynamicResource S_BenchIndexHint}"
+                                   Style="{StaticResource CaptionText}"
+                                   Margin="0,2,16,0"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Content="{DynamicResource S_BenchRunButton}"
+                            Command="{Binding RunBenchmarkCommand}"
+                            ToolTipService.ShowOnDisabled="True" />
+                </Grid>
+
+                <!-- Большое число индекса — по центру карточки -->
+                <TextBlock Margin="0,12,0,0"
+                           HorizontalAlignment="Center"
+                           FontSize="42"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource AccentFillBrush}"
+                           Text="{Binding IndexText}"
+                           Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}" />
+
+                <TextBlock Margin="0,4,0,0"
+                           Style="{StaticResource BodyStrongText}"
+                           Foreground="{DynamicResource SuccessBrush}"
+                           Text="{Binding PotentialText}"
+                           Visibility="{Binding HasPotential, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Margin="0,2,0,0"
+                           Style="{StaticResource CaptionText}"
+                           Foreground="{DynamicResource TertiaryTextBrush}"
+                           Text="{DynamicResource S_BenchPotentialHintShort}"
+                           Visibility="{Binding HasPotential, Converter={StaticResource BoolToVis}}" />
+
+                <TextBlock Margin="0,8,0,0"
+                           Style="{StaticResource BodyText}"
+                           Text="{Binding CoverageText}"
+                           Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Margin="0,2,0,0"
+                           Style="{StaticResource BodyText}"
+                           Text="{Binding LastCheckText}"
+                           Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}" />
+
+                <!-- Индекс устарел -->
+                <TextBlock Margin="0,8,0,0"
+                           Style="{StaticResource BodyStrongText}"
+                           Foreground="{DynamicResource WarnBrush}"
+                           Text="{DynamicResource S_BenchStale}"
+                           Visibility="{Binding IsStale, Converter={StaticResource BoolToVis}}" />
+
+                <!-- Области, которые не удалось прочитать -->
+                <TextBlock Margin="0,8,0,0"
+                           Style="{StaticResource BodyText}"
+                           Foreground="{DynamicResource WarnBrush}"
+                           TextWrapping="Wrap"
+                           Text="{Binding UnreadAreasText}"
+                           Visibility="{Binding HasUnreadAreas, Converter={StaticResource BoolToVis}}" />
+
+                <TextBlock Margin="0,8,0,0"
+                           Style="{StaticResource SectionStatusText}"
+                           Text="{Binding StatusText}" />
+            </StackPanel>
+        </Border>
+
+        <!-- ===================== До / После ===================== -->
+        <Border Style="{StaticResource SectionCard}"
+                Visibility="{Binding HasDelta, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource RowHeaderText}"
+                           Text="{DynamicResource S_BenchBeforeAfterHeader}" />
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                        <TextBlock HorizontalAlignment="Center"
+                                   Style="{StaticResource CaptionText}"
+                                   Text="{DynamicResource S_BenchBefore}" />
+                        <TextBlock HorizontalAlignment="Center"
+                                   FontSize="28"
+                                   FontWeight="SemiBold"
+                                   Text="{Binding BeforeIndexText}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1"
+                               Margin="24,0"
+                               VerticalAlignment="Center"
+                               FontSize="22"
+                               FontWeight="SemiBold"
+                               Foreground="{Binding DeltaBrush}"
+                               Text="{Binding DeltaText}" />
+                    <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                        <TextBlock HorizontalAlignment="Center"
+                                   Style="{StaticResource CaptionText}"
+                                   Text="{DynamicResource S_BenchAfter}" />
+                        <TextBlock HorizontalAlignment="Center"
+                                   FontSize="28"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentFillBrush}"
+                                   Text="{Binding AfterIndexText}" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock Margin="0,8,0,0"
+                           HorizontalAlignment="Center"
+                           Style="{StaticResource CaptionText}"
+                           Text="{DynamicResource S_BenchBeforeAfterHint}" />
+                <TextBlock Margin="0,2,0,0"
+                           HorizontalAlignment="Center"
+                           Style="{StaticResource CaptionText}"
+                           Text="{Binding InitialIndexText}"
+                           Visibility="{Binding HasInitialIndex, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+        </Border>
+
+        <!-- ===================== Тренд индекса ===================== -->
+        <Border Style="{StaticResource SectionCard}"
+                Visibility="{Binding HasTrend, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource RowHeaderText}"
+                           Text="{DynamicResource S_BenchTrendsHeader}" />
+                <controls:SimpleChart Height="120"
+                                      Margin="0,8,0,0"
+                                      Mode="Line"
+                                      ValueKind="Number"
+                                      Points="{Binding Trend}" />
+            </StackPanel>
+        </Border>
+
+        <!-- ===================== Категории ===================== -->
+        <Border Style="{StaticResource SectionCard}"
+                Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource RowHeaderText}"
+                           Text="{DynamicResource S_BenchCategoriesHeader}" />
+                <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding Categories}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource BodyText}"
+                                           Text="{Binding Title}" />
+                                <TextBlock Grid.Column="1"
+                                           Margin="0,0,12,0"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource CaptionText}"
+                                           ToolTip="{DynamicResource S_BenchCoverageTooltip}"
+                                           Text="{Binding CoverageText}" />
+                                <TextBlock Grid.Column="2"
+                                           MinWidth="40"
+                                           TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource MonoText}"
+                                           Text="{Binding IndexText}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- Все применимые цели универсального профиля достигнуты -->
+        <Border Style="{StaticResource SectionCard}"
+                Visibility="{Binding HasFullPotential, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource RowHeaderText}"
+                           Text="{DynamicResource S_BenchPotentialHeader}" />
+                <TextBlock Margin="0,6,0,0"
+                           Style="{StaticResource BodyText}"
+                           Text="{DynamicResource S_BenchPotentialEmpty}" />
+            </StackPanel>
+        </Border>
+
+        <!-- ===================== Детальные метрики ===================== -->
+        <Border Style="{StaticResource SectionCard}"
+                Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource RowHeaderText}"
+                           Text="{DynamicResource S_BenchMetricsHeader}" />
+                <!-- Шапка таблицы -->
+                <Grid Margin="0,10,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CaptionText}" Text="{DynamicResource S_BenchColumnMetric}" />
+                    <TextBlock Grid.Column="1" MinWidth="120" Margin="0,0,12,0" Style="{StaticResource CaptionText}" Text="{DynamicResource S_BenchColumnValue}" />
+                    <TextBlock Grid.Column="2" MinWidth="90" Margin="0,0,12,0" Style="{StaticResource CaptionText}" Text="{DynamicResource S_BenchColumnConformity}" />
+                    <TextBlock Grid.Column="3" MinWidth="110" Margin="0,0,70,0" TextAlignment="Right" Style="{StaticResource CaptionText}" Text="{DynamicResource S_BenchColumnStatus}" />
+                </Grid>
+                <ItemsControl ItemsSource="{Binding MetricRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource BodyText}"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Hint}"
+                                           ToolTipService.InitialShowDelay="300"
+                                           Text="{Binding Label}" />
+                                <TextBlock Grid.Column="1"
+                                           MinWidth="120"
+                                           Margin="0,0,12,0"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource MonoText}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding Value}" />
+                                <TextBlock Grid.Column="2"
+                                           MinWidth="90"
+                                           Margin="0,0,12,0"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource MonoText}"
+                                           Text="{Binding Conformity}" />
+                                <TextBlock Grid.Column="3"
+                                           MinWidth="110"
+                                           Margin="0,0,8,0"
+                                           TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource BodyText}"
+                                           Foreground="{DynamicResource TertiaryTextBrush}"
+                                           Text="{Binding Status}" />
+                                <Button Grid.Column="4"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource SmallButton}"
+                                        Content="{DynamicResource S_BenchOpen}"
+                                        Visibility="{Binding HasNavigation, Converter={StaticResource BoolToVis}}"
+                                        ToolTip="{Binding Hint}"
+                                        ToolTipService.InitialShowDelay="300"
+                                        Command="{Binding DataContext.OpenMetricSectionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- ===================== Что может улучшить SCU ===================== -->
+        <Border Style="{StaticResource SectionCard}"
+                Visibility="{Binding HasPotential, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource RowHeaderText}"
+                           Text="{DynamicResource S_BenchPotentialHeader}" />
+                <TextBlock Margin="0,2,0,0"
+                           Style="{StaticResource CaptionText}"
+                           TextWrapping="Wrap"
+                           Text="{DynamicResource S_BenchPotentialHint}" />
+                <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding PotentialRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource BodyText}"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Hint}"
+                                           ToolTipService.InitialShowDelay="300"
+                                           Text="{Binding Label}" />
+                                <TextBlock Grid.Column="1"
+                                           Margin="0,0,12,0"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource MonoText}"
+                                           Foreground="{DynamicResource SuccessBrush}"
+                                           Text="{Binding Gain}" />
+                                <Button Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource SmallButton}"
+                                        Content="{DynamicResource S_BenchOpen}"
+                                        ToolTip="{Binding Hint}"
+                                        ToolTipService.InitialShowDelay="300"
+                                        Command="{Binding DataContext.OpenPotentialSectionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Margin="0,4,0,0"
+                           Style="{StaticResource BodyStrongText}"
+                           Foreground="{DynamicResource SuccessBrush}"
+                           Text="{Binding PotentialText}" />
+                <TextBlock Style="{StaticResource CaptionText}"
+                           Text="{DynamicResource S_BenchPotentialTotal}" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

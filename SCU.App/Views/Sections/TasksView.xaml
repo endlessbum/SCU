@@ -1,0 +1,122 @@
+﻿<UserControl x:Class="SCU.Views.Sections.TasksView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Описание раздела (подсказка ⓘ шапочных операций перенесена к кнопкам резерва) -->
+        <TextBlock Grid.Row="0"
+                   Style="{StaticResource SectionDescription}"
+                   Text="{DynamicResource S_TasksDesc}" />
+
+        <DockPanel Grid.Row="1" Margin="0,0,0,12" LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,8,0">
+                <Button Content="{DynamicResource S_Backup}" Command="{Binding BackupCommand}" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,8,0">
+                <Button Content="{DynamicResource S_Rollback}" Command="{Binding RestoreCommand}" />
+            </StackPanel>
+            <!-- Объединённая подсказка ⓘ операций «Бэкап» и «Откатить» (текст собирается в code-behind) -->
+            <controls:InfoGlyph x:Name="BackupInfoGlyph"
+                                DockPanel.Dock="Left"
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Center" />
+        </DockPanel>
+
+        <!-- Карточка задачи: название и ⓘ, ниже назначение задачи; справа состояние и кнопка отключения -->
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding Rows}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource SectionCard}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource RowHeaderText}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Text="{Binding Name}" />
+                                    <controls:InfoGlyph VerticalAlignment="Center" InfoText="{Binding ToolTipText}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Purpose}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource RowActionText}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Purpose.Length}" Value="0">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Margin="0,0,12,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="12"
+                                           Text="{Binding LocalizedState}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource StateMissingBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsDisabled}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource StateDisabledBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding State}" Value="Running">
+                                                    <Setter Property="Foreground" Value="{DynamicResource StateRunningBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Button Style="{StaticResource SmallButton}"
+                                        Content="{Binding ActionCaption}"
+                                        Command="{Binding DataContext.DisableCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip="{DynamicResource S_TasksToggleTip}"
+                                        ToolTipService.ShowOnDisabled="True" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Пустой список задач -->
+        <StackPanel Grid.Row="2" HorizontalAlignment="Center" Margin="0,24,0,8">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Rows.Count}" Value="0">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <TextBlock Style="{StaticResource EmptyStateIcon}" Text="&#xE946;" />
+            <TextBlock Style="{StaticResource EmptyStateText}"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       Text="{DynamicResource S_EmptyState}" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="3">
+            <TextBlock Style="{StaticResource SectionStatusText}" Text="{Binding StatusText}" />
+            <!-- Предупреждение «нет прав / SCU.ps1 недоступен» — как в остальных разделах -->
+            <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

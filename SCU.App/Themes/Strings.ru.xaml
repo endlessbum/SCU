@@ -1,0 +1,476 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- Русские строки интерфейса. Ключи идентичны Strings.en.xaml; подмена словаря — Localization.SetLanguage. -->
+
+    <!-- ===================== Навигация (разделы 0..18) ===================== -->
+    <sys:String x:Key="S_Section00_Title">Главная</sys:String>
+    <sys:String x:Key="S_Section01_Title">Информация о системе</sys:String>
+    <sys:String x:Key="S_Section01_Desc">Сводка по ОС, железу и окружению</sys:String>
+    <sys:String x:Key="S_Section02_Title">Установка компонентов</sys:String>
+    <sys:String x:Key="S_Section02_Desc">DirectX, VC++ и .NET</sys:String>
+    <sys:String x:Key="S_Section03_Title">Очистка системы и диска</sys:String>
+    <sys:String x:Key="S_Section03_Desc">Корзина, temp, браузеры и системная очистка</sys:String>
+    <sys:String x:Key="S_Section04_Title">Удаление мусорного ПО</sys:String>
+    <sys:String x:Key="S_Section04_Desc">AppX и другие необязательные компоненты</sys:String>
+    <sys:String x:Key="S_Section05_Title">Приватность и телеметрия</sys:String>
+    <sys:String x:Key="S_Section05_Desc">Телеметрия, уведомления и связанные параметры</sys:String>
+    <sys:String x:Key="S_Section06_Title">Службы Windows</sys:String>
+    <sys:String x:Key="S_Section06_Desc">Статус и управление выбранными службами</sys:String>
+    <sys:String x:Key="S_Section07_Title">Автозагрузка</sys:String>
+    <sys:String x:Key="S_Section07_Desc">Run/RunOnce и папки Startup</sys:String>
+    <sys:String x:Key="S_Section08_Title">Питание, память, CPU</sys:String>
+    <sys:String x:Key="S_Section08_Desc">PowerCfg, файл подкачки и BCD</sys:String>
+    <sys:String x:Key="S_Section09_Title">Сеть</sys:String>
+    <sys:String x:Key="S_Section09_Desc">TCP, ECN, MTU, QoS и NetBIOS</sys:String>
+    <sys:String x:Key="S_Section10_Title">Интерфейс и проводник</sys:String>
+    <sys:String x:Key="S_Section10_Desc">Параметры Explorer, контекстное меню и расширения</sys:String>
+    <sys:String x:Key="S_Section11_Title">Ввод, браузер и игры</sys:String>
+    <sys:String x:Key="S_Section11_Desc">Мышь, Edge, Game Bar и DVR</sys:String>
+    <sys:String x:Key="S_Section12_Title">Поиск и целостность</sys:String>
+    <sys:String x:Key="S_Section12_Desc">Индексация, DISM и SFC</sys:String>
+    <sys:String x:Key="S_Section13_Title">Безопасность (UAC)</sys:String>
+    <sys:String x:Key="S_Section13_Desc">Параметры контроля учетных записей</sys:String>
+    <!-- Раздел 21 «Сканер»: ключи нумеруются по SectionItem, а не по строке словаря -->
+    <sys:String x:Key="S_Section21_Title">Сканер</sys:String>
+    <sys:String x:Key="S_Section21_Desc">Проверка файлов и папок, карантин и безопасный просмотр</sys:String>
+    <sys:String x:Key="S_ScannerDropTitle">Перетащите файл или папку сюда</sys:String>
+    <sys:String x:Key="S_ScannerDropHint">Сканирование начнётся немедленно, без интернета</sys:String>
+    <sys:String x:Key="S_ScannerScanTitle">Сканирование файла или папки</sys:String>
+    <sys:String x:Key="S_ScannerScanDesc">On-demand сканер ScannerCore: подписи, PE-анализ, база хешей. Работает параллельно с Defender, не заменяя его.</sys:String>
+    <sys:String x:Key="S_ScannerScanFile">Выбрать файл…</sys:String>
+    <sys:String x:Key="S_ScannerCancel">Отмена</sys:String>
+    <sys:String x:Key="S_ScannerQuarantine">В карантин</sys:String>
+    <sys:String x:Key="S_ScannerQuarantineTitle">Карантин</sys:String>
+    <sys:String x:Key="S_ScannerRestore">Восстановить</sys:String>
+    <sys:String x:Key="S_ScannerDeleteForever">Удалить навсегда</sys:String>
+    <sys:String x:Key="S_ScannerView">Просмотреть</sys:String>
+    <sys:String x:Key="S_ScannerViewFile">Просмотреть файл…</sys:String>
+    <sys:String x:Key="S_ScannerViewFolder">Просмотреть папку…</sys:String>
+    <sys:String x:Key="S_ScannerViewerTitle">Сканер — безопасный просмотр</sys:String>
+    <sys:String x:Key="S_ScannerTabHex">Hex</sys:String>
+    <sys:String x:Key="S_ScannerTabText">Текст</sys:String>
+    <sys:String x:Key="S_ScannerTabStrings">Строки</sys:String>
+    <sys:String x:Key="S_ScannerUp">Вверх</sys:String>
+    <sys:String x:Key="S_ScannerInstallDb">Установить пакет базы…</sys:String>
+    <sys:String x:Key="S_ScannerUpdateOnline">Обновить базу</sys:String>
+    <sys:String x:Key="S_Section15_Title">Задачи планировщика</sys:String>
+    <sys:String x:Key="S_Section15_Desc">Резерв, отключение и откат выбранных задач</sys:String>
+    <sys:String x:Key="S_Section16_Title">Обновления Windows</sys:String>
+    <sys:String x:Key="S_Section16_Desc">Пауза, драйверы и блокировка служб обновления</sys:String>
+    <sys:String x:Key="S_Section17_Title">Настройки</sys:String>
+    <sys:String x:Key="S_Section17_Desc">Тема и акцентный цвет приложения</sys:String>
+    <sys:String x:Key="S_Section18_Title">История</sys:String>
+    <sys:String x:Key="S_Section18_Desc">Полная история операций по категориям</sys:String>
+    <sys:String x:Key="S_Section19_Title">Приложения</sys:String>
+    <sys:String x:Key="S_Section19_Desc">Все программы, установленные в системе</sys:String>
+
+    <sys:String x:Key="S_CaptionMinimize">Свернуть</sys:String>
+    <sys:String x:Key="S_CaptionMaximize">Развернуть</sys:String>
+    <sys:String x:Key="S_CaptionClose">Закрыть</sys:String>
+    <sys:String x:Key="S_NotAdminInfo">Приложение запущено без прав администратора. Окно открыто, но изменяющие операции недоступны.</sys:String>
+    <sys:String x:Key="S_RunAsAdmin">Запустить от администратора</sys:String>
+
+
+    <sys:String x:Key="S_PlaceholderTitle">Раздел в разработке</sys:String>
+    <sys:String x:Key="S_PlaceholderDesc">Изменяющие операции этого раздела добавляются поэтапно после проверки предыдущей итерации. Остальные разделы уже работают.</sys:String>
+    <sys:String x:Key="S_Ps1Label">SCU.ps1:</sys:String>
+    <sys:String x:Key="S_LogFileLabel">Лог:</sys:String>
+
+    <sys:String x:Key="S_LogHeader">Терминал</sys:String>
+
+    <sys:String x:Key="S_SettingsTheme">Тема оформления</sys:String>
+    <sys:String x:Key="S_SettingsThemeDesc">«Как в системе» следует за настройкой Windows.</sys:String>
+    <sys:String x:Key="S_ThemeAuto">Как в системе</sys:String>
+    <sys:String x:Key="S_ThemeLight">Светлая</sys:String>
+    <sys:String x:Key="S_ThemeDark">Тёмная</sys:String>
+
+    <sys:String x:Key="S_SettingsTransparency">Прозрачность интерфейса</sys:String>
+    <sys:String x:Key="S_SettingsTransparencyDesc">Прозрачный — эффект Liquid Glass; матовый — плотные поверхности.</sys:String>
+    <sys:String x:Key="S_TransparencyTransparent">Прозрачный</sys:String>
+    <sys:String x:Key="S_TransparencyMatte">Матовый</sys:String>
+
+    <sys:String x:Key="S_SettingsAccent">Акцентный цвет</sys:String>
+    <sys:String x:Key="S_SettingsAccentDesc">Цвет выделения, тумблеров и акцентных кнопок.</sys:String>
+    <sys:String x:Key="S_AccentBlue">Синий</sys:String>
+    <sys:String x:Key="S_AccentSkyBlue">Бирюзовый</sys:String>
+    <sys:String x:Key="S_AccentPurple">Фиолетовый</sys:String>
+    <sys:String x:Key="S_AccentGreen">Зелёный</sys:String>
+    <sys:String x:Key="S_AccentOrange">Оранжевый</sys:String>
+    <sys:String x:Key="S_AccentPreview">Текущий акцент</sys:String>
+
+
+    <sys:String x:Key="S_SettingsLanguage">Язык интерфейса</sys:String>
+    <sys:String x:Key="S_SettingsLanguageDesc">Применяется сразу. При первой установке берётся язык установщика.</sys:String>
+    <sys:String x:Key="S_LangRu">Русский</sys:String>
+    <sys:String x:Key="S_LangEn">English</sys:String>
+
+    <sys:String x:Key="S_SettingsFooter">Настройки сохраняются в %AppData%\SCU\settings.json и применяются при следующем запуске.</sys:String>
+
+    <sys:String x:Key="S_UiMenuDelay20">Задержка меню: 20 мс</sys:String>
+    <sys:String x:Key="S_UiMenuDelay400">Задержка меню: 400 мс</sys:String>
+    <sys:String x:Key="S_UiRestartExplorer">Перезапустить проводник</sys:String>
+    <sys:String x:Key="S_UiRestoreTaskbar">Восстановить панель задач</sys:String>
+    <sys:String x:Key="S_UiClearTaskbar">Очистить панель задач</sys:String>
+    <sys:String x:Key="S_UiGroupExplorer">Проводник</sys:String>
+    <sys:String x:Key="S_UiGroupVisualFx">Визуальные эффекты</sys:String>
+    <sys:String x:Key="S_UiGroupStartMenu">Меню «Пуск»</sys:String>
+
+    <sys:String x:Key="S_PrivacyQuietMode">Все сразу</sys:String>
+    <sys:String x:Key="S_PrivacyToggleTip">Переключает категорию. Перед отключением исходные значения сохраняются в резерв.</sys:String>
+
+    <sys:String x:Key="S_UacTitle">Контроль учётных записей (UAC)</sys:String>
+    <sys:String x:Key="S_UacDesc">Ослабление требует подтверждения и сохраняет исходные значения в резерв.</sys:String>
+    <sys:String x:Key="S_UacToggleTip">Стандартный уровень включён — тумблер вверху. Ослабление отключает защищённый рабочий стол и подтверждения для администраторов.</sys:String>
+
+    <sys:String x:Key="S_PlanHigh">Высокая производительность</sys:String>
+    <sys:String x:Key="S_PlanUltimate">Максимальная</sys:String>
+    <sys:String x:Key="S_PlanBalanced">Сбалансированная</sys:String>
+    <sys:String x:Key="S_PowerHbFbTitle">Гибернация и быстрый запуск</sys:String>
+    <sys:String x:Key="S_PlanPowerSaver">Экономия энергии</sys:String>
+    <sys:String x:Key="S_PlanBitsum">Bitsum Highest Performance</sys:String>
+    <sys:String x:Key="S_PowerHibernation">Гибернация</sys:String>
+    <sys:String x:Key="S_PowerHibernationDesc">Сохраняет полное состояние системы на диск (hiberfil.sys) и добавляет пункт «Гибернация» в меню питания. Отключение освобождает место на системном томе, но убирает гибернацию и может повлиять на Fast Startup. Имеет смысл отключать, если гибернацией не пользуетесь и нужен диск без hiberfile.</sys:String>
+    <sys:String x:Key="S_PowerHibernationTip">Управление через powercfg /h. Исходное состояние можно восстановить из резерва.</sys:String>
+    <sys:String x:Key="S_PowerFastBoot">Быстрый запуск</sys:String>
+    <sys:String x:Key="S_PowerFastBootDesc">Использует уменьшенный файл гибернации для ускорения последующей загрузки Windows после завершения работы. Отключение может увеличить время запуска, но исключает гибридное завершение работы. На современных SSD обычно оставляют включённым, если нет причины отключать (отладка, полный холодный старт, проблемы с драйверами).</sys:String>
+    <sys:String x:Key="S_PowerFastBootTip">Реестр HiberbootEnabled и проверка доступности через powercfg. Изменение может потребовать перезагрузки.</sys:String>
+    <sys:String x:Key="S_PowerStateBadgeTip">Значки: ? — состояние неизвестно; * — нужна перезагрузка; ≠ — смешанное или частичное; — — недоступно.</sys:String>
+    <sys:String x:Key="S_PowerMemTitle">Память и файловая система</sys:String>
+    <sys:String x:Key="S_PowerMemCompression">Сжатие памяти</sys:String>
+    <sys:String x:Key="S_PowerMemCompressionDesc">Windows сжимает редко используемые страницы в ОЗУ вместо немедленной выгрузки на диск (MMAgent). Отключение увеличивает давление на pagefile при нехватке RAM; включение — поведение по умолчанию. Не обещает гарантированного прироста FPS или «освобождения» RAM.</sys:String>
+    <sys:String x:Key="S_PowerSysMain">SysMain (Superfetch)</sys:String>
+    <sys:String x:Key="S_PowerSysMainDesc">Предзагрузка часто используемых программ в ОЗУ. Отключение снижает фоновую нагрузку на диск и CPU — обычно делают на SSD и слабых ПК. На HDD с повторяющимся набором программ лучше оставлять включённой. Не обещает прирост FPS.</sys:String>
+    <sys:String x:Key="S_Power8dot3">Имена 8.3 (SHORT_NAMES)</sys:String>
+    <sys:String x:Key="S_Power8dot3Desc">Создание коротких имён файлов (8.3) для совместимости со старыми программами. Глобальные режимы: для всех томов / отключено / per-volume / кроме системного. Отключение создания новых имён не удаляет уже существующие 8.3-имена. Полное применение режима может потребовать перезагрузки.</sys:String>
+    <sys:String x:Key="S_PowerLastAccess">Учёт времени последнего доступа</sys:String>
+    <sys:String x:Key="S_PowerLastAccessDesc">Обновление времени последнего доступа к файлам (NTFS). Отключение может немного уменьшить лишнюю файловую активность, но некоторые сценарии, программы или средства аудита могут рассчитывать на актуальные метки. Не утверждает гарантированный прирост производительности.</sys:String>
+    <sys:String x:Key="S_PowerPrefetcher">Prefetcher</sys:String>
+    <sys:String x:Key="S_PowerPrefetcherDesc">Трассировки запусков приложений (.pf) для ускорения последующих стартов. На SSD эффект обычно невелик; на HDD может быть полезен. Отключение уменьшает запись служебных данных на диск.</sys:String>
+    <sys:String x:Key="S_PowerPageFileSystemManaged">Задается системой</sys:String>
+    <sys:String x:Key="S_PowerPageFileTitle">Файл подкачки (применяется после перезагрузки)</sys:String>
+    <sys:String x:Key="S_PowerPageFile4">4ГБ ОЗУ → 6144 МБ</sys:String>
+    <sys:String x:Key="S_PowerPageFile8">8ГБ ОЗУ → 8192 МБ</sys:String>
+    <sys:String x:Key="S_PowerPageFile16">16ГБ ОЗУ → 4096 МБ</sys:String>
+    <sys:String x:Key="S_PowerPageFile32">32ГБ ОЗУ → 2048 МБ</sys:String>
+    <sys:String x:Key="S_PowerCpuTitle">Ограничения CPU и ОЗУ (bcdedit)</sys:String>
+    <sys:String x:Key="S_PowerCpuClear">Убрать ограничения numproc / truncatememory</sys:String>
+
+    <sys:String x:Key="S_NetAdapterProfileTitle">Профиль сетевого адаптера</sys:String>
+    <sys:String x:Key="S_NetAdapterProfileDesc">Универсальный сбалансированный профиль для физических NIC. Неподдерживаемые свойства драйвера пропускаются; остальные параметры не изменяются.</sys:String>
+    <sys:String x:Key="S_NetAdapterProfileSettings">RSS — включён; Checksum Offload — Rx &amp; Tx; LSOv2 — включён; Interrupt Moderation — включён; Flow Control — Rx &amp; Tx; Jumbo Packet — выключен (1514 байт); Energy Efficient Ethernet — выключен. Для драйверов, где доступно, Interrupt Moderation Rate устанавливается в Adaptive.</sys:String>
+    <sys:String x:Key="S_NetGamingProfile">Профиль для игр</sys:String>
+    <sys:String x:Key="S_NetGamingProfileDesc">Включает параметры, улучшающие игровой опыт</sys:String>
+    <sys:String x:Key="S_NetResetAll">Сбросить</sys:String>
+    <sys:String x:Key="S_NetTcpTitle">TCP Global (netsh int tcp)</sys:String>
+    <sys:String x:Key="S_NetApplyAutoTuning">Применить Auto-Tuning</sys:String>
+    <sys:String x:Key="S_NetApplyEcn">Применить ECN</sys:String>
+    <sys:String x:Key="S_NetMtuTitle">MTU интерфейсов (IPv4, store=persistent)</sys:String>
+    <sys:String x:Key="S_NetMtuCustom">Задать своё</sys:String>
+    <sys:String x:Key="S_NetMtuRestore">Восстановить сохранённые MTU</sys:String>
+    <sys:String x:Key="S_NetMtuHint">Оставьте поле пустым и используйте MTU 1500 для обычного Ethernet/Wi‑Fi. 1472 часто применяют для PPPoE/туннелей; точное значение зависит от сети.</sys:String>
+    <sys:String x:Key="S_NetQosTitle">QoS-политика (NonBestEffortLimit)</sys:String>
+    <sys:String x:Key="S_NetQosZero">Установить 0%</sys:String>
+    <sys:String x:Key="S_NetQosTwenty">Установить 20%</sys:String>
+    <sys:String x:Key="S_NetQosRemove">Удалить override</sys:String>
+    <sys:String x:Key="S_NetQosRestore">Восстановить исходное</sys:String>
+    <sys:String x:Key="S_NetNetBiosDisable">Отключить (режим 2)</sys:String>
+    <sys:String x:Key="S_NetNetBiosDhcp">По DHCP (режим 0)</sys:String>
+    <sys:String x:Key="S_NetNetBiosFlush">Сбросить кэш (nbtstat -R / -RR)</sys:String>
+    <sys:String x:Key="S_NetAutoTuningLabel">Auto-Tuning:</sys:String>
+    <sys:String x:Key="S_NetEcnLabel">ECN:</sys:String>
+    <sys:String x:Key="S_NetNetBiosTitle">NetBIOS over TCP/IP</sys:String>
+    <sys:String x:Key="S_NetMtu1500">MTU 1500</sys:String>
+    <sys:String x:Key="S_NetMtu1472">MTU 1472</sys:String>
+    <sys:String x:Key="S_NetMtu1400">MTU 1400</sys:String>
+    <sys:String x:Key="S_NetDnsTitle">DNS</sys:String>
+    <sys:String x:Key="S_NetDnsDesc">Стирает локальную историю сетевых запросов, скрывая, к каким доменам ваш компьютер обращался в последнее время.</sys:String>
+    <sys:String x:Key="S_NetDnsFlush">Очистить</sys:String>
+    <sys:String x:Key="S_NetCertTitle">Сертификат Минцифры</sys:String>
+    <sys:String x:Key="S_NetCertDesc">Полный доступ к зашифрованному трафику: корневой сертификат — это высший уровень доверия для системы. Если вы устанавливаете корневой сертификат Минцифры в систему, вы говорите своему компьютеру: «Я безоговорочно верю любому сайту, который подписан этим сертификатом».</sys:String>
+    <sys:String x:Key="S_NetCertRemove">Удалить</sys:String>
+    <sys:String x:Key="S_Uninstall">Удалить</sys:String>
+    <sys:String x:Key="S_ComponentsNoUninstall">Для этого компонента тихое удаление не поддерживается.</sys:String>
+    <sys:String x:Key="S_AppsRemoveHint">У этого приложения нет программы удаления.</sys:String>
+
+    <sys:String x:Key="S_MaintIndexingTitle">Индексация поиска</sys:String>
+    <sys:String x:Key="S_MaintIndexingDesc">Отметьте диски — их содержимое будет помечено «не индексировать» (attrib +I, рекурсивно). Поиск станет чуть медленнее; служба Windows Search полностью не отключается.</sys:String>
+    <sys:String x:Key="S_MaintIndexingDisable">Отключить индексацию на выбранных</sys:String>
+    <sys:String x:Key="S_MaintIntegrityTitle">Проверка целостности</sys:String>
+    <sys:String x:Key="S_MaintIntegrityDesc">DISM восстановит хранилище компонентов, затем SFC проверит системные файлы. Вывод обоих — в журнале. Операция долгая (от 10 минут), не прерывайте без необходимости.</sys:String>
+    <sys:String x:Key="S_MaintIntegrityRun">Запустить DISM + SFC</sys:String>
+    <sys:String x:Key="S_MaintRpTitle">Точки восстановления</sys:String>
+    <sys:String x:Key="S_MaintRpDesc">Страховка перед глубокими изменениями: включённая защита системы хранит состояние файлов и реестра.</sys:String>
+    <sys:String x:Key="S_MaintRpCreate">Создать точку восстановления</sys:String>
+    <sys:String x:Key="S_MaintRpRestore">Восстановить из точки восстановления</sys:String>
+    <sys:String x:Key="S_MaintRpRowRestore">Восстановить</sys:String>
+    <sys:String x:Key="S_Delete">Удалить</sys:String>
+    <sys:String x:Key="S_MaintRpEmpty">Точки восстановления не найдены</sys:String>
+    <sys:String x:Key="S_MaintWinSxsTitle">Хранилище компонентов (WinSxS)</sys:String>
+    <sys:String x:Key="S_MaintWinSxsDesc">Анализ показывает реальный размер и рекомендации. Очистка удаляет заменённые версии компонентов. /ResetBase сжимает сильнее, но после него установленные обновления нельзя удалить.</sys:String>
+    <sys:String x:Key="S_MaintWinSxsAnalyze">Анализ</sys:String>
+    <sys:String x:Key="S_MaintWinSxsCleanup">Очистить</sys:String>
+    <sys:String x:Key="S_MaintWinSxsResetBase">Очистить + ResetBase</sys:String>
+    <sys:String x:Key="S_MaintWinSxsResetBaseTip">Удалит заменённые компоненты WinSxS и отключит возможность отката уже установленных обновлений и пакетов обслуживания. Операция необратима и занимает 10–40 минут.</sys:String>
+    <sys:String x:Key="S_MaintMiscTitle">Служебные кэши и сжатие</sys:String>
+    <sys:String x:Key="S_MaintDoCache">Кэш Delivery Optimization</sys:String>
+    <sys:String x:Key="S_MaintDumpsWer">Дампы памяти и отчёты WER</sys:String>
+    <sys:String x:Key="S_MaintCompactOs">CompactOS (сжатие системных файлов)</sys:String>
+    <sys:String x:Key="S_MaintCompactOsDesc">Экономит место на диске ценой небольшой нагрузки CPU при чтении. Переключение долгое.</sys:String>
+    <sys:String x:Key="S_MaintCompactOsTip">compact /compactos:always|never</sys:String>
+
+    <sys:String x:Key="S_CleanupDesc">Все операции очищают только кэши и временные файлы. Занятые файлы пропускаются, состояние служб при очистке кэша обновлений сохраняется и восстанавливается автоматически.</sys:String>
+    <sys:String x:Key="S_CleanupQuick">Быстрая очистка</sys:String>
+    <sys:String x:Key="S_CleanupRecycleBin">Корзина</sys:String>
+    <sys:String x:Key="S_CleanupTemp">Папки Temp</sys:String>
+    <sys:String x:Key="S_CleanupBrowsers">Кэш браузеров</sys:String>
+    <sys:String x:Key="S_CleanupServiceCaches">Служебные кэши</sys:String>
+    <sys:String x:Key="S_CleanupUpdateCache">Кэш загрузок обновлений Windows</sys:String>
+    <sys:String x:Key="S_Cancel">Отмена</sys:String>
+    <sys:String x:Key="S_Clean">Очистить</sys:String>
+    <sys:String x:Key="S_ColIndex">#</sys:String>
+    <sys:String x:Key="S_BloatDesc">Список фиксирован. Скан показывает фактическое наличие. Удаление идёт через powershell: SCU.ps1 с повторной проверкой</sys:String>
+    <sys:String x:Key="S_ServicesDesc">Переключатель включает и отключает службу через .NET API, после резерва</sys:String>
+    <sys:String x:Key="S_SvcToggleTip">Включение и отключение службы после резерва. Недоступно, если служба отсутствует.</sys:String>
+    <sys:String x:Key="S_StartupDesc">Прямые правки реестра в этом разделе не используются</sys:String>
+    <sys:String x:Key="S_TasksDesc">Список, резерв, отключение и откат идут через SCU.ps1: TasksBackup, TasksDisable, TasksRestore. Перед первым отключением в сессии создаётся TasksBackup</sys:String>
+    <sys:String x:Key="S_TasksToggleTip">Нужны права администратора. Перед первым отключением создаётся резерв.</sys:String>
+
+    <sys:String x:Key="S_BloatRemoveAll">Удалить всё</sys:String>
+    <sys:String x:Key="S_BloatRemoveAllTip">Удалит все отмеченные приложения и пакеты из списка. Системные компоненты останутся. Действие нельзя отменить кнопкой «Назад»: восстанавливать придётся вручную или из точек восстановления.</sys:String>
+    <sys:String x:Key="S_ColApp">Приложение</sys:String>
+    <sys:String x:Key="S_ColPackages">Пакеты</sys:String>
+    <sys:String x:Key="S_ColStatus">Статус</sys:String>
+    <sys:String x:Key="S_ColAction">Действие</sys:String>
+    <sys:String x:Key="S_Remove">Удалить</sys:String>
+    <sys:String x:Key="S_Apply">Применить</sys:String>
+
+    <sys:String x:Key="S_ColName">Название</sys:String>
+    <sys:String x:Key="S_ColDescription">Описание</sys:String>
+    <sys:String x:Key="S_ColInstalled">Установлен</sys:String>
+    <sys:String x:Key="S_Install">Установить</sys:String>
+
+    <sys:String x:Key="S_Backup">Бэкап</sys:String>
+    <sys:String x:Key="S_Rollback">Откатить</sys:String>
+    <sys:String x:Key="S_SettingsLog">Журнал</sys:String>
+    <sys:String x:Key="S_SettingsLogDesc">Показывать или скрывать блок журнала под окном. Применяется сразу.</sys:String>
+    <sys:String x:Key="S_SettingsUac">UAC</sys:String>
+    <sys:String x:Key="S_SettingsUacDesc">Окно подтверждения рисковых действий</sys:String>
+    <sys:String x:Key="S_SettingsUpdates">Обновления</sys:String>
+    <sys:String x:Key="S_SettingsUpdatesDesc">Проверить наличие обновлений</sys:String>
+    <sys:String x:Key="S_SettingsUpdatesButton">Проверить</sys:String>
+    <sys:String x:Key="S_Restore">Откатить</sys:String>
+    <sys:String x:Key="S_ColSvcName">Имя</sys:String>
+    <sys:String x:Key="S_ColDisplayName">Отображаемое имя</sys:String>
+    <sys:String x:Key="S_ColState">Состояние</sys:String>
+    <sys:String x:Key="S_ColStartType">Тип запуска</sys:String>
+    <sys:String x:Key="S_ColDelayed">Delayed</sys:String>
+    <sys:String x:Key="S_ColToggle">Вкл/Выкл</sys:String>
+
+    <sys:String x:Key="S_StartupRestore">Восстановить</sys:String>
+    <sys:String x:Key="S_ColSource">Источник</sys:String>
+    <sys:String x:Key="S_ColCommand">Команда</sys:String>
+    <sys:String x:Key="S_Disable">Отключить</sys:String>
+
+    <sys:String x:Key="S_ColFolder">Папка</sys:String>
+
+    <sys:String x:Key="S_WuServicesTitle">Службы обновления</sys:String>
+    <sys:String x:Key="S_WuServicesDesc">Блокировка сохраняет исходное состояние служб в резерв и переводит их в «Отключена» (включая Windows Update Medic, который иначе возвращает wuauserv). Возврат выполняется из того же резерва.</sys:String>
+    <sys:String x:Key="S_WuBlock">Заблокировать обновления</sys:String>
+    <sys:String x:Key="S_WuUnblock">Вернуть обновления</sys:String>
+    <sys:String x:Key="S_WuPauseTitle">Пауза обновлений</sys:String>
+    <sys:String x:Key="S_WuPauseDesc">Те же величины, что пишет приложение «Параметры»: обновления не устанавливаются, но службы остаются включёнными.</sys:String>
+    <sys:String x:Key="S_WuPause7">Приостановить на 7 дней</sys:String>
+    <sys:String x:Key="S_WuUnpause">Снять паузу</sys:String>
+    <sys:String x:Key="S_WuDriversTitle">Драйверы через Windows Update</sys:String>
+    <sys:String x:Key="S_WuDriversDesc">Запретить автоматическую установку драйверов вместе с качественными обновлениями. Драйверы ставятся вручную с сайта производителя.</sys:String>
+    <sys:String x:Key="S_WuDriversTip">ExcludeWUDriversInQualityUpdate</sys:String>
+
+    <sys:String x:Key="S_InfoLoading">Сбор информации о системе (WMI)…</sys:String>
+    <sys:String x:Key="S_InfoErrorTitle">Ошибка при загрузке данных</sys:String>
+    <sys:String x:Key="S_InfoRetry">Повторить</sys:String>
+    <sys:String x:Key="S_InfoSummary">Сводка о системе</sys:String>
+    <sys:String x:Key="S_InfoDisks">Логические диски</sys:String>
+    <sys:String x:Key="S_InfoDiskType">Тип</sys:String>
+    <sys:String x:Key="S_InfoDiskSize">Размер</sys:String>
+    <sys:String x:Key="S_InfoDiskFree">Свободно</sys:String>
+    <sys:String x:Key="S_InfoDiskUsed">Занято</sys:String>
+    <sys:String x:Key="S_InfoVideo">Видеоадаптеры</sys:String>
+    <sys:String x:Key="S_InfoNetwork">Сетевые адаптеры</sys:String>
+
+    <sys:String x:Key="S_DialogCancel">Отмена</sys:String>
+    <sys:String x:Key="S_DialogConfirmTitle">Подтверждение</sys:String>
+    <sys:String x:Key="S_DialogConfirm">Подтвердить</sys:String>
+    <!-- Общее пустое состояние: текст ключа не должен упоминать конкретный раздел,
+         ключ показывается в 9 разделах. Для автозагрузки — отдельный S_EmptyStateStartup. -->
+    <sys:String x:Key="S_EmptyState">Здесь пока ничего нет</sys:String>
+    <sys:String x:Key="S_EmptyStateStartup">Приложений в автозагрузке нет</sys:String>
+
+    <!-- ===================== Раздел 0 «Состояние ПК»: большой выключатель ===================== -->
+    <sys:String x:Key="D_BatchTitle">Применить оптимизацию</sys:String>
+    <sys:String x:Key="D_BatchHint">Один выключатель применяет выбранные утилиты по порядку. Список настраивается ниже.</sys:String>
+    <sys:String x:Key="D_BatchSettings">Настройка списка утилит</sys:String>
+    <sys:String x:Key="S_BatchHibernationOff">Отключить гибернацию</sys:String>
+    <sys:String x:Key="S_BatchFastBootOn">Включить быстрый запуск</sys:String>
+    <sys:String x:Key="S_BatchMemCompressionOn">Включить сжатие памяти</sys:String>
+    <sys:String x:Key="S_BatchSysMainOff">Отключить SysMain (Superfetch)</sys:String>
+    <sys:String x:Key="S_BatchShortNamesOff">Отключить имена 8.3</sys:String>
+    <sys:String x:Key="S_BatchLastAccessOff">Отключить учёт времени доступа</sys:String>
+    <sys:String x:Key="S_BatchPrefetcherOff">Отключить Prefetcher</sys:String>
+    <sys:String x:Key="S_BatchCompactOsOff">Отключить CompactOS</sys:String>
+    <sys:String x:Key="S_BatchUacStandardOn">Включить стандартный уровень UAC</sys:String>
+    <sys:String x:Key="S_BatchDriversExclude">Не устанавливать драйверы через Windows Update</sys:String>
+    <sys:String x:Key="S_BatchAutoTuningNormal">Auto-Tuning: normal</sys:String>
+    <sys:String x:Key="S_BatchEcnDefault">ECN: default</sys:String>
+    <sys:String x:Key="S_BatchRecommendedOff">Скрыть «Рекомендуем» в меню «Пуск»</sys:String>
+    <sys:String x:Key="S_BatchGameBarDvrOff">Отключить Game Bar и DVR</sys:String>
+    <sys:String x:Key="S_BatchTargetOn">вкл.</sys:String>
+    <sys:String x:Key="S_BatchTargetOff">выкл.</sys:String>
+    <sys:String x:Key="S_SearchPlaceholder">Общий поиск…</sys:String>
+    <sys:String x:Key="S_AppsSearchPlaceholder">Поиск среди приложений…</sys:String>
+    <sys:String x:Key="S_AboutTitle">О приложении</sys:String>
+    <sys:String x:Key="S_AboutVersion">Версия сборки</sys:String>
+    <sys:String x:Key="S_AboutSize">Вес сборки</sys:String>
+    <sys:String x:Key="S_AboutChangelog">Изменения относительно предыдущей сборки</sys:String>
+    <sys:String x:Key="S_AboutChangelogText" xml:space="preserve">• «Главная»: поиск утилит, счётчик «К применению», индикатор применения.&#10;• «Настройки»: блок «О приложении» (версия, вес, изменения, пути данных).&#10;• Интерфейс приведён к единому стилю.</sys:String>
+    <sys:String x:Key="S_AboutPaths">Куда приложение записывает данные</sys:String>
+    <sys:String x:Key="S_AboutPathSettings">Настройки</sys:String>
+    <sys:String x:Key="S_AboutPathState">Состояние (список выключателя, история, снимки)</sys:String>
+    <sys:String x:Key="S_AboutPathBackup">Резервы изменений реестра и служб</sys:String>
+    <sys:String x:Key="S_AboutPathLog">Журнал</sys:String>
+
+    <!-- ===================== Раздел 0 «Состояние ПК» ===================== -->
+    <sys:String x:Key="D_DashboardScanButton">Проверить ПК</sys:String>
+    <sys:String x:Key="D_DashboardRefresh">Обновить</sys:String>
+    <sys:String x:Key="D_DashboardScanChecklist">Ход проверки</sys:String>
+    <sys:String x:Key="D_DashboardOpen">Открыть →</sys:String>
+    <sys:String x:Key="D_DashboardRecommendationsHeader">Рекомендации</sys:String>
+    <sys:String x:Key="D_DashboardEmptyRecs">Запустите «Проверить ПК», чтобы собрать состояние и получить рекомендации.</sys:String>
+    <sys:String x:Key="D_DashboardHistoryHeader">Последние события</sys:String>
+    <sys:String x:Key="D_DashboardEmptyHistory">События появятся после изменений в других разделах.</sys:String>
+    <sys:String x:Key="D_DashboardOpenHistory">Открыть историю</sys:String>
+
+    <sys:String x:Key="D_DashboardStatisticsHeader">Статистика</sys:String>
+    <sys:String x:Key="D_DashboardPeriodLabel">Период:</sys:String>
+    <sys:String x:Key="D_Period7Days">7 дней</sys:String>
+    <sys:String x:Key="D_Period30Days">30 дней</sys:String>
+    <sys:String x:Key="D_Period90Days">90 дней</sys:String>
+    <sys:String x:Key="D_PeriodAllTime">Всё время</sys:String>
+    <sys:String x:Key="D_StatsEmpty">За выбранный период событий нет.</sys:String>
+
+    <sys:String x:Key="D_DashboardBeforeAfterHeader">До / После</sys:String>
+    <sys:String x:Key="D_DashboardBeforeAfterEmpty">Различий между последними проверками нет.</sys:String>
+
+    <sys:String x:Key="D_DashboardBaselineHeader">Baseline</sys:String>
+    <sys:String x:Key="D_DashboardCreateBaseline">Создать baseline</sys:String>
+    <sys:String x:Key="D_DashboardClearBaseline">Удалить baseline</sys:String>
+    <sys:String x:Key="D_DashboardBaselineHint">Baseline ещё не создан. Выполните «Проверить ПК», затем сохраните состояние как точку отсчёта кнопкой «Создать baseline».</sys:String>
+
+    <!-- ===================== Профиль (§33.8) ===================== -->
+    <sys:String x:Key="D_ProfileHeader">Профиль</sys:String>
+    <sys:String x:Key="D_ProfileSelectLabel">Профиль:</sys:String>
+    <sys:String x:Key="D_ProfileNone">— нет —</sys:String>
+    <sys:String x:Key="D_ProfileGaming">Игровой</sys:String>
+    <sys:String x:Key="D_ProfileBalanced">Сбалансированный</sys:String>
+    <sys:String x:Key="D_ProfilePrivacy">Приватность</sys:String>
+    <sys:String x:Key="D_ProfileCustom">Настраиваемый</sys:String>
+    <sys:String x:Key="D_ProfileApply">Применить профиль</sys:String>
+    <sys:String x:Key="D_ProfileCustomHeader">Настраиваемый профиль (свои правила)</sys:String>
+    <sys:String x:Key="D_ProfileCustomSave">Сохранить</sys:String>
+    <sys:String x:Key="D_ProfileCustomApply">Применить</sys:String>
+    <sys:String x:Key="D_ProfileDesireIgnore">Не важно</sys:String>
+    <sys:String x:Key="D_ProfileDesireOn">Включить</sys:String>
+    <sys:String x:Key="D_ProfileDesireOff">Выключить</sys:String>
+
+    <!-- ===================== Дашборды (§34) ===================== -->
+    <sys:String x:Key="D_TrendsHeader">Дашборды</sys:String>
+    <sys:String x:Key="D_TrendsDiskHeader">Свободное место на системном диске (ГБ)</sys:String>
+    <sys:String x:Key="D_TrendsCleanupHeader">Освобождено очистками</sys:String>
+    <sys:String x:Key="D_TrendsDiskEmpty">Недостаточно данных: выполните «Проверить ПК» ещё раз после изменений.</sys:String>
+    <sys:String x:Key="D_TrendsCleanupEmpty">Пока нет очисток с измеренным объёмом.</sys:String>
+    <sys:String x:Key="D_TrendsUnitKb">КБ</sys:String>
+    <sys:String x:Key="D_TrendsUnitMb">МБ</sys:String>
+    <sys:String x:Key="D_TrendsUnitGb">ГБ</sys:String>
+    <sys:String x:Key="D_TrendsUnitBytes">Б</sys:String>
+
+    <!-- ===================== Раздел 18 «История» ===================== -->
+    <sys:String x:Key="D_HistoryFilterLabel">Категория:</sys:String>
+    <sys:String x:Key="D_HistoryFilterAll">Все категории</sys:String>
+    <sys:String x:Key="D_HistoryEmpty">История пуста — события появятся после операций в разделах.</sys:String>
+
+    <!-- ===================== Подсказки ⓘ (что делает утилита) ===================== -->
+
+    <sys:String x:Key="S_InfoGlyph_AutomationName">Подробнее</sys:String>
+
+    <sys:String x:Key="I_RunAsAdmin">Перезапускает приложение с правами администратора (запрос UAC). Без них изменяющие операции во всех разделах недоступны.</sys:String>
+
+    <sys:String x:Key="I_UiMenuDelay">Уменьшает задержку перед открытием меню «Пуск» и контекстных меню (параметр MenuShowDelay в реестре). 20 мс — почти мгновенно; 400 мс — значение Windows по умолчанию. Применяется сразу.</sys:String>
+    <sys:String x:Key="I_UiRestartExplorer">Завершает и заново запускает explorer.exe: панель задач и открытые окна проводника на несколько секунд исчезнут. Нужно, чтобы применить изменения параметров проводника без перезагрузки.</sys:String>
+    <sys:String x:Key="I_UiClearTaskbar">Удаляет закреплённые значки и сбрасывает настройки панели задач, затем перезапускает проводник. Состояние сохраняется в резерв — вернуть можно кнопкой «Восстановить панель задач».</sys:String>
+    <sys:String x:Key="I_UiRestoreTaskbar">Возвращает закреплённые значки и настройки панели задач из резерва, созданного при последней очистке, и перезапускает проводник.</sys:String>
+
+    <sys:String x:Key="I_PrivacyQuietMode">Одним действием отключает всё перечисленное ниже: советы Windows, фоновые UWP-приложения, задачи телеметрии/CEIP, службу DiagTrack и Copilot. Исходные значения сохраняются в резерв.</sys:String>
+
+    <sys:String x:Key="I_PlanHigh">Высокая производительность: процессор не занижает частоту в простое. Расход энергии и нагрев выше.</sys:String>
+    <sys:String x:Key="I_PlanUltimate">Максимальная: отключает почти все механизмы энергосбережения. Для стационарных ПК и ноутбуков в розетке.</sys:String>
+    <sys:String x:Key="I_PlanBalanced">Сбалансированная: рекомендуемое значение Windows для большинства систем.</sys:String>
+    <sys:String x:Key="I_PlanPowerSaver">Экономия энергии: снижает производительность ради автономности. Для игр и тяжёлых задач не подходит.</sys:String>
+    <sys:String x:Key="I_PlanBitsum">Bitsum Highest Performance: минимальные задержки CPU. Удобно для игр; на ноутбуке сокращает время работы от батареи.</sys:String>
+    <sys:String x:Key="I_PowerPageFile">Задаёт фиксированный размер файла подкачки и отключает автоматическое управление Windows. Размер зависит не только от ОЗУ: учитывайте peak commit, настройки crash dump и свободное место на диске. По умолчанию предпочтителен режим «Управляется Windows». Применяется после перезагрузки.</sys:String>
+    <sys:String x:Key="I_PowerCpuClear">Удаляет из загрузчика BCD параметры numproc и truncatememory, если они заданы, — Windows перестанет ограничивать число ядер и объём ОЗУ. Применяется после перезагрузки.</sys:String>
+
+    <sys:String x:Key="I_NetGamingProfile">Применяет Auto-Tuning=disabled, ECN=disabled и QoS override=0%. Текущие значения сохраняются в резерв; кнопка «Откатить» возвращает TCP Global и QoS из резерва.</sys:String>
+    <sys:String x:Key="I_NetResetAll">Возвращает TCP Global, QoS override, MTU и NetBIOS к исходным значениям из резервов, созданных при предыдущих изменениях в этом разделе.</sys:String>
+    <sys:String x:Key="I_NetAdapterProfileApply">Применяет универсальный сбалансированный профиль ко всем физическим адаптерам (перечень настроек — выше). Неподдерживаемые драйвером свойства пропускаются; связь может кратковременно прерваться. Свойства каждого адаптера сохраняются в резерв перед применением; «Откатить» возвращает исходные значения.</sys:String>
+    <sys:String x:Key="I_NetApplyAutoTuning">Устанавливает уровень TCP Windows Auto-Tuning в выбранное значение. Обычно безопасен normal; disabled иногда помогает со старыми роутерами, но снижает скорость загрузки. Совет: обычно оставляют Auto-Tuning = normal.</sys:String>
+    <sys:String x:Key="I_NetApplyEcn">Устанавливает явное уведомление о перегрузке (ECN) для TCP. Включайте, только если ваша сеть и роутер поддерживают ECN. Совет: ECN — только на подтверждённом оборудовании (сеть/роутер).</sys:String>
+    <sys:String x:Key="I_NetMtu">Задаёт MTU выбранного интерфейса, прежнее значение сохраняется в резерв. Стандарт Ethernet/Wi-Fi — 1500; для PPPoE и туннелей часто 1472. Неверное значение приводит к фрагментации пакетов. Совет: стандарт — 1500; PPPoE и мобильные сети — меньше; значения не гарантированы, ориентируйтесь на фактическую сеть.</sys:String>
+    <sys:String x:Key="I_NetMtuCustom">Задаёт своё значение MTU из поля слева (допустимо 576..1500) для выбранного интерфейса.</sys:String>
+    <sys:String x:Key="I_NetMtuRestore">Возвращает интерфейсам MTU-значения, сохранённые в резерв до изменения.</sys:String>
+    <sys:String x:Key="I_NetQosSet">Резервирует указанный процент полосы под нестандартный трафик (NonBestEffortLimit). 0% — Windows не резервирует полосу; напрямую скорость интернета это не повышает. Совет: резерв полосы задают только для мультимедиа-целей; для обычного домашнего ПК безопаснее не менять значение.</sys:String>
+    <sys:String x:Key="I_NetQosRemove">Удаляет переопределение QoS — используется системное значение по умолчанию.</sys:String>
+    <sys:String x:Key="I_NetQosRestore">Возвращает исходное значение QoS из резерва.</sys:String>
+    <sys:String x:Key="I_NetNetBiosMode">Переключает NetBIOS over TCP/IP на всех интерфейсах: «Отключить» выключает протокол (обычно безопасно в современных сетях), «По DHCP» возвращает автоматический режим. Совет: обычно включён в рабочих сетях; меняйте только при понимании работы SMB и сетевых служб.</sys:String>
+    <sys:String x:Key="I_NetNetBiosFlush">Сбрасывает кэш имён NetBIOS (nbtstat -R) и перерегистрирует имена (nbtstat -RR). Безопасно; помогает после смены сетевого окружения.</sys:String>
+
+    <sys:String x:Key="I_MaintDoCache">Удаляет кэш Delivery Optimization — копии обновлений Windows, которыми система делится с другими ПК в сети. Сами обновления не удаляются.</sys:String>
+    <sys:String x:Key="I_MaintDumpsWer">Удаляет дампы памяти и очередь отчётов об ошибках Windows Error Reporting. Диагностическую информацию после сбоя (BSOD) восстановить будет нельзя.</sys:String>
+
+    <sys:String x:Key="I_CleanupRecycleBin">Безвозвратно очищает корзину на всех дисках.</sys:String>
+    <sys:String x:Key="I_CleanupTemp">Удаляет временные файлы из папок TEMP пользователя и Windows, Prefetch, Recent и INetCache. Занятые файлы пропускаются.</sys:String>
+    <sys:String x:Key="I_CleanupBrowsers">Удаляет кэш Chrome, Edge, Яндекс Браузера, Brave, Vivaldi, Firefox и Opera. Закладки, пароли и история не затрагиваются; заранее закройте браузеры.</sys:String>
+    <sys:String x:Key="I_CleanupUpdateCache">Останавливает службы обновления (с сохранением их состояния), очищает SoftwareDistribution\Download и кэш Delivery Optimization, затем возвращает службы. Может освободить несколько ГБ.</sys:String>
+
+    <sys:String x:Key="I_SvcBackup">Сохраняет текущий тип запуска и состояние всех служб из списка в резервный файл. Создавайте перед изменениями.</sys:String>
+    <sys:String x:Key="I_SvcRestore">Возвращает типы запуска и состояние служб из резервного файла, созданного кнопкой «Бэкап».</sys:String>
+
+    <sys:String x:Key="I_TasksBackup">Сохраняет в резерв состояние выбранных задач планировщика перед их отключением.</sys:String>
+    <sys:String x:Key="I_TasksRestore">Возвращает задачи планировщика к состоянию из резерва, созданного кнопкой «Бэкап».</sys:String>
+
+    <!-- ===================== Раздел 20 «Бэнчмарк» ===================== -->
+    <sys:String x:Key="S_Section20_Title">Бэнчмарк</sys:String>
+    <sys:String x:Key="S_Section20_Desc">Индекс состояния системы и подтверждённых изменений</sys:String>
+    <sys:String x:Key="S_BenchIndexCaption">Индекс состояния</sys:String>
+    <sys:String x:Key="S_BenchIndexHint">Насколько текущее состояние системы соответствует измеримым целям SCU. Это не оценка производительности железа.</sys:String>
+    <sys:String x:Key="S_BenchRunButton">Запустить проверку</sys:String>
+    <sys:String x:Key="S_BenchPotentialHintShort">доступный потенциал изменения индекса</sys:String>
+    <sys:String x:Key="S_BenchStale">Состояние системы изменилось — индекс устарел. Запустите проверку.</sys:String>
+    <sys:String x:Key="S_BenchBeforeAfterHeader">До и после изменений</sys:String>
+    <sys:String x:Key="S_BenchBefore">До изменений</sys:String>
+    <sys:String x:Key="S_BenchAfter">После изменений</sys:String>
+    <sys:String x:Key="S_BenchBeforeAfterHint">Подтверждённое изменение состояния — повторное чтение системы, а не проценты скорости</sys:String>
+    <sys:String x:Key="S_BenchCategoriesHeader">Категории (индекс · проверено метрик)</sys:String>
+    <sys:String x:Key="S_BenchCoverageTooltip">Прочитано метрик из применимых</sys:String>
+    <sys:String x:Key="S_BenchMetricsHeader">Детальные метрики</sys:String>
+    <sys:String x:Key="S_BenchColumnMetric">Метрика</sys:String>
+    <sys:String x:Key="S_BenchColumnValue">Значение</sys:String>
+    <sys:String x:Key="S_BenchColumnConformity">Соответствие</sys:String>
+    <sys:String x:Key="S_BenchColumnStatus">Статус</sys:String>
+    <sys:String x:Key="S_BenchPotentialHeader">Что может улучшить SCU</sys:String>
+    <sys:String x:Key="S_BenchPotentialHint">Доступные баллы соответствия целевому состоянию по применимым метрикам. Это потенциал индекса, а не обещание ускорения.</sys:String>
+    <sys:String x:Key="S_BenchPotentialTotal">Потенциал индекса:</sys:String>
+    <sys:String x:Key="S_BenchOpen">Открыть →</sys:String>
+    <sys:String x:Key="S_BenchTrendsHeader">Тренд индекса по проверкам</sys:String>
+    <sys:String x:Key="S_BenchPotentialEmpty">Все применимые цели универсального профиля достигнуты — доступных баллов соответствия не найдено.</sys:String>
+</ResourceDictionary>

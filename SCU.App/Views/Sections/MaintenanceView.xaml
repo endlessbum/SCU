@@ -1,0 +1,238 @@
+﻿<UserControl x:Class="SCU.Views.Sections.MaintenanceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="520" d:DesignWidth="860">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="0">
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_MaintIndexingTitle}" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource CardIntroText}"
+                                   Text="{DynamicResource S_MaintIndexingDesc}" />
+                        <ItemsControl ItemsSource="{Binding Drives}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Margin="0,0,24,8" Content="{Binding Display}" IsChecked="{Binding IsSelected, Mode=TwoWay}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Content="{DynamicResource S_MaintIndexingDisable}"
+                                Margin="0,8,0,0"
+                                HorizontalAlignment="Left"
+                                Command="{Binding DisableIndexingCommand}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_MaintIntegrityTitle}" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource CardIntroText}"
+                                   Text="{DynamicResource S_MaintIntegrityDesc}" />
+                        <!-- П.17а: «Отмена» активна только после запуска DISM + SFC -->
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="{DynamicResource S_MaintIntegrityRun}"
+                                    Margin="0,0,8,0"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding RunIntegrityCheckCommand}" />
+                            <Button Content="{DynamicResource S_Cancel}"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding CancelIntegrityCommand}"
+                                    ToolTipService.ShowOnDisabled="True" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_MaintRpTitle}" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource CardIntroText}"
+                                   Text="{DynamicResource S_MaintRpDesc}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <Button Content="{DynamicResource S_MaintRpCreate}"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding CreateRestorePointCommand}" />
+                        </StackPanel>
+                        <!-- П.15а: список точек (обновляется сразу после создания). Выделения нет:
+                             действия — кнопками справа в каждой строке. Скролла нет: лимит
+                             хранения MaxRestorePoints = 5 (RestorePointService) — все записи
+                             помещаются целиком. -->
+                        <ItemsControl ItemsSource="{Binding RestorePoints}">
+                            <ItemsControl.Style>
+                                <Style TargetType="ItemsControl">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RestorePoints.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ItemsControl.Style>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Margin="0,0,12,0"
+                                                       VerticalAlignment="Center"
+                                                       Style="{StaticResource MonoText}"
+                                                       Text="{Binding CreatedText}" />
+                                            <TextBlock Grid.Column="1"
+                                                       Margin="0,0,12,0"
+                                                       VerticalAlignment="Center"
+                                                       Style="{StaticResource CaptionText}"
+                                                       Text="{Binding Type}" />
+                                            <TextBlock Grid.Column="2"
+                                                       Margin="0,0,12,0"
+                                                       VerticalAlignment="Center"
+                                                       Style="{StaticResource BodyText}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Text="{Binding Description}"
+                                                       ToolTip="{Binding Description}"
+                                                       ToolTipService.InitialShowDelay="400" />
+                                            <Button Grid.Column="3"
+                                                    Margin="0,0,8,0"
+                                                    VerticalAlignment="Center"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Content="{DynamicResource S_MaintRpRowRestore}"
+                                                    ToolTipService.ShowOnDisabled="True"
+                                                    Command="{Binding DataContext.RestoreRestorePointCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Grid.Column="4"
+                                                    VerticalAlignment="Center"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Content="{DynamicResource S_Delete}"
+                                                    ToolTipService.ShowOnDisabled="True"
+                                                    Command="{Binding DataContext.DeleteRestorePointCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="{DynamicResource S_MaintRpEmpty}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource EmptyStateText}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RestorePoints.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_MaintWinSxsTitle}" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource CardIntroText}"
+                                   Text="{DynamicResource S_MaintWinSxsDesc}" />
+                        <WrapPanel>
+                            <Button Content="{DynamicResource S_MaintWinSxsAnalyze}"
+                                    Margin="0,0,8,8"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding AnalyzeComponentStoreCommand}" />
+                            <Button Content="{DynamicResource S_MaintWinSxsCleanup}"
+                                    Margin="0,0,8,8"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding StartComponentCleanupCommand}" />
+                            <!-- П.17б: «Отмена» активна только после запуска «Анализ» или «Очистить» -->
+                            <Button Content="{DynamicResource S_Cancel}"
+                                    Margin="0,0,8,8"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding CancelCleanupCommand}"
+                                    ToolTipService.ShowOnDisabled="True" />
+                            <Button Content="{DynamicResource S_MaintWinSxsResetBase}"
+                                    Margin="0,0,8,8"
+                                    HorizontalAlignment="Left"
+                                    Style="{StaticResource DangerButton}"
+                                    ToolTip="{DynamicResource S_MaintWinSxsResetBaseTip}"
+                                    ToolTipService.InitialShowDelay="250"
+                                    ToolTipService.ShowOnDisabled="True"
+                                    Command="{Binding StartComponentCleanupResetBaseCommand}" />
+                        </WrapPanel>
+                        <TextBlock Style="{StaticResource MonoText}"
+                                   Margin="0,4,0,0"
+                                   Text="{Binding ComponentStoreText}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_MaintMiscTitle}" />
+                        </StackPanel>
+
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button Content="{DynamicResource S_MaintDoCache}"
+                                    Margin="0,0,8,8"
+                                    Command="{Binding ClearDeliveryOptimizationCommand}" />
+                            <Button Content="{DynamicResource S_MaintDumpsWer}"
+                                    Margin="0,0,8,8"
+                                    Command="{Binding ClearDumpsAndWerCommand}" />
+                        </WrapPanel>
+
+                        <Border Margin="0,8,0,0"
+                                Height="1"
+                                Background="{DynamicResource SeparatorBrush}" />
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{DynamicResource S_MaintCompactOs}" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource RowActionText}"
+                                           Text="{Binding CompactOsActionText}" />
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource SystemToggleSwitch}"
+                                          AutomationProperties.Name="{DynamicResource S_MaintCompactOs}"
+                                          IsChecked="{Binding CompactOsEnabled, Mode=TwoWay}"
+                                          IsEnabled="{Binding IsInteractive}"
+                                          Command="{Binding ToggleCompactOsCommand}"
+                                          ToolTip="{DynamicResource S_MaintCompactOsTip}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+        <StackPanel Grid.Row="1">
+            <TextBlock Style="{StaticResource SectionStatusText}"
+                       Text="{Binding StatusText}" />
+            <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

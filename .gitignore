@@ -1,0 +1,40 @@
+# Build artifacts
+bin/
+obj/
+publish/
+artifacts/
+build/
+out/
+
+# C++ промежуточные артефакты
+*.obj
+*.tlog
+*.lib
+*.pdb
+*.ilk
+*.idb
+
+# Installer output
+installer/
+
+# User-specific files
+*.user
+*.suo
+.vs/
+
+# Logs
+logs/
+*.log
+
+# Test results
+SCU.Tests/
+%TEMP%/
+TestResults/
+
+.zcode/
+installer/
+
+SecurityScanner/signing/*.pfx
+SecurityScanner/signing/*.pvk
+
+SecurityScanner/tools/database-builder/db-signing-private.pem
