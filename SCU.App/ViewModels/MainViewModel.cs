@@ -243,41 +243,59 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ScuStatusText = L.T(IsSCUAvailable ? "да" : "нет");
     }
 
+    // Стартовая инициализация: только «Главная» и «Бэнчмарк» (п. 13 аудита).
+    // Остальные разделы инициализируются лениво при первом открытии
+    // (EnsureSectionInitialized) — заставка исчезает значительно быстрее.
     public async Task InitializeAsync()
     {
-        // Раздел 0: загрузка сохранённого набора утилит большого выключателя.
         await RunSectionInitAsync("Dashboard", () => Dashboard.InitializeAsync()).ConfigureAwait(true);
         await RunSectionInitAsync("Benchmark", () => Benchmark.InitializeAsync()).ConfigureAwait(true);
 
-        // Сначала читаем только вспомогательные данные (резервы и наличие Edge),
-        // чтобы они не конкурировали с основным refresh той же модели.
-        // Каждый раздел — под собственным try/catch: сбой одного не роняет остальные.
-        await Task.WhenAll(
-            RunSectionInitAsync("Bloat", () => Bloat.InitializeAsync()),
-            RunSectionInitAsync("Tasks", () => Tasks.InitializeAsync()),
-            RunSectionInitAsync("Startup", () => Startup.InitializeAsync()),
-            RunSectionInitAsync("Services", () => Services.InitializeAsync())).ConfigureAwait(true);
-
-        // Все вкладки, где есть динамическое состояние, обновляются одновременно.
-        await Task.WhenAll(
-            RunSectionInitAsync("Info", () => ExecuteRefreshAsync(Info.RefreshCommand)),
-            RunSectionInitAsync("Components", () => ExecuteRefreshAsync(Components.RefreshCommand)),
-            RunSectionInitAsync("Bloat", () => ExecuteRefreshAsync(Bloat.RefreshCommand)),
-            RunSectionInitAsync("Ui", () => ExecuteRefreshAsync(Ui.RefreshCommand)),
-            RunSectionInitAsync("Input", () => ExecuteRefreshAsync(Input.RefreshCommand)),
-            RunSectionInitAsync("Privacy", () => ExecuteRefreshAsync(Privacy.RefreshCommand)),
-            RunSectionInitAsync("Security", () => ExecuteRefreshAsync(Security.RefreshCommand)),
-            RunSectionInitAsync("Tasks", () => ExecuteRefreshAsync(Tasks.RefreshCommand)),
-            RunSectionInitAsync("Startup", () => ExecuteRefreshAsync(Startup.RefreshCommand)),
-            RunSectionInitAsync("Services", () => ExecuteRefreshAsync(Services.RefreshCommand)),
-            RunSectionInitAsync("Power", () => ExecuteRefreshAsync(Power.RefreshCommand)),
-            RunSectionInitAsync("Network", () => ExecuteRefreshAsync(Network.RefreshCommand)),
-            RunSectionInitAsync("Maintenance", () => ExecuteRefreshAsync(Maintenance.RefreshCommand)),
-            RunSectionInitAsync("Update", () => ExecuteRefreshAsync(Update.RefreshCommand)),
-            RunSectionInitAsync("Apps", () => ExecuteRefreshAsync(Apps.RefreshCommand))).ConfigureAwait(true);
-
-        // «К применению» на «Главной»: статусы всех разделов уже прочитаны.
+        // «К применению» на «Главной»: статусы Dashboard уже прочитаны.
         Dashboard.RecomputePending();
+    }
+
+    private Dictionary<int, Func<Task>>? _sectionInits;
+    private readonly HashSet<int> _initializedSections = [];
+
+    // Ленивая инициализация раздела при первом открытии: тот же код, что раньше
+    // выполнялся целиком на заставке. Повторное открытие — без повторного refresh.
+    private void EnsureSectionInitialized(int? number)
+    {
+        if (number is null || !_initializedSections.Add(number.Value))
+        {
+            return;
+        }
+
+        _sectionInits ??= new Dictionary<int, Func<Task>>
+        {
+            [1] = () => ExecuteRefreshAsync(Info.RefreshCommand),
+            [2] = () => ExecuteRefreshAsync(Components.RefreshCommand),
+            [4] = () => Bloat.InitializeAsync()
+                .ContinueWith(_ => ExecuteRefreshAsync(Bloat.RefreshCommand), TaskScheduler.FromCurrentSynchronizationContext()),
+            [5] = () => ExecuteRefreshAsync(Privacy.RefreshCommand),
+            [6] = () => Services.InitializeAsync()
+                .ContinueWith(_ => ExecuteRefreshAsync(Services.RefreshCommand), TaskScheduler.FromCurrentSynchronizationContext()),
+            [7] = () => Startup.InitializeAsync()
+                .ContinueWith(_ => ExecuteRefreshAsync(Startup.RefreshCommand), TaskScheduler.FromCurrentSynchronizationContext()),
+            [8] = () => ExecuteRefreshAsync(Power.RefreshCommand),
+            [9] = () => ExecuteRefreshAsync(Network.RefreshCommand),
+            [10] = () => ExecuteRefreshAsync(Ui.RefreshCommand),
+            [11] = () => ExecuteRefreshAsync(Input.RefreshCommand),
+            [12] = () => ExecuteRefreshAsync(Maintenance.RefreshCommand),
+            [13] = () => ExecuteRefreshAsync(Security.RefreshCommand),
+            [15] = () => Tasks.InitializeAsync()
+                .ContinueWith(_ => ExecuteRefreshAsync(Tasks.RefreshCommand), TaskScheduler.FromCurrentSynchronizationContext()),
+            [16] = () => ExecuteRefreshAsync(Update.RefreshCommand),
+            [19] = () => ExecuteRefreshAsync(Apps.RefreshCommand),
+        };
+
+        if (!_sectionInits.TryGetValue(number.Value, out var init))
+        {
+            return;
+        }
+
+        RunSectionInitAsync("lazy-" + number.Value, init);
     }
 
     // Инициализация/refresh одного раздела: ошибка логируется, остальные продолжают работу.
@@ -505,49 +523,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public string AboutLogPath => _logger.FilePath;
 
 
-    public bool IsInfoSection => CurrentSection?.Number == 1;
-
-    public bool IsComponentsSection => CurrentSection?.Number == 2;
-
-    public bool IsCleanupSection => CurrentSection?.Number == 3;
-
-    public bool IsPrivacySection => CurrentSection?.Number == 5;
-
-    public bool IsPowerSection => CurrentSection?.Number == 8;
-
-    public bool IsNetworkSection => CurrentSection?.Number == 9;
-
-    public bool IsUISection => CurrentSection?.Number == 10;
-
-    public bool IsInputSection => CurrentSection?.Number == 11;
-
-    public bool IsBloatSection => CurrentSection?.Number == 4;
-
-    public bool IsMaintenanceSection => CurrentSection?.Number == 12;
-
-    public bool IsSecuritySection => CurrentSection?.Number == 13;
-
-    public bool IsStartupSection => CurrentSection?.Number == 7;
-
-    public bool IsTaskSection => CurrentSection?.Number == 15;
-
-    public bool IsUpdateSection => CurrentSection?.Number == 16;
-
-    public bool IsSettingsSection => CurrentSection?.Number == 17;
-
-    public bool IsHistorySection => CurrentSection?.Number == 18;
-
-    public bool IsAppsSection => CurrentSection?.Number == 19;
-
-    public bool IsBenchmarkSection => CurrentSection?.Number == 20;
-
-    public bool IsScannerSection => CurrentSection?.Number == 21;
-
-    public bool IsServiceSection => CurrentSection?.Number == 6;
-
-    public bool IsPlaceholderSection =>
-        !IsDashboardSection && !IsInfoSection && !IsComponentsSection && !IsCleanupSection && !IsPrivacySection && !IsPowerSection
-        && !IsNetworkSection && !IsUISection && !IsInputSection && !IsBloatSection && !IsMaintenanceSection && !IsSecuritySection && !IsServiceSection && !IsStartupSection && !IsTaskSection && !IsUpdateSection && !IsSettingsSection && !IsHistorySection && !IsAppsSection && !IsBenchmarkSection && !IsScannerSection;
+    // Все номера разделов имеют реализацию (п. 13: navigation host);
+    // заглушка остаётся на случай раздела без View.
+    public bool IsPlaceholderSection => CurrentSection is null;
 
     // Переход в раздел по номеру (из карточек и рекомендаций Dashboard). Тот же
     // механизм, что клик по сайдбару: просто присваивание CurrentSection.
@@ -562,8 +540,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         CurrentSection = target;
     }
 
+    // П. 13 аудита: окно подписывается и подменяет содержимое navigation host.
+    public event Action<int?>? CurrentSectionChanged;
+
     partial void OnCurrentSectionChanged(SectionItem? value)
     {
+        CurrentSectionChanged?.Invoke(value?.Number);
+        EnsureSectionInitialized(value?.Number);
+
         // Данные всех вкладок читаются один раз при старте (InitializeAsync). Открытие
         // вкладки больше не запускает refresh. Фоновые операции (установка, загрузка,
         // удаление, сканирование и т.д.) НЕ отменяются при уходе с вкладки: процесс
@@ -578,26 +562,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         OnPropertyChanged(nameof(IsDashboardSection));
-        OnPropertyChanged(nameof(IsInfoSection));
-        OnPropertyChanged(nameof(IsComponentsSection));
-        OnPropertyChanged(nameof(IsCleanupSection));
-        OnPropertyChanged(nameof(IsPrivacySection));
-        OnPropertyChanged(nameof(IsPowerSection));
-        OnPropertyChanged(nameof(IsNetworkSection));
-        OnPropertyChanged(nameof(IsUISection));
-        OnPropertyChanged(nameof(IsInputSection));
-        OnPropertyChanged(nameof(IsBloatSection));
-        OnPropertyChanged(nameof(IsMaintenanceSection));
-        OnPropertyChanged(nameof(IsSecuritySection));
-        OnPropertyChanged(nameof(IsStartupSection));
-        OnPropertyChanged(nameof(IsTaskSection));
-        OnPropertyChanged(nameof(IsServiceSection));
-        OnPropertyChanged(nameof(IsUpdateSection));
-        OnPropertyChanged(nameof(IsSettingsSection));
-        OnPropertyChanged(nameof(IsHistorySection));
-        OnPropertyChanged(nameof(IsAppsSection));
-        OnPropertyChanged(nameof(IsBenchmarkSection));
-        OnPropertyChanged(nameof(IsScannerSection));
         OnPropertyChanged(nameof(IsPlaceholderSection));
 
         // Раздел «История» перечитывает хранилище при каждом открытии: события пишут

@@ -726,8 +726,8 @@ public sealed class PowerService
         }
 
         var output = status.Value ?? string.Empty;
-        var hasNumproc = ContainsBcdValue(output, "numproc");
-        var hasTruncate = ContainsBcdValue(output, "truncatememory");
+        var hasNumproc = PowerParsers.ContainsBcdValue(output, "numproc");
+        var hasTruncate = PowerParsers.ContainsBcdValue(output, "truncatememory");
 
         if (!hasNumproc && !hasTruncate)
         {
@@ -765,8 +765,8 @@ public sealed class PowerService
                 bootIdentifier = "{current}",
                 parameters = new
                 {
-                    numproc = hasNumproc ? ExtractBcdValue(output, "numproc") : null,
-                    truncatememory = hasTruncate ? ExtractBcdValue(output, "truncatememory") : null
+                    numproc = hasNumproc ? PowerParsers.ExtractBcdValue(output, "numproc") : null,
+                    truncatememory = hasTruncate ? PowerParsers.ExtractBcdValue(output, "truncatememory") : null
                 },
                 exportPath
             }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
@@ -810,7 +810,7 @@ public sealed class PowerService
         }
 
         var verifyOutput = verify.Value ?? string.Empty;
-        if (ContainsBcdValue(verifyOutput, "numproc") || ContainsBcdValue(verifyOutput, "truncatememory"))
+        if (PowerParsers.ContainsBcdValue(verifyOutput, "numproc") || PowerParsers.ContainsBcdValue(verifyOutput, "truncatememory"))
         {
             return Result.Failure("BCD: ограничения не сняты после удаления (проверка чтением не прошла).");
         }
@@ -849,8 +849,8 @@ public sealed class PowerService
         }
 
         var output = status.Value ?? string.Empty;
-        var numproc = ExtractBcdValue(output, "numproc");
-        var truncate = ExtractBcdValue(output, "truncatememory");
+        var numproc = PowerParsers.ExtractBcdValue(output, "numproc");
+        var truncate = PowerParsers.ExtractBcdValue(output, "truncatememory");
 
         var lines = new List<string>
         {
@@ -861,7 +861,7 @@ public sealed class PowerService
         // Источник — MSAcpi_ThermalZoneTemperature, не датчик CPU Package.
         // Название в UI должно отражать реальный источник.
         var temperature = await GetThermalZoneTemperatureAsync(ct).ConfigureAwait(false);
-        var formatted = FormatThermalZoneTemperature(temperature);
+        var formatted = PowerParsers.FormatThermalZoneTemperature(temperature);
         if (formatted is not null)
         {
             lines.Add("Температура по ACPI Thermal Zone: " + formatted);
@@ -874,42 +874,7 @@ public sealed class PowerService
         return Result<string>.Success(string.Join(Environment.NewLine, lines));
     }
 
-    // Сырой вывод ("ACPI\ThermalZone\TZ00_0: 27,9 C") → «27,9°» первой зоны.
-    // null — датчики не отвечают (не подставляем 0 °C).
-    private static string? FormatThermalZoneTemperature(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw) || raw.StartsWith('('))
-        {
-            return null;
-        }
 
-        var first = raw.Split('\n')[0].Trim();
-        var colon = first.LastIndexOf(':');
-        var value = (colon >= 0 ? first[(colon + 1)..] : first).Trim();
-        if (value.EndsWith(" C", StringComparison.Ordinal))
-        {
-            value = value[..^2].TrimEnd();
-        }
-
-        return value + "°";
-    }
-
-    private static string? ExtractBcdValue(string output, string valueName)
-    {
-        foreach (var line in output.Split('\n'))
-        {
-            var trimmed = line.TrimStart();
-            if (!trimmed.StartsWith(valueName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var parts = trimmed.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
-            return parts.Length > 1 ? parts[^1] : null;
-        }
-
-        return null;
-    }
 
     /// <summary>
     /// Температура ACPI Thermal Zone (не CPU Package).
@@ -949,38 +914,6 @@ public sealed class PowerService
 
     // ===================== Память и файловая система =====================
 
-    private static IReadOnlyList<RegistryTweak> ShortNames8dot3Tweak =>
-    [
-        new RegistryTweak(
-            RegistryHive.LocalMachine,
-            @"SYSTEM\CurrentControlSet\Control\FileSystem",
-            "NtfsDisable8dot3NameCreation",
-            RegistryValueKind.DWord,
-            1, 0)
-    ];
-
-    private static IReadOnlyList<RegistryTweak> LastAccessTweak =>
-    [
-        new RegistryTweak(
-            RegistryHive.LocalMachine,
-            @"SYSTEM\CurrentControlSet\Control\FileSystem",
-            "NtfsDisableLastAccessUpdate",
-            RegistryValueKind.DWord,
-            1, 0)
-    ];
-
-    private static IReadOnlyList<RegistryTweak> PrefetcherTweak =>
-    [
-        new RegistryTweak(
-            RegistryHive.LocalMachine,
-            @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters",
-            "EnablePrefetcher",
-            RegistryValueKind.DWord,
-            0, 3)
-    ];
-
-    // Сжатие памяти — состояние читается только через Get-MMAgent (в реестре его нет).
-    // Ошибка чтения → Failure (Unknown в UI), а не false/OFF.
     public async Task<Result<bool>> GetMemoryCompressionAsync(CancellationToken ct = default)
     {
         var result = await _runner
@@ -1017,357 +950,7 @@ public sealed class PowerService
             : Result.Failure("Не удалось переключить сжатие памяти (код " + result.Code + ").", result.Code);
     }
 
-    public Result Set8dot3NamesEnabled(bool enable)
-    {
-        var tweak = ShortNames8dot3Tweak[0] with { OffValue = enable ? 0 : 1 };
-        var result = _registry.Apply([tweak], BackupPath("8dot3names.json"));
-        return result.IsSuccess
-            ? Result.Success(enable
-                ? "Создание имён 8.3 включено (перезагрузка не требуется для новых файлов)."
-                : "Создание имён 8.3 отключено (полностью применится после перезагрузки).")
-            : result;
-    }
 
-    public Result SetLastAccessEnabled(bool enable)
-    {
-        var tweak = LastAccessTweak[0] with { OffValue = enable ? 0 : 1 };
-        var result = _registry.Apply([tweak], BackupPath("lastaccess.json"));
-        if (!result.IsSuccess)
-            return result;
-
-        // Повторное чтение: Success только если значение реально совпало с ожидаемым.
-        var info = GetLastAccessInfo();
-        var expectedDisabled = !enable;
-        var actualDisabled = info.State == SystemSettingState.Disabled;
-        if (info.State is SystemSettingState.Unknown)
-        {
-            return Result.Failure("Параметр записан, но состояние Last Access не удалось подтвердить чтением.");
-        }
-
-        if (actualDisabled != expectedDisabled)
-        {
-            return Result.Failure(
-                "Параметр Last Access записан, но effective state не совпал с ожидаемым. " +
-                "Возможно, требуется перезагрузка или права администратора.");
-        }
-
-        return Result.Success(enable
-            ? "Учёт времени последнего доступа включён."
-            : "Учёт времени последнего доступа отключён.");
-    }
-
-    public Result SetPrefetcherEnabled(bool enable)
-    {
-        var tweak = PrefetcherTweak[0] with { OffValue = enable ? 3 : 0 };
-        var result = _registry.Apply([tweak], BackupPath("prefetcher.json"));
-        return result.IsSuccess
-            ? Result.Success(enable ? "Prefetcher включён." : "Prefetcher отключён.")
-            : result;
-    }
-
-    /// <summary>
-    /// Полная модель 8.3: глобальный режим 0/1/2/3 и effective state.
-    /// Не сводит mode 2/3 к простому bool.
-    /// </summary>
-    public static ShortNamesInfo GetShortNamesInfo()
-    {
-        int? raw;
-        try
-        {
-            raw = ReadFileSystemDWord("NtfsDisable8dot3NameCreation");
-        }
-        catch
-        {
-            return new ShortNamesInfo(SystemSettingState.Unknown, ShortNameGlobalMode.Unknown, null);
-        }
-
-        if (raw is null)
-        {
-            // По умолчанию Windows: зависит от версии; на современных клиентах часто 2 (per-volume).
-            return new ShortNamesInfo(SystemSettingState.Unknown, ShortNameGlobalMode.Unknown, null);
-        }
-
-        var mode = MapShortNameGlobalMode(raw.Value);
-        var effective = MapShortNameEffective(mode);
-        return new ShortNamesInfo(effective, mode, VolumeStates: null);
-    }
-
-    /// <summary>
-    /// Как GetShortNamesInfo, но для PerVolume/DisabledExceptSystem опрашивает тома через fsutil 8dot3name query.
-    /// </summary>
-    public async Task<Result<ShortNamesInfo>> GetShortNamesInfoAsync(CancellationToken ct = default)
-    {
-        var baseInfo = GetShortNamesInfo();
-        if (baseInfo.GlobalMode is not (ShortNameGlobalMode.PerVolume or ShortNameGlobalMode.DisabledExceptSystem))
-        {
-            return Result<ShortNamesInfo>.Success(baseInfo);
-        }
-
-        try
-        {
-            var volumes = new List<(string Volume, bool Enabled)>();
-            foreach (var drive in DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady))
-            {
-                ct.ThrowIfCancellationRequested();
-                var root = drive.Name.TrimEnd('\\');
-                var query = await _runner
-                    .RunAsync("fsutil", ["8dot3name", "query", root], null, ct)
-                    .ConfigureAwait(false);
-                if (!query.IsSuccess || query.Value is null)
-                    continue;
-
-                var text = query.Value;
-                var enabled = true;
-                // "The volume state is: 0 (enabled)" / "1 (disabled)" — ищем цифру после state.
-                var markers = new[] { "volume state is:", "состояние тома:" };
-                var found = false;
-                foreach (var marker in markers)
-                {
-                    var idx = text.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-                    if (idx < 0) continue;
-                    var tail = text[(idx + marker.Length)..];
-                    var digit = tail.SkipWhile(c => !char.IsDigit(c)).FirstOrDefault();
-                    if (digit == '0') { enabled = true; found = true; break; }
-                    if (digit == '1') { enabled = false; found = true; break; }
-                }
-
-                if (!found)
-                {
-                    enabled = text.Contains("enabled", StringComparison.OrdinalIgnoreCase)
-                        && !text.Contains("disabled", StringComparison.OrdinalIgnoreCase);
-                }
-
-                volumes.Add((root + "\\", enabled));
-            }
-
-            var effective = baseInfo.EffectiveState;
-            if (volumes.Count > 0)
-            {
-                var allOn = volumes.All(v => v.Enabled);
-                var allOff = volumes.All(v => !v.Enabled);
-                effective = allOn ? SystemSettingState.Enabled
-                    : allOff ? SystemSettingState.Disabled
-                    : SystemSettingState.Mixed;
-            }
-
-            return Result<ShortNamesInfo>.Success(new ShortNamesInfo(
-                effective,
-                baseInfo.GlobalMode,
-                volumes.Count > 0 ? volumes : null));
-        }
-        catch (OperationCanceledException)
-        {
-            return Result<ShortNamesInfo>.Failure("Отменено", -1);
-        }
-        catch
-        {
-            return Result<ShortNamesInfo>.Success(baseInfo);
-        }
-    }
-
-    internal static ShortNameGlobalMode MapShortNameGlobalMode(int raw) =>
-        raw switch
-        {
-            0 => ShortNameGlobalMode.EnabledForAll,
-            1 => ShortNameGlobalMode.DisabledForAll,
-            2 => ShortNameGlobalMode.PerVolume,
-            3 => ShortNameGlobalMode.DisabledExceptSystem,
-            _ => ShortNameGlobalMode.Unknown
-        };
-
-    internal static SystemSettingState MapShortNameEffective(ShortNameGlobalMode mode) =>
-        mode switch
-        {
-            ShortNameGlobalMode.EnabledForAll => SystemSettingState.Enabled,
-            ShortNameGlobalMode.DisabledForAll => SystemSettingState.Disabled,
-            ShortNameGlobalMode.PerVolume => SystemSettingState.Mixed,
-            ShortNameGlobalMode.DisabledExceptSystem => SystemSettingState.PartiallyEnabled,
-            _ => SystemSettingState.Unknown
-        };
-
-    /// <summary>Совместимость: true только при однозначно «включено для всех» (mode 0).</summary>
-    public static bool Is8dot3Enabled()
-    {
-        var info = GetShortNamesInfo();
-        return info.GlobalMode == ShortNameGlobalMode.EnabledForAll;
-    }
-
-    /// <summary>
-    /// Last Access: NtfsDisableLastAccessUpdate (и при возможности fsutil).
-    /// Значения (Microsoft): 0 = user, updates on; 1 = user, updates off;
-    /// 2 = system managed, updates on; 3 = system managed, updates off.
-    /// Младший бит 1 → updates disabled. Не сводим ошибку к false.
-    /// </summary>
-    public static LastAccessInfo GetLastAccessInfo()
-    {
-        int? value;
-        try
-        {
-            value = ReadFileSystemDWord("NtfsDisableLastAccessUpdate");
-        }
-        catch
-        {
-            return new LastAccessInfo(SystemSettingState.Unknown, null, RequiresReboot: false);
-        }
-
-        if (value is null)
-            return new LastAccessInfo(SystemSettingState.Unknown, null, RequiresReboot: false);
-
-        // Младший бит: 0 = last access updates enabled, 1 = disabled.
-        var disabled = (value.Value & 1) != 0;
-        // На современных Windows изменение обычно применяется без reboot;
-        // RequiresReboot оставляем false при чистом чтении. После Set* UI
-        // может выставить PendingReboot, если нужно подчеркнуть осторожность.
-        return new LastAccessInfo(
-            disabled ? SystemSettingState.Disabled : SystemSettingState.Enabled,
-            value,
-            RequiresReboot: false);
-    }
-
-    /// <summary>
-    /// Дополняет GetLastAccessInfo опросом <c>fsutil behavior query disablelastaccess</c>.
-    /// Если registry и fsutil расходятся — PendingReboot / Mixed.
-    /// </summary>
-    public async Task<Result<LastAccessInfo>> GetLastAccessInfoAsync(CancellationToken ct = default)
-    {
-        var baseInfo = GetLastAccessInfo();
-        try
-        {
-            var fsutil = await _runner
-                .RunAsync("fsutil", ["behavior", "query", "disablelastaccess"], null, ct)
-                .ConfigureAwait(false);
-
-            if (!fsutil.IsSuccess || string.IsNullOrWhiteSpace(fsutil.Value))
-            {
-                // Registry-only уже есть; fsutil недоступен — не превращаем в Unknown.
-                return Result<LastAccessInfo>.Success(baseInfo);
-            }
-
-            var text = fsutil.Value;
-            // Типичный вывод: "DisableLastAccess = 1" или локализованный аналог.
-            int? fsutilValue = null;
-            foreach (var line in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
-            {
-                var eq = line.IndexOf('=');
-                if (eq < 0) continue;
-                var rhs = line[(eq + 1)..].Trim();
-                if (int.TryParse(rhs, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
-                {
-                    fsutilValue = n;
-                    break;
-                }
-            }
-
-            if (fsutilValue is null)
-                return Result<LastAccessInfo>.Success(baseInfo);
-
-            var regDisabled = baseInfo.RawValue is int rv && (rv & 1) != 0;
-            var fsDisabled = (fsutilValue.Value & 1) != 0;
-
-            if (baseInfo.State == SystemSettingState.Unknown)
-            {
-                return Result<LastAccessInfo>.Success(new LastAccessInfo(
-                    fsDisabled ? SystemSettingState.Disabled : SystemSettingState.Enabled,
-                    fsutilValue,
-                    RequiresReboot: false));
-            }
-
-            if (regDisabled != fsDisabled)
-            {
-                // Реестр уже новый, runtime (fsutil) ещё старый — типичный PendingReboot.
-                return Result<LastAccessInfo>.Success(new LastAccessInfo(
-                    SystemSettingState.PendingReboot,
-                    baseInfo.RawValue ?? fsutilValue,
-                    RequiresReboot: true));
-            }
-
-            return Result<LastAccessInfo>.Success(baseInfo);
-        }
-        catch (OperationCanceledException)
-        {
-            return Result<LastAccessInfo>.Failure("Отменено", -1);
-        }
-        catch
-        {
-            return Result<LastAccessInfo>.Success(baseInfo);
-        }
-    }
-
-    public static bool IsLastAccessEnabled()
-    {
-        var info = GetLastAccessInfo();
-        return info.State == SystemSettingState.Enabled;
-    }
-
-    public static bool? TryIsPrefetcherEnabled()
-    {
-        var value = ReadPrefetcherDWord("EnablePrefetcher");
-        if (value is null) return null;
-        return value != 0;
-    }
-
-    public static bool IsPrefetcherEnabled() => TryIsPrefetcherEnabled() ?? true;
-
-    public static bool? TryIsSysMainEnabled()
-    {
-        try
-        {
-            using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\SysMain");
-            return key?.GetValue("Start") switch
-            {
-                int start => start != 4,
-                null => null,
-                _ => null
-            };
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    public static bool IsSysMainEnabled() => TryIsSysMainEnabled() ?? true;
-
-    private static int? ReadFileSystemDWord(string valueName)
-    {
-        try
-        {
-            using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\FileSystem");
-            return key?.GetValue(valueName) as int?;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static int? ReadPrefetcherDWord(string valueName)
-    {
-        try
-        {
-            using var key = Registry.LocalMachine.OpenSubKey(
-                @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters");
-            return key?.GetValue(valueName) as int?;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static bool ContainsBcdValue(string output, string valueName)
-    {
-        foreach (var line in output.Split('\n'))
-        {
-            var trimmed = line.TrimStart();
-            if (trimmed.StartsWith(valueName + " ", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     private static string BackupPath(string fileName) => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -1428,4 +1011,24 @@ public sealed class PowerService
             _logger.Warn("POWER | plans.json save failed | " + exception.Message);
         }
     }
+    // ===================== Фасад зоны файловых твиков (FileSystemTweaks, п. 13) =====================
+
+    private FileSystemTweaks? _fileSystemTweaks;
+    private FileSystemTweaks FileSystem => _fileSystemTweaks ??= new(_logger, _runner, _registry);
+
+    public Result Set8dot3NamesEnabled(bool enable) => FileSystem.Set8dot3NamesEnabled(enable);
+    public Result SetLastAccessEnabled(bool enable) => FileSystem.SetLastAccessEnabled(enable);
+    public Result SetPrefetcherEnabled(bool enable) => FileSystem.SetPrefetcherEnabled(enable);
+    public static ShortNamesInfo GetShortNamesInfo() => FileSystemTweaks.GetShortNamesInfo();
+    public Task<Result<ShortNamesInfo>> GetShortNamesInfoAsync(CancellationToken ct = default) => FileSystem.GetShortNamesInfoAsync(ct);
+    public static LastAccessInfo GetLastAccessInfo() => FileSystemTweaks.GetLastAccessInfo();
+    public Task<Result<LastAccessInfo>> GetLastAccessInfoAsync(CancellationToken ct = default) => FileSystem.GetLastAccessInfoAsync(ct);
+    public static bool Is8dot3Enabled() => FileSystemTweaks.Is8dot3Enabled();
+    public static bool IsLastAccessEnabled() => FileSystemTweaks.IsLastAccessEnabled();
+    public static bool? TryIsPrefetcherEnabled() => FileSystemTweaks.TryIsPrefetcherEnabled();
+    public static bool IsPrefetcherEnabled() => FileSystemTweaks.IsPrefetcherEnabled();
+    public static bool? TryIsSysMainEnabled() => FileSystemTweaks.TryIsSysMainEnabled();
+    public static bool IsSysMainEnabled() => FileSystemTweaks.IsSysMainEnabled();
+    internal static ShortNameGlobalMode MapShortNameGlobalMode(int raw) => FileSystemTweaks.MapShortNameGlobalMode(raw);
+    internal static SystemSettingState MapShortNameEffective(ShortNameGlobalMode mode) => FileSystemTweaks.MapShortNameEffective(mode);
 }
