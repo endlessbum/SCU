@@ -27,12 +27,8 @@ logs/
 *.log
 
 # Test results
-SCU.Tests/
 %TEMP%/
 TestResults/
-
-docs/
-.github/
 .zcode/
 installer/
 

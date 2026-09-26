@@ -64,8 +64,16 @@ jobs:
         shell: pwsh
 
       - name: Run tests
-        run: dotnet test SCU.Tests/SCU.Tests.csproj -v q --nologo
+        run: dotnet test SCU.Tests/SCU.Tests.csproj -v n --nologo --logger trx
         shell: pwsh
+
+      - name: Upload test results (on any outcome)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: SCU.Tests/TestResults/
+          if-no-files-found: ignore
 
       - name: Collect artifacts
         run: |
