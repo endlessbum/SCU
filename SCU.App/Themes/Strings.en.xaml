@@ -5,6 +5,12 @@
     <!-- English UI strings. Keys are identical to Strings.ru.xaml; the dictionary is swapped by Localization.SetLanguage. -->
 
     <!-- ===================== Navigation (sections 0..18) ===================== -->
+    <sys:String x:Key="S_Group_Overview">Overview</sys:String>
+    <sys:String x:Key="S_Group_Cleanup">Cleanup and maintenance</sys:String>
+    <sys:String x:Key="S_Group_Privacy">Privacy and protection</sys:String>
+    <sys:String x:Key="S_Group_System">Windows system</sys:String>
+    <sys:String x:Key="S_Group_Tuning">Behaviour and performance</sys:String>
+    <sys:String x:Key="S_Group_App">Application</sys:String>
     <sys:String x:Key="S_Section00_Title">Home</sys:String>
     <sys:String x:Key="S_Section01_Title">System Information</sys:String>
     <sys:String x:Key="S_Section01_Desc">Summary of the OS, hardware and environment</sys:String>

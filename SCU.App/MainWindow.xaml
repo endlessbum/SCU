@@ -105,12 +105,33 @@
                         BorderBrush="{DynamicResource GlassStrokeBrush}"
                         BorderThickness="1"
                         CornerRadius="18">
+                    <Border.Resources>
+                        <!-- П. 22 аудита: группировка разделов в сайдбаре. -->
+                        <CollectionViewSource x:Key="GroupedSections" Source="{Binding Sections}">
+                            <CollectionViewSource.GroupDescriptions>
+                                <PropertyGroupDescription PropertyName="GroupTitle" />
+                            </CollectionViewSource.GroupDescriptions>
+                        </CollectionViewSource>
+                    </Border.Resources>
                     <ListBox x:Name="SidebarList"
                              Margin="4,6,4,8"
-                             ItemsSource="{Binding Sections}"
+                             ItemsSource="{Binding Source={StaticResource GroupedSections}}"
                              SelectedItem="{Binding CurrentSection, Mode=TwoWay}"
                              ItemContainerStyle="{StaticResource NavListItem}"
                              VirtualizingPanel.ScrollUnit="Pixel">
+                        <ListBox.GroupStyle>
+                            <GroupStyle>
+                                <GroupStyle.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}"
+                                                   Margin="20,12,0,4"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TertiaryTextBrush}"
+                                                   FontWeight="SemiBold" />
+                                    </DataTemplate>
+                                </GroupStyle.HeaderTemplate>
+                            </GroupStyle>
+                        </ListBox.GroupStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding Title}"

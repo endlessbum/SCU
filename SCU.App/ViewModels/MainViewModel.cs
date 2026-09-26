@@ -19,12 +19,14 @@ namespace SCU.ViewModels;
 // ViewModel (уведомление через L.LanguageChanged).
 public sealed class SectionItem : INotifyPropertyChanged
 {
-    public SectionItem(int number, string titleKey, string descriptionKey, string glyph)
+    public SectionItem(int number, string titleKey, string descriptionKey, string glyph,
+        string? groupKey = null)
     {
         Number = number;
         Glyph = glyph;
         _titleKey = titleKey;
         _descriptionKey = descriptionKey;
+        _groupKey = groupKey;
         // Раздел живёт столько же, сколько приложение — отписка не требуется.
         L.LanguageChanged += RefreshTexts;
         // Язык применяется до создания окна (событие уже прошло) — читаем тексты сами.
@@ -39,9 +41,11 @@ public sealed class SectionItem : INotifyPropertyChanged
 
     private readonly string _titleKey;
     private readonly string _descriptionKey;
+    private readonly string? _groupKey;
 
     private string _title = string.Empty;
     private string _description = string.Empty;
+    private string _groupTitle = string.Empty;
 
     public string Title
     {
@@ -63,10 +67,22 @@ public sealed class SectionItem : INotifyPropertyChanged
         }
     }
 
+    // П. 22 аудита: группа раздела в сайдбаре (пустая — без группировки).
+    public string GroupTitle
+    {
+        get => _groupTitle;
+        private set
+        {
+            _groupTitle = value;
+            OnPropertyChanged(nameof(GroupTitle));
+        }
+    }
+
     private void RefreshTexts()
     {
         Title = Resolve(_titleKey);
         Description = Resolve(_descriptionKey);
+        GroupTitle = _groupKey is null ? string.Empty : Resolve(_groupKey);
     }
 
     // Ключ лежит в Themes/Strings.*.xaml: словарь подменяется при смене языка,
@@ -91,35 +107,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         Sections =
         [
-            new SectionItem(0, "S_Section00_Title", "S_Section00_Desc", "\uE9D9"),
-            // Раздел 20 «Бэнчмарк»: визуально сразу после «Главной», номер новый —
-            // существующие номера 1-19 завязаны на карточки и флаги.
-            new SectionItem(20, "S_Section20_Title", "S_Section20_Desc", "\uE9D2"),
-            new SectionItem(1, "S_Section01_Title", "S_Section01_Desc", "\uE946"),
-            new SectionItem(2, "S_Section02_Title", "S_Section02_Desc", "\uE719"),
-            new SectionItem(3, "S_Section03_Title", "S_Section03_Desc", "\uE74D"),
-            new SectionItem(4, "S_Section04_Title", "S_Section04_Desc", "\uE711"),
-            new SectionItem(5, "S_Section05_Title", "S_Section05_Desc", "\uE72E"),
-            new SectionItem(6, "S_Section06_Title", "S_Section06_Desc", "\uE713"),
-            // Раздел 19 «Приложения» стоит в меню после «Служб Windows», но номером
-            // идёт в конец: существующие номера завязаны на карточки Dashboard и флаги.
-            new SectionItem(19, "S_Section19_Title", "S_Section19_Desc", "\uE71D"),
-            new SectionItem(7, "S_Section07_Title", "S_Section07_Desc", "\uE768"),
-            new SectionItem(8, "S_Section08_Title", "S_Section08_Desc", "\uE7E8"),
-            new SectionItem(9, "S_Section09_Title", "S_Section09_Desc", "\uE701"),
-            new SectionItem(10, "S_Section10_Title", "S_Section10_Desc", "\uE8B7"),
-            new SectionItem(11, "S_Section11_Title", "S_Section11_Desc", "\uE7FC"),
-            new SectionItem(12, "S_Section12_Title", "S_Section12_Desc", "\uE721"),
-            new SectionItem(13, "S_Section13_Title", "S_Section13_Desc", "\uE72E"),
-            // Раздел 21 «Сканер»: номер новый (0-20 заняты), в меню стоит
-            // сразу после «Безопасности (UAC)».
-            new SectionItem(21, "S_Section21_Title", "S_Section21_Desc", "\uEA18"),
-            new SectionItem(15, "S_Section15_Title", "S_Section15_Desc", "\uE823"),
-            new SectionItem(16, "S_Section16_Title", "S_Section16_Desc", "\uE895"),
-            // Раздел 18 добавлен в конец: существующие номера не меняются — на них
-            // завязаны навигационные номера карточек Dashboard и флаги Is*Section.
-            new SectionItem(18, "S_Section18_Title", "S_Section18_Desc", "\uE81C"),
-            new SectionItem(17, "S_Section17_Title", "S_Section17_Desc", "\uE713")
+            new SectionItem(0, "S_Section00_Title", "S_Section00_Desc", "\uE9D9", "S_Group_Overview"),
+            new SectionItem(20, "S_Section20_Title", "S_Section20_Desc", "\uE9D2", "S_Group_Overview"),
+            new SectionItem(1, "S_Section01_Title", "S_Section01_Desc", "\uE946", "S_Group_Overview"),
+            new SectionItem(3, "S_Section03_Title", "S_Section03_Desc", "\uE74D", "S_Group_Cleanup"),
+            new SectionItem(4, "S_Section04_Title", "S_Section04_Desc", "\uE711", "S_Group_Cleanup"),
+            new SectionItem(12, "S_Section12_Title", "S_Section12_Desc", "\uE721", "S_Group_Cleanup"),
+            new SectionItem(2, "S_Section02_Title", "S_Section02_Desc", "\uE719", "S_Group_Cleanup"),
+            new SectionItem(5, "S_Section05_Title", "S_Section05_Desc", "\uE72E", "S_Group_Privacy"),
+            new SectionItem(13, "S_Section13_Title", "S_Section13_Desc", "\uE72E", "S_Group_Privacy"),
+            new SectionItem(21, "S_Section21_Title", "S_Section21_Desc", "\uEA18", "S_Group_Privacy"),
+            new SectionItem(6, "S_Section06_Title", "S_Section06_Desc", "\uE713", "S_Group_System"),
+            new SectionItem(19, "S_Section19_Title", "S_Section19_Desc", "\uE71D", "S_Group_System"),
+            new SectionItem(7, "S_Section07_Title", "S_Section07_Desc", "\uE768", "S_Group_System"),
+            new SectionItem(15, "S_Section15_Title", "S_Section15_Desc", "\uE823", "S_Group_System"),
+            new SectionItem(16, "S_Section16_Title", "S_Section16_Desc", "\uE895", "S_Group_System"),
+            new SectionItem(8, "S_Section08_Title", "S_Section08_Desc", "\uE7E8", "S_Group_Tuning"),
+            new SectionItem(9, "S_Section09_Title", "S_Section09_Desc", "\uE701", "S_Group_Tuning"),
+            new SectionItem(10, "S_Section10_Title", "S_Section10_Desc", "\uE8B7", "S_Group_Tuning"),
+            new SectionItem(11, "S_Section11_Title", "S_Section11_Desc", "\uE7FC", "S_Group_Tuning"),
+            new SectionItem(18, "S_Section18_Title", "S_Section18_Desc", "\uE81C", "S_Group_App"),
+            new SectionItem(17, "S_Section17_Title", "S_Section17_Desc", "\uE713", "S_Group_App"),
         ];
 
         IsAdmin = Elevation.IsAdmin();
