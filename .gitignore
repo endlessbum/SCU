@@ -5,6 +5,7 @@ publish/
 artifacts/
 build/
 out/
+build/
 
 # C++ промежуточные артефакты
 *.obj
