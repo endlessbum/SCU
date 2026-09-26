@@ -115,7 +115,9 @@ if ($signingEnabled) {
             Where-Object { $_.FullName -notmatch 'uild' } |
             Select-Object -First 1
         if ($path) {
-            & $signtool verify /pa /n 'SCU Code Signing' $path.FullName
+            # signtool verify не принимает /n (он только у sign); подписанта
+            # проверяем по отпечатку из списка сертификатов файла.
+            & $signtool verify /pa $path.FullName
             if ($LASTEXITCODE -ne 0) { throw "signature verification failed: $($path.FullName)" }
             Write-Host "verified: $($path.FullName)"
         }
