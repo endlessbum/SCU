@@ -36,5 +36,4 @@ installer/
 SecurityScanner/signing/*.pfx
 SecurityScanner/signing/*.pvk
 
-Версия проекта всегда major.minor.patch.txt
 SecurityScanner/tools/database-builder/db-signing-private.pem*.exe
