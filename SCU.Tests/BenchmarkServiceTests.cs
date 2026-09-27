@@ -23,8 +23,8 @@ public class BenchmarkServiceTests
             TasksTotal = 15,
             TasksDisabled = 0,
             ActivePlanGuid = "381b4222-f694-41f0-9685-ff5bb260df2e",
-            UacState = SystemStateService.UacStandard,
-            PrivacyAppliedCount = 6,
+            UacState = SystemStateService.UacWeakened,
+            PrivacyAppliedCount = 0,
             PrivacyTotal = 6,
             UpdateBlocked = false,
             UpdatePaused = false,
@@ -49,11 +49,21 @@ public class BenchmarkServiceTests
     }
 
     [Fact]
-    public void Evaluate_UacWeakened_SecurityZeroAndPotentialReflectsGap()
+    public void Evaluate_UacWeakened_SecurityFull()
     {
+        // Отключенный/ослабленный UAC — плюс по новой политике индекса.
         var result = Service.Evaluate(Snapshot(s => s.UacState = SystemStateService.UacWeakened));
 
-        var uac = Assert.Single(result.Metrics, m => m.Id == "security.uac_standard");
+        var uac = Assert.Single(result.Metrics, m => m.Id == "security.uac_disabled");
+        Assert.Equal(1.0, uac.Conformity);
+    }
+
+    [Fact]
+    public void Evaluate_UacStandard_SecurityZeroAndPotentialReflectsGap()
+    {
+        var result = Service.Evaluate(Snapshot(s => s.UacState = SystemStateService.UacStandard));
+
+        var uac = Assert.Single(result.Metrics, m => m.Id == "security.uac_disabled");
         Assert.Equal(0.0, uac.Conformity);
         Assert.True(result.Index < 100);
         var expectedGap = (int)Math.Round(uac.Weight * (1.0 - uac.Conformity) * 1.0);
@@ -66,7 +76,7 @@ public class BenchmarkServiceTests
         // Область не прочитана: метрика UAC уходит в Unknown.
         var result = Service.Evaluate(Snapshot(s => s.AreaErrors[SystemStateService.AreaSecurity] = "отказ в доступе"));
 
-        var uac = Assert.Single(result.Metrics, m => m.Id == "security.uac_standard");
+        var uac = Assert.Single(result.Metrics, m => m.Id == "security.uac_disabled");
         Assert.Equal(BenchmarkMetricState.Unknown, uac.State);
 
         // Индекс считается только по известным метрикам — идеальные остальные дают 100.
@@ -88,7 +98,7 @@ public class BenchmarkServiceTests
     }
 
     [Fact]
-    public void Evaluate_PartialPrivacyConformity_ScalesIndex()
+    public void Evaluate_PartialPrivacyEnabled_ScalesIndex()
     {
         var half = Service.Evaluate(Snapshot(s =>
         {
@@ -96,7 +106,7 @@ public class BenchmarkServiceTests
             s.PrivacyTotal = 6;
         }));
 
-        var privacy = Assert.Single(half.Metrics, m => m.Id == "privacy.applied");
+        var privacy = Assert.Single(half.Metrics, m => m.Id == "privacy.enabled");
         Assert.Equal(0.5, privacy.Conformity);
         Assert.True(half.Index < 100);
         Assert.True(half.Potential > 0);
@@ -113,6 +123,17 @@ public class BenchmarkServiceTests
         var disk = Assert.Single(result.Metrics, m => m.Id == "disk.free_system");
         Assert.Equal(0.5, disk.Conformity, precision: 2);
         Assert.True(result.Index < 100);
+    }
+
+    [Fact]
+    public void Evaluate_AllPrivacyApplied_EnabledZero()
+    {
+        // Все категории применены (тумблеры OFF) — включённых нет, очков нет.
+        var none = Service.Evaluate(Snapshot(s => s.PrivacyAppliedCount = 6));
+
+        var privacy = Assert.Single(none.Metrics, m => m.Id == "privacy.enabled");
+        Assert.Equal(0.0, privacy.Conformity);
+        Assert.Equal(0, privacy.NumericValue);
     }
 
     [Fact]

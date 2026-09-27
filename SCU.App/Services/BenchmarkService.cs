@@ -43,8 +43,8 @@ public sealed class BenchmarkService
         [SystemStateService.AreaServices] = ["services.readable"],
         [SystemStateService.AreaTasks] = ["tasks.readable"],
         [SystemStateService.AreaPower] = ["power.readable"],
-        [SystemStateService.AreaSecurity] = ["security.uac_standard"],
-        [SystemStateService.AreaPrivacy] = ["privacy.applied"],
+        [SystemStateService.AreaSecurity] = ["security.uac_disabled"],
+        [SystemStateService.AreaPrivacy] = ["privacy.enabled"],
         [SystemStateService.AreaUpdates] = ["updates.readable"],
         [SystemStateService.AreaNetwork] = ["network.readable"]
     };
@@ -59,8 +59,8 @@ public sealed class BenchmarkService
             EvaluateServicesReadable(snapshot),
             EvaluateTasksReadable(snapshot),
             EvaluatePowerReadable(snapshot),
-            EvaluateUacStandard(snapshot),
-            EvaluatePrivacyApplied(snapshot),
+            EvaluateUacDisabled(snapshot),
+            EvaluatePrivacyEnabled(snapshot),
             EvaluateUpdatesReadable(snapshot),
             EvaluateNetworkReadable(snapshot)
         };
@@ -201,27 +201,31 @@ public sealed class BenchmarkService
             : Metric("power.readable", CategoryPower, 2, BenchmarkMetricState.Ok, 1,
                 textValue: snapshot.ActivePlanGuid);
 
-    // Безопасность: UAC стандартного уровня (weakened — отклонение универсальной политики).
-    private static BenchmarkMetricResult EvaluateUacStandard(SystemSnapshot snapshot) =>
+    // Безопасность: UAC отключён/ослаблен — меньше запросов повышения прав
+    // (отключенный UAC считается плюсом, стандартный уровень — отклонение).
+    private static BenchmarkMetricResult EvaluateUacDisabled(SystemSnapshot snapshot) =>
         snapshot.UacState switch
         {
-            SystemStateService.UacStandard => Metric("security.uac_standard", CategorySecurity, 8,
-                BenchmarkMetricState.Ok, 1, textValue: "standard"),
-            SystemStateService.UacWeakened => Metric("security.uac_standard", CategorySecurity, 8,
-                BenchmarkMetricState.Ok, 0, textValue: "weakened"),
-            _ => Metric("security.uac_standard", CategorySecurity, 8, BenchmarkMetricState.Unknown)
+            SystemStateService.UacWeakened => Metric("security.uac_disabled", CategorySecurity, 8,
+                BenchmarkMetricState.Ok, 1, textValue: "weakened"),
+            SystemStateService.UacStandard => Metric("security.uac_disabled", CategorySecurity, 8,
+                BenchmarkMetricState.Ok, 0, textValue: "standard"),
+            _ => Metric("security.uac_disabled", CategorySecurity, 8, BenchmarkMetricState.Unknown)
         };
 
-    // Приватность: доля применённых категорий (частичное соответствие).
-    private static BenchmarkMetricResult EvaluatePrivacyApplied(SystemSnapshot snapshot)
+    // Приватность: доля ВКЛЮЧЁННЫХ переключателей (частичное соответствие).
+    // Включённый тумблер категории — плюс; применённые (отключенные) категории
+    // очков не дают.
+    private static BenchmarkMetricResult EvaluatePrivacyEnabled(SystemSnapshot snapshot)
     {
         if (snapshot.PrivacyTotal is not { } total || total == 0 || snapshot.PrivacyAppliedCount is not { } applied)
         {
-            return Metric("privacy.applied", CategoryPrivacy, 6, BenchmarkMetricState.Unknown);
+            return Metric("privacy.enabled", CategoryPrivacy, 6, BenchmarkMetricState.Unknown);
         }
 
-        return Metric("privacy.applied", CategoryPrivacy, 6, BenchmarkMetricState.Ok,
-            (double)applied / total, numericValue: applied,
+        var enabled = Math.Max(0, total - applied);
+        return Metric("privacy.enabled", CategoryPrivacy, 6, BenchmarkMetricState.Ok,
+            (double)enabled / total, numericValue: enabled,
             textValue: total.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 

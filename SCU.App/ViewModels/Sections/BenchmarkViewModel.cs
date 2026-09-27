@@ -370,8 +370,8 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
         "services.readable" => 6,         // Службы
         "tasks.readable" => 15,           // Задачи
         "power.readable" => 8,            // Питание
-        "security.uac_standard" => 13,    // Безопасность
-        "privacy.applied" => 5,           // Приватность
+        "security.uac_disabled" => 13,    // Безопасность
+        "privacy.enabled" => 5,           // Приватность
         "updates.readable" => 16,         // Обновления
         "network.readable" => 9,          // Сеть
         "system.read" => 1,               // Информация о системе
@@ -385,8 +385,8 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
         "services.readable" => L.T("Службы контрольного набора читаются без ошибок — их состояние можно менять и проверять."),
         "tasks.readable" => L.T("Задачи планировщика контрольного набора прочитаны."),
         "power.readable" => L.T("Активная схема питания определена; управляется в разделе «Питание»."),
-        "security.uac_standard" => L.T("Контроль учётных записей на стандартном уровне. Ослабленный UAC — отклонение универсальной политики."),
-        "privacy.applied" => L.T("Доля применённых категорий приватности. Управляется в разделе «Приватность»."),
+        "security.uac_disabled" => L.T("UAC отключён или ослаблен — меньше запросов на повышение прав. Управляется в разделе «Безопасность»."),
+        "privacy.enabled" => L.T("Доля включённых переключателей в разделе «Приватность и телеметрия»."),
         "updates.readable" => L.T("Состояние службы обновлений определено (блокировка/пауза — осознанные настройки)."),
         "network.readable" => L.T("Сетевые параметры прочитаны; управляются в разделе «Сеть»."),
         "system.read" => L.T("Базовые сведения о системе прочитаны."),
@@ -463,13 +463,13 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
         "services.readable" => metric.NumericValue is { } ok && metric.TextValue is { } total
             ? ok.ToString(CultureInfo.CurrentCulture) + " / " + total
             : string.Empty,
-        "privacy.applied" => metric.NumericValue is { } applied && metric.TextValue is { } total2
-            ? applied.ToString(CultureInfo.CurrentCulture) + " / " + total2
+        "privacy.enabled" => metric.NumericValue is { } enabled && metric.TextValue is { } total2
+            ? enabled.ToString(CultureInfo.CurrentCulture) + " / " + total2
             : string.Empty,
-        "security.uac_standard" => metric.TextValue switch
+        "security.uac_disabled" => metric.TextValue switch
         {
             "standard" => L.T("стандартный"),
-            "weakened" => L.T("ослабленный"),
+            "weakened" => L.T("отключён"),
             _ => metric.TextValue ?? string.Empty
         },
         "power.readable" or "updates.readable" or "network.readable" or "tasks.readable" =>
@@ -487,8 +487,8 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
         "services.readable" => L.T("Службы доступны для управления"),
         "tasks.readable" => L.T("Задачи доступны для управления"),
         "power.readable" => L.T("Схема питания прочитана"),
-        "security.uac_standard" => L.T("UAC — стандартный уровень"),
-        "privacy.applied" => L.T("Настройки приватности применены"),
+        "security.uac_disabled" => L.T("UAC отключён"),
+        "privacy.enabled" => L.T("Переключатели приватности включены"),
         "updates.readable" => L.T("Состояние обновлений прочитано"),
         "network.readable" => L.T("Сетевые параметры прочитаны"),
         _ => id
