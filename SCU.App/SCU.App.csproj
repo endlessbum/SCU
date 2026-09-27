@@ -19,11 +19,12 @@
     <RootNamespace>SCU</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <!-- Версия сборки: показывается в «Настройки → О приложении» (три части). -->
-    <Version>2.1.1</Version>
+    <Version>2.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <PackageReference Include="System.Management" Version="10.0.12" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.12" />
   </ItemGroup>
@@ -83,16 +84,11 @@
        (ScannerRunner ищет по AppContext.BaseDirectory; setup.iss пакует
        publish\* рекурсивно). -->
   <Target Name="PublishScannerRuntime" AfterTargets="Publish">
-    <Copy SourceFiles="..\SecurityScanner\out\Release\ScannerCore.exe"
-          DestinationFolder="$(PublishDir)"
-          SkipUnchangedFiles="true"
-          Condition="Exists('..\SecurityScanner\out\Release\ScannerCore.exe')" />
+    <Copy SourceFiles="..\SecurityScanner\out\Release\ScannerCore.exe" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="Exists('..\SecurityScanner\out\Release\ScannerCore.exe')" />
     <ItemGroup>
       <_ScannerDatabase Include="..\SecurityScanner\database\**\*.*" />
     </ItemGroup>
-    <Copy SourceFiles="@(_ScannerDatabase)"
-          DestinationFiles="@(_ScannerDatabase -> '$(PublishDir)security\database\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_ScannerDatabase)" DestinationFiles="@(_ScannerDatabase -> '$(PublishDir)security\database\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

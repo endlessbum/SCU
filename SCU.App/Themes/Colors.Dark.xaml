@@ -4,8 +4,8 @@
     <!--
       Тёмная тема: дизайн-система iOS 27 / Liquid Glass.
       Набор ключей идентичен Colors.Light.xaml — подмена словаря выполняется ThemeManager'ом.
-      Поверхностные кисти (glass/control/popup) здесь — значения режима «Прозрачный»;
-      ThemeManager перекрывает их при выборе «Матовый» (см. ApplySurfaceBrushes).
+      Поверхностные кисти (glass/control/popup) здесь — значения режима «Тусклый»;
+      ThemeManager перекрывает их при выборе «Насыщенный» (см. ApplySurfaceBrushes).
       Акцентные кисти — fallback; при запуске ThemeManager подставляет акцент из настроек.
     -->
 

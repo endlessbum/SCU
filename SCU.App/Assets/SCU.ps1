@@ -477,7 +477,11 @@ switch ($Action.ToLowerInvariant()) {
             'News' = @('BingNews'); 'Teams' = @('MSTeams'); 'ToDo' = @('Todos');
             'Outlook' = @('OutlookForWindows'); 'Power' = @('PowerAutomateDesktop'); 'Quick' = @('QuickAssist');
             'Sol' = @('SolitaireCollection'); 'Sound' = @('WindowsSoundRecorder'); 'Sticky' = @('StickyNotes');
-            'Store' = @('WindowsStore', 'StorePurchaseApp'); 'Xbox' = @('Xbox', 'GamingApp')
+            'Store' = @('WindowsStore', 'StorePurchaseApp');
+            # Xbox: только съёмные компоненты (совпадает с AppxRemove Names). Общий шаблон
+            # 'Xbox' ловил несъёмный системный XboxGameCallableUI — после удаления всех
+            # компонентов скан вечно показывал «установлено».
+            'Xbox' = @('XboxApp', 'GamingApp', 'XboxGamingOverlay', 'XboxGameOverlay', 'XboxIdentityProvider', 'XboxSpeechToTextOverlay', 'Xbox.TCUI')
         }
         try { 
             $installed = @(Get-AppxPackage -AllUsers -ErrorAction Stop) 
@@ -489,14 +493,15 @@ switch ($Action.ToLowerInvariant()) {
             Finish-Action 1 'completed'
         }
         $lines = New-Object System.Collections.Generic.List[string]; $lines.Add('scan=1')
-        foreach ($k in $map.Keys) {$hit = 0
+        foreach ($k in $map.Keys) {$hit = 0; $hitNames = @()
             foreach ($pat in $map[$k]) {
                 foreach ($p in $installed) {
-                    if ($p.Name -and $p.Name -like ('*' + $pat + '*')) {$hit = 1; break }
+                    if ($p.Name -and $p.Name -like ('*' + $pat + '*')) {$hit = 1; $hitNames += $p.Name }
                 }
-                if ($hit -eq 1) { break }
             }
             $lines.Add($k + '=' +$hit)
+            # Xbox: имена оставшихся пакетов — для показа «Не удалось удалить: …».
+            if ($k -eq 'Xbox' -and $hitNames.Count -gt 0) { $lines.Add('XboxLeft=' + ((@($hitNames | Sort-Object -Unique)) -join ',') ) }
         }
         if ($OutFile) { Write-TextFile $OutFile $lines } else { foreach ($l in $lines) { Write-Line $l } }
         Finish-Action 0 'completed'

@@ -307,7 +307,7 @@
                                            Margin="0,0,12,0"
                                            VerticalAlignment="Center"
                                            Style="{StaticResource MonoText}"
-                                           Foreground="{DynamicResource SuccessBrush}"
+                                           Foreground="{DynamicResource AccentFillBrush}"
                                            Text="{Binding Gain}" />
                                 <Button Grid.Column="2"
                                         VerticalAlignment="Center"

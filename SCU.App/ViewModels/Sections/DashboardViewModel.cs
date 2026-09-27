@@ -153,7 +153,7 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
     public bool IsAdmin { get; }
 
-    public bool CanRunBatch => !IsRunning;
+    public bool CanRunBatch => !IsRunning && Rows.Any(row => row.IsIncluded);
 
     public string ReadOnlyHint =>
         IsAdmin ? string.Empty : L.T("Нужны права администратора — применение пакета недоступно.");
@@ -165,6 +165,105 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
     public IReadOnlyList<BatchUtilityRow> Rows { get; private set; } = [];
 
+    // ===================== Реестр утилит для «Редактирования меню» =====================
+
+    // Полный реестр (id → утилита), БЕЗ удалённых; секция отражает перемещения.
+    // Кэш пересобирается в RebuildSearchRows (и при DeleteUtility).
+    public IReadOnlyDictionary<string, BatchUtility> UtilitiesById => _utilitiesById;
+
+    private List<BatchUtility> _allUtilities = [];
+    private HashSet<string> _deletedUtilIds = [];
+    private Dictionary<string, BatchUtility> _utilitiesById = new(StringComparer.Ordinal);
+
+    // Утилиты главной страницы («Настройка списка») удалению не подлежат.
+    public static bool IsProtectedUtility(BatchUtility utility) => utility.Section == 3;
+
+    public BatchUtility? GetUtility(string id) =>
+        UtilitiesById.GetValueOrDefault(id);
+
+    // Удаление встроенной утилиты: исчезает из поиска и из палитр выбора.
+    public bool DeleteUtility(string id)
+    {
+        var utility = _allUtilities.FirstOrDefault(u => u.Id == id);
+        if (utility is null || IsProtectedUtility(utility) || !_deletedUtilIds.Add(id))
+        {
+            return false;
+        }
+
+        RebuildSearchRows();
+        return true;
+    }
+
+    // Перемещение утилиты в пользовательскую вкладку: поиск находит её там.
+    public void SetUtilitySection(string id, int section)
+    {
+        if (_allUtilities.FirstOrDefault(u => u.Id == id) is { } utility)
+        {
+            utility.Section = section;
+            RebuildSearchRows();
+        }
+    }
+
+    // Возврат утилиты в родной раздел (сброс пользовательской вкладки/меню).
+    public void ResetUtilitySection(string id)
+    {
+        if (_allUtilities.FirstOrDefault(u => u.Id == id) is { } utility
+            && utility.Section != utility.OriginalSection)
+        {
+            utility.Section = utility.OriginalSection;
+            RebuildSearchRows();
+        }
+    }
+
+    // Полный сброс реестра к заводскому состоянию (сброс меню): вернуть все
+    // перемещённые утилиты и восстановить удалённые.
+    public void ResetRegistry()
+    {
+        _deletedUtilIds.Clear();
+        foreach (var utility in _allUtilities)
+        {
+            utility.Section = utility.OriginalSection;
+        }
+
+        RebuildSearchRows();
+    }
+
+    private void RebuildSearchRows()
+    {
+        // Строки поиска переиспользуются по id: строки подписаны на статическое
+        // L.LanguageChanged без отписки — пересоздание на каждую правку меню
+        // накапливало бы мёртвые обработчики.
+        _utilitiesById = _allUtilities
+            .Where(u => !_deletedUtilIds.Contains(u.Id))
+            .ToDictionary(u => u.Id, u => u, StringComparer.Ordinal);
+
+        var actualIds = new HashSet<string>(_utilitiesById.Keys, StringComparer.Ordinal);
+        var staleIds = _searchRowMap.Keys.Where(id => !actualIds.Contains(id)).ToList();
+        foreach (var staleId in staleIds)
+        {
+            _searchRowMap.Remove(staleId);
+        }
+
+        foreach (var utility in _utilitiesById.Values)
+        {
+            if (!_searchRowMap.ContainsKey(utility.Id))
+            {
+                _searchRowMap[utility.Id] = new BatchUtilityRow(utility, isIncluded: false);
+            }
+        }
+
+        _searchRows = _utilitiesById.Values
+            .Select(utility => _searchRowMap[utility.Id])
+            .ToList();
+        ApplySearch();
+    }
+
+    private readonly Dictionary<string, BatchUtilityRow> _searchRowMap = new(StringComparer.Ordinal);
+
+    // Заголовок раздела для подсказок поиска (в т.ч. пользовательских вкладок);
+    // назначается MainViewModel после построения Sections.
+    public Func<int, string>? SectionTitleResolver { get; set; }
+
     // Загрузка сохранённого списка включённых утилит (вызывается из InitializeAsync).
     // Пустой файл — «ещё не сохраняли»: остаётся дефолтный набор из реестра.
     // Плюс: последний снимок из state\snapshots.json — рекомендации, статистика,
@@ -173,9 +272,18 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
     {
         var included = await TaskRunner.RunBlocking(_stateStore.Load, CancellationToken.None)
             .ConfigureAwait(true);
-        if (included.Count > 0)
+        if (included is not null)
         {
+            // Сохранённый набор: применяем пересечение с текущим списком
+            // (только очистка); выпавшие идентификаторы фиксируются в журнале,
+            // а сам batch.json не перезаписывается до действия пользователя.
             ApplyIncludedIds(included);
+            var dropped = included.Where(id => Rows.All(row => row.Utility.Id != id)).ToList();
+            if (dropped.Count > 0)
+            {
+                _logger.Warn("BATCH | saved utilities not in quick-cleanup list: "
+                             + string.Join(", ", dropped));
+            }
         }
 
         RecountIncluded();
@@ -281,7 +389,7 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
                 }
 
                 index++;
-                _currentRunningSection = row.Utility.Section;
+                _currentRunningSection = row.Utility.OriginalSection;
                 CurrentUtilityText = L.T("Применение: {0} ({1} из {2})…", row.Title, index, included.Count);
                 string? result;
                 try
@@ -314,15 +422,13 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
                 : L.T("Готово: выполнено {0} из {1}.", executed, included.Count);
             RecomputePending();
 
-            if (!cancelled)
-            {
-                await _history.RecordAsync(new HistoryEvent(
-                    DateTime.Now,
-                    L.T("Оптимизация"),
-                    L.T("Пакетное применение ({0} утилит)", executed),
-                    HistoryEvent.StatusOk,
-                    L.T("Включено: {0}, выполнено: {1}.", included.Count, executed))).ConfigureAwait(true);
-            }
+            // Отменённый пакет тоже менял систему — пишем в историю с честным статусом.
+            await _history.RecordAsync(new HistoryEvent(
+                DateTime.Now,
+                L.T("Оптимизация"),
+                L.T("Пакетное применение ({0} утилит)", executed),
+                cancelled ? HistoryEvent.StatusFail : HistoryEvent.StatusOk,
+                L.T("Включено: {0}, выполнено: {1}.", included.Count, executed))).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -409,14 +515,14 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
         if (tokens.Length > 0)
         {
-            foreach (var row in Rows)
+            foreach (var row in _searchRows)
             {
                 if (!DashboardSearchService.MatchesText(row.Title + " " + row.Utility.Keywords, tokens))
                 {
                     continue;
                 }
 
-                Suggestions.Add(new SearchSuggestion(row.Title, row.TargetText, row.Utility.Section));
+                Suggestions.Add(new SearchSuggestion(row.Title, row.TargetText, row.Utility.Section, SectionTitleResolver));
                 if (Suggestions.Count >= MaxSuggestions)
                 {
                     break;
@@ -448,22 +554,28 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
         utilities.AddRange(BuildSecurity());
         utilities.AddRange(BuildUpdate());
 
-        // Дефолтный «безопасный» набор, пока пользователь не собрал свой.
+        // Родной раздел каждой утилиты — для возврата при сбросе меню
+        // и удалении пользовательских вкладок.
+        foreach (var utility in utilities)
+        {
+            utility.OriginalSection = utility.Section;
+        }
+
+        // Список на «Главной» (переключатель быстрой очистки): только утилиты,
+        // со временем накапливающие мусор — раздел «Очистка» (Корзина, Temp,
+        // кэши браузеров и обновлений Windows).
+        var listUtilities = utilities.Where(u => u.Section == 3).ToList();
+
+        // Дефолтный набор, пока пользователь не собрал свой.
         // Чтение batch.json из конструктора убрано: сохранённый набор применяется
         // асинхронно в InitializeAsync (до первого показа окна) — без IO на UI-потоке.
         string[] defaults =
         [
             "clean_temp",
             "clean_browsers",
-            "clean_update_cache",
-            "maint_do_cache",
-            "ui_menu_delay_20",
-            "row_game-bar",
-            "row_game-dvr",
-            "row_game-mode",
-            "update_drivers_exclude"
+            "clean_update_cache"
         ];
-        foreach (var sectionGroup in utilities.GroupBy(u => u.Section).OrderBy(g => g.Key))
+        foreach (var sectionGroup in listUtilities.GroupBy(u => u.Section).OrderBy(g => g.Key))
         {
             var group = new BatchGroup(sectionGroup.Key);
             foreach (var utility in sectionGroup)
@@ -475,7 +587,24 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
         }
 
         Rows = Groups.SelectMany(g => g.Rows).ToList();
+        foreach (var row in Rows)
+        {
+            row.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(BatchUtilityRow.IsIncluded))
+                {
+                    OnPropertyChanged(nameof(CanRunBatch));
+                }
+            };
+        }
+
+        // Глобальный поиск «Главной» находит утилиты всех разделов — отдельные
+        // строки для подсказок, не зависящие от урезанного списка переключателя.
+        _allUtilities = utilities;
+        RebuildSearchRows();
     }
+
+    private List<BatchUtilityRow> _searchRows = [];
 
     // Кнопка без параметров: CanExecute=false → пропуск (null).
     private static async Task<string?> RunAsync(IAsyncRelayCommand command, Func<string> status)
@@ -898,13 +1027,18 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 // его при смене языка).
 public sealed class SearchSuggestion
 {
-    public SearchSuggestion(string title, string target, int sectionNumber)
+    public SearchSuggestion(string title, string target, int sectionNumber,
+        Func<int, string>? sectionTitleResolver = null)
     {
         Title = title;
         Target = target;
         SectionNumber = sectionNumber;
+        // Пользовательские вкладки (номера ≥ 100) не имеют ключа в словаре —
+        // заголовок берётся из resolver'а MainViewModel.
         SectionTitle =
-            Application.Current?.TryFindResource($"S_Section{sectionNumber:00}_Title") as string ?? string.Empty;
+            Application.Current?.TryFindResource($"S_Section{sectionNumber:00}_Title") as string
+            ?? sectionTitleResolver?.Invoke(sectionNumber)
+            ?? string.Empty;
     }
 
     public string Title { get; }

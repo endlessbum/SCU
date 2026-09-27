@@ -10,7 +10,7 @@ using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;
 
-// Раздел 8 «Питание, память, CPU» — аналог :PerfMenu из Utilities.bat.
+// Раздел 8 «Питание, память и CPU» — аналог :PerfMenu из Utilities.bat.
 // Изменяющие операции: план (powercfg), гибернация (powercfg), быстрый запуск (реестр с резервом),
 // файл подкачки (WMI+реестр), numproc/truncatememory (bcdedit с повторной проверкой).
 public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOperationCancellable

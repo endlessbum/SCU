@@ -70,5 +70,6 @@
             <!-- Предупреждение «нет прав / SCU.ps1 недоступен» — как в остальных разделах -->
             <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />
         </StackPanel>
-    </Grid>
+    
+</Grid>
 </UserControl>

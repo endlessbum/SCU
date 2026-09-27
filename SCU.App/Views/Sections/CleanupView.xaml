@@ -6,13 +6,32 @@
              xmlns:controls="clr-namespace:SCU.Views.Controls"
              mc:Ignorable="d"
              d:DesignHeight="450" d:DesignWidth="800">
+    <UserControl.Resources>
+        <!-- Объём, доступный для очистки, слева от кнопки: пока данные считаются —
+             вместо объёма крутится акцентный индикатор (как при установке компонентов). -->
+        <Style x:Key="CardSpinner" TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <!-- Свойство IsMeasuring* каждой карточки передаётся через Tag -->
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="CardSizeText" TargetType="TextBlock" BasedOn="{StaticResource MonoText}">
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Карточка операции: название слева, справа кнопка «Очистить» -->
+        <!-- Карточка операции: название слева, справа объём и кнопка «Очистить» -->
         <StackPanel Grid.Row="0">
             <Border Style="{StaticResource SectionCard}">
                 <Grid>
@@ -25,7 +44,11 @@
                         <TextBlock Style="{StaticResource RowActionText}"
                                    Text="{DynamicResource I_CleanupRecycleBin}" />
                     </StackPanel>
-                    <Button Grid.Column="1" Content="{DynamicResource S_Clean}" Command="{Binding CleanRecycleBinCommand}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Control Style="{StaticResource CardSpinner}" Tag="{Binding IsMeasuringRecycleBin}" />
+                        <TextBlock Style="{StaticResource CardSizeText}" Text="{Binding RecycleBinSizeText}" />
+                        <Button Content="{DynamicResource S_Clean}" Command="{Binding CleanRecycleBinCommand}" />
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -40,7 +63,11 @@
                         <TextBlock Style="{StaticResource RowActionText}"
                                    Text="{DynamicResource I_CleanupTemp}" />
                     </StackPanel>
-                    <Button Grid.Column="1" Content="{DynamicResource S_Clean}" Command="{Binding CleanTempCommand}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Control Style="{StaticResource CardSpinner}" Tag="{Binding IsMeasuringTemp}" />
+                        <TextBlock Style="{StaticResource CardSizeText}" Text="{Binding TempSizeText}" />
+                        <Button Content="{DynamicResource S_Clean}" Command="{Binding CleanTempCommand}" />
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -55,7 +82,11 @@
                         <TextBlock Style="{StaticResource RowActionText}"
                                    Text="{DynamicResource I_CleanupBrowsers}" />
                     </StackPanel>
-                    <Button Grid.Column="1" Content="{DynamicResource S_Clean}" Command="{Binding CleanBrowsersCommand}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Control Style="{StaticResource CardSpinner}" Tag="{Binding IsMeasuringBrowsers}" />
+                        <TextBlock Style="{StaticResource CardSizeText}" Text="{Binding BrowsersSizeText}" />
+                        <Button Content="{DynamicResource S_Clean}" Command="{Binding CleanBrowsersCommand}" />
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -70,7 +101,11 @@
                         <TextBlock Style="{StaticResource RowActionText}"
                                    Text="{DynamicResource I_CleanupUpdateCache}" />
                     </StackPanel>
-                    <Button Grid.Column="1" Content="{DynamicResource S_Clean}" Command="{Binding CleanUpdateCacheCommand}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Control Style="{StaticResource CardSpinner}" Tag="{Binding IsMeasuringUpdateCache}" />
+                        <TextBlock Style="{StaticResource CardSizeText}" Text="{Binding UpdateCacheSizeText}" />
+                        <Button Content="{DynamicResource S_Clean}" Command="{Binding CleanUpdateCacheCommand}" />
+                    </StackPanel>
                 </Grid>
             </Border>
         </StackPanel>

@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:SCU.Views.Controls"
              mc:Ignorable="d"
              d:DesignHeight="420" d:DesignWidth="860">
     <Grid>
@@ -34,7 +35,7 @@
             </Border>
 
             <!-- Режим прозрачности поверхностей: единый переключатель дизайн-системы
-                 (Liquid Glass). Прозрачный — стеклянные поверхности, Матовый — плотные. -->
+                 (Liquid Glass). Тусклый — стеклянные поверхности, Насыщенный — плотные. -->
             <Border Style="{StaticResource SectionCard}">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -73,22 +74,131 @@
                                    Text="{DynamicResource S_SettingsAccentDesc}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <ComboBox
-                                  SelectedIndex="{Binding AccentModeIndex}">
-                            <ComboBoxItem Content="{DynamicResource S_AccentBlue}" />
-                            <ComboBoxItem Content="{DynamicResource S_AccentSkyBlue}" />
-                            <ComboBoxItem Content="{DynamicResource S_AccentPurple}" />
-                            <ComboBoxItem Content="{DynamicResource S_AccentGreen}" />
-                            <ComboBoxItem Content="{DynamicResource S_AccentOrange}" />
-                        </ComboBox>
-                        <Border Width="32"
-                                Height="32"
-                                Margin="12,0,0,0"
-                                CornerRadius="10"
-                                Background="{DynamicResource AccentFillBrush}"
-                                BorderBrush="{DynamicResource ControlStrokeBrush}"
-                                BorderThickness="1"
-                                ToolTip="{DynamicResource S_AccentPreview}" />
+                        <!-- Квадрат текущего акцента: клик выдвигает палитру влево -->
+                        <Button x:Name="AccentSwatch"
+                                Style="{StaticResource SmallButton}"
+                                MinWidth="0"
+                                Width="36"
+                                Height="36"
+                                Padding="0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                PreviewMouseDown="OnAccentSwatchPreviewMouseDown"
+                                Click="OnAccentSwatchClick"
+                                ToolTip="{DynamicResource S_AccentChooseColor}"
+                                ToolTipService.InitialShowDelay="300">
+                            <Border Width="22"
+                                    Height="22"
+                                    CornerRadius="6"
+                                    Background="{DynamicResource AccentFillBrush}"
+                                    BorderBrush="{DynamicResource ControlStrokeBrush}"
+                                    BorderThickness="1" />
+                        </Button>
+                        <Popup x:Name="AccentPopup"
+                               PlacementTarget="{Binding ElementName=AccentSwatch}"
+                               Placement="Left"
+                               VerticalOffset="-8"
+                               HorizontalOffset="-8"
+                               StaysOpen="False"
+                               AllowsTransparency="True">
+                            <Border Style="{StaticResource SectionCard}" Margin="8" Padding="12">
+                                <ItemsControl ItemsSource="{Binding AccentChoices}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <!-- Выбор применяется сразу; установленный цвет
+                                                 в палитре не показывается -->
+                                            <Button Margin="4,0,0,0"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="4"
+                                                    Click="OnAccentChoiceClick">
+                                                <Border Width="28"
+                                                        Height="28"
+                                                        CornerRadius="8"
+                                                        Background="{Binding Brush}"
+                                                        BorderBrush="{DynamicResource ControlStrokeBrush}"
+                                                        BorderThickness="1" />
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Border>
+                        </Popup>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Цвет иконки приложения: независимая настройка, тот же квадратик -->
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                   Text="{DynamicResource S_SettingsIconAccent}"
+                                   ToolTip="{DynamicResource S_SettingsIconAccentDesc}"
+                                   ToolTipService.InitialShowDelay="250" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_SettingsIconAccentDesc}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="IconSwatch"
+                                Style="{StaticResource SmallButton}"
+                                MinWidth="0"
+                                Width="36"
+                                Height="36"
+                                Padding="0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                PreviewMouseDown="OnIconSwatchPreviewMouseDown"
+                                Click="OnIconSwatchClick"
+                                ToolTip="{DynamicResource S_AccentChooseColor}"
+                                ToolTipService.InitialShowDelay="300">
+                            <Border Width="22"
+                                    Height="22"
+                                    CornerRadius="6"
+                                    Background="{Binding IconAccentBrush}"
+                                    BorderBrush="{DynamicResource ControlStrokeBrush}"
+                                    BorderThickness="1" />
+                        </Button>
+                        <Popup x:Name="IconPopup"
+                               PlacementTarget="{Binding ElementName=IconSwatch}"
+                               Placement="Left"
+                               VerticalOffset="-8"
+                               HorizontalOffset="-8"
+                               StaysOpen="False"
+                               AllowsTransparency="True">
+                            <Border Style="{StaticResource SectionCard}" Margin="8" Padding="12">
+                                <ItemsControl ItemsSource="{Binding IconAccentChoices}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Margin="4,0,0,0"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="4"
+                                                    Click="OnIconChoiceClick">
+                                                <Border Width="28"
+                                                        Height="28"
+                                                        CornerRadius="8"
+                                                        Background="{Binding Brush}"
+                                                        BorderBrush="{DynamicResource ControlStrokeBrush}"
+                                                        BorderThickness="1" />
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Border>
+                        </Popup>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -153,18 +263,140 @@
                 </Grid>
             </Border>
 
+            <!-- Горячие клавиши: глобальная Ctrl+Alt+S и навигация Ctrl+1..9 -->
             <Border Style="{StaticResource SectionCard}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                   Text="{Binding GlobalHotkeysLabel}"
+                                   ToolTip="{Binding GlobalHotkeysDesc}"
+                                   ToolTipService.InitialShowDelay="250" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{Binding GlobalHotkeysDesc}" />
+                        <TextBlock Margin="0,6,0,0"
+                                   Style="{StaticResource CaptionText}"
+                                   Text="{Binding SectionHotkeysDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="1"
+                                  VerticalAlignment="Center"
+                                  Style="{StaticResource SystemToggleSwitch}"
+                                  AutomationProperties.Name="{Binding GlobalHotkeysLabel}"
+                                  IsChecked="{Binding GlobalHotkeysEnabled, Mode=TwoWay}" />
+                </Grid>
+            </Border>
+
+            <!-- Добавить свой скрипт: указание файла, проверка, мастер размещения -->
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource RowHeaderText}"
+                                       Text="{DynamicResource S_ScriptCardTitle}" />
+                            <!-- Информер ⓘ: поддерживаемые расширения -->
+                            <controls:InfoGlyph Margin="6,0,0,0"
+                                                VerticalAlignment="Center"
+                                                InfoText="{DynamicResource S_ScriptCardExtensions}" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_ScriptCardDesc}" />
+                        <TextBlock Margin="0,4,0,0"
+                                   TextTrimming="CharacterEllipsis"
+                                   Text="{Binding SelectedScriptPath}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                                    <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedScriptPath}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Неактивна, пока не добавлен первый скрипт -->
+                        <Button Style="{StaticResource SmallButton}"
+                                Margin="0,0,8,0"
+                                Content="{DynamicResource S_ScriptInstalled}"
+                                IsEnabled="{Binding HasInstalledScripts}"
+                                Command="{Binding ShowInstalledScriptsCommand}" />
+                        <Button Style="{StaticResource SmallButton}"
+                                Margin="0,0,8,0"
+                                Content="{DynamicResource S_ScriptPick}"
+                                Command="{Binding PickScriptCommand}" />
+                        <Control VerticalAlignment="Center" Margin="0,0,8,0">
+                            <Control.Style>
+                                <Style TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsValidatingScript}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Control.Style>
+                        </Control>
+                        <Button Content="{DynamicResource S_ScriptAdd}"
+                                Command="{Binding AddScriptCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Редактирование меню: кастомизация вкладок и утилит -->
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                   Text="{DynamicResource S_MenuEditorTitle}"
+                                   ToolTip="{DynamicResource S_MenuEditorCardDesc}"
+                                   ToolTipService.InitialShowDelay="250" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_MenuEditorCardDesc}" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource SmallButton}"
+                            Content="{DynamicResource S_MenuEditorOpen}"
+                            Click="OnOpenMenuEditorClick" />
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,16,0">
                         <TextBlock Style="{StaticResource RowHeaderText}" Text="{DynamicResource S_SettingsUpdates}" ToolTip="{DynamicResource S_SettingsUpdatesDesc}" ToolTipService.InitialShowDelay="250" />
                         <TextBlock Style="{StaticResource RowActionText}"
                                    Text="{DynamicResource S_SettingsUpdatesDesc}" />
+                        <TextBlock Margin="0,4,0,0"
+                                   Style="{StaticResource CaptionText}"
+                                   Text="{Binding UpdateStatusText}" />
                     </StackPanel>
-                    <!-- Кнопка «Проверить обновления» убрана: механизма автообновления нет,
-                         клик только писал строку в журнал (имитация действия). -->
+                    <!-- Проверка GitHub Releases: новая версия → уведомление со
+                         ссылкой на страницу релизов; актуальная → статус в карточке. -->
+                    <Button Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource SmallButton}"
+                            Content="{DynamicResource S_SettingsUpdatesButton}"
+                            Command="{Binding CheckForUpdatesCommand}" />
                 </Grid>
             </Border>
 

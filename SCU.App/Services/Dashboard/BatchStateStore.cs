@@ -25,13 +25,15 @@ public sealed class BatchStateStore
 
     // Чтение best-effort: нет файла или повреждён — возвращается пустой список
     // (тогда действуют дефолтные включения, заданные реестром утилит).
-    public List<string> Load()
+    // null — файла ещё нет (применяется дефолтный набор); [] — валидный выбор
+    // пользователя «выключить всё», который не должен подменяться дефолтом.
+    public List<string>? Load()
     {
         try
         {
             if (!File.Exists(_path))
             {
-                return [];
+                return null;
             }
 
             var json = File.ReadAllText(_path);
@@ -40,7 +42,7 @@ public sealed class BatchStateStore
         catch (Exception exception)
         {
             _logger.Warn("BATCH | state file corrupted: " + exception.Message);
-            return [];
+            return null;
         }
     }
 

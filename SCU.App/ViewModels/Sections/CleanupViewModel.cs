@@ -33,6 +33,32 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
     [ObservableProperty]
     private string _statusText = L.T("Выберите операцию очистки.");
 
+    // Актуальный объём, доступный для очистки, — слева от кнопки «Очистить».
+    // Пока идёт подсчёт, вместо объёма крутится индикатор (IsMeasuring*).
+    [ObservableProperty]
+    private string _recycleBinSizeText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isMeasuringRecycleBin;
+
+    [ObservableProperty]
+    private string _tempSizeText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isMeasuringTemp;
+
+    [ObservableProperty]
+    private string _browsersSizeText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isMeasuringBrowsers;
+
+    [ObservableProperty]
+    private string _updateCacheSizeText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isMeasuringUpdateCache;
+
     public CleanupViewModel(
         Logger logger,
         SCURunner runner,
@@ -87,9 +113,9 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
         {
             StatusText = L.T("Очистка корзины…");
             _logger.Info("CLEAN | recycle bin | start");
+            IsMeasuringRecycleBin = true;
 
-            var result = await _runner.RunAsync("EmptyRecycleBin", null, null, ct).ConfigureAwait(true);
-            // rc=1 у скрипта — «частичный сбой»: корзина очищена, но отдельные системные
+            var result = await _runner.RunAsync("EmptyRecycleBin", null, null, ct).ConfigureAwait(true);            // rc=1 у скрипта — «частичный сбой»: корзина очищена, но отдельные системные
             // элементы ($RECYCLE.BIN, занятые файлы) пропущены. Пользователю это не ошибка.
             StatusText = result.Code switch
             {
@@ -107,6 +133,8 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
                     HistoryEvent.StatusOk,
                     result.Message));
             }
+
+            RefreshRecycleBinSize();
         }).ConfigureAwait(true);
     }
 
@@ -123,6 +151,7 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
         await RunExclusiveAsync("очистка Temp", async ct =>
         {
             StatusText = L.T("Очистка временных файлов…");
+            IsMeasuringTemp = true;
             var progress = new Progress<string>(line => StatusText = L.S(line));
             var result = await _cleanupService
                 .CleanAsync(FileCleanupService.GetTempTargets(), progress, ct)
@@ -140,6 +169,8 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
                     FormatCleanupResult(result),
                     bytesFreed));
             }
+
+            RefreshTempSize();
         }).ConfigureAwait(true);
     }
 
@@ -156,6 +187,7 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
         await RunExclusiveAsync("очистка браузеров", async ct =>
         {
             StatusText = L.T("Очистка кэша браузеров…");
+            IsMeasuringBrowsers = true;
             var progress = new Progress<string>(line => StatusText = L.S(line));
             var result = await _cleanupService
                 .CleanAsync(FileCleanupService.GetBrowserCacheTargets(), progress, ct)
@@ -173,6 +205,8 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
                     FormatCleanupResult(result),
                     bytesFreed));
             }
+
+            RefreshBrowsersSize();
         }).ConfigureAwait(true);
     }
 
@@ -196,6 +230,7 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
             Directory.CreateDirectory(Path.GetDirectoryName(backupFile)!);
 
             StatusText = L.T("Сохранение состояния служб обновления…");
+            IsMeasuringUpdateCache = true;
             var backup = await _runner.RunAsync(
                 "ServicesBackup",
                 new Dictionary<string, string?> { ["OutFile"] = backupFile, ["Services"] = UpdateServicesCsv },
@@ -266,6 +301,8 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
                     }
                 }
             }
+
+            RefreshUpdateCacheSize();
         }).ConfigureAwait(true);
     }
 
@@ -290,6 +327,111 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
     private bool CanClean() => !IsBusy && IsAdmin;
     private bool CanCleanUpdate() => !IsBusy && IsAdmin && IsSCUAvailable;
     private bool CanCancel() => IsBusy;
+
+    // ===================== Измерение объёмов =====================
+
+    // Счётчик запросов: результат устаревшего подсчёта (например, после быстрого
+    // повторного открытия вкладки) не должен перезаписать свежий.
+    private int _measureVersion;
+
+    // Пересчёт объёмов при открытии вкладки: четыре независимых подсчёта — каждая
+    // карточка показывает индикатор ровно до готовности своих данных.
+    public async Task ActivateAsync()
+    {
+        var version = ++_measureVersion;
+        RecycleBinSizeText = TempSizeText = BrowsersSizeText = UpdateCacheSizeText = string.Empty;
+        IsMeasuringRecycleBin = IsMeasuringTemp = IsMeasuringBrowsers = IsMeasuringUpdateCache = true;
+
+        try
+        {
+            var recycleBin = Task.Run(() => Interop.RecycleBinInfo.Query());
+            var temp = Task.Run(() => FileCleanupService.MeasureBytes(FileCleanupService.GetTempTargets()));
+            var browsers = Task.Run(() => FileCleanupService.MeasureBytes(FileCleanupService.GetBrowserCacheTargets()));
+            var updates = Task.Run(() => FileCleanupService.MeasureBytes(FileCleanupService.GetUpdateCacheTargets()));
+
+            await Task.WhenAll(recycleBin, temp, browsers, updates).ConfigureAwait(true);
+            if (version != _measureVersion)
+            {
+                return;
+            }
+
+            RecycleBinSizeText = recycleBin.Result is { } bin ? FormatSize(bin.Bytes) : L.T("не удалось измерить");
+            TempSizeText = FormatSize(temp.Result);
+            BrowsersSizeText = FormatSize(browsers.Result);
+            UpdateCacheSizeText = FormatSize(updates.Result);
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("CLEAN | size measure failed | " + exception.Message);
+        }
+        finally
+        {
+            // Сброс безусловно: если во время подсчёта стартовала очистка (версия сменилась,
+            // тексты не записаны), остающийся спиннер иначе висел бы вечно. Спиннер самой
+            // очистки выставляется заново своим Refresh-потоком.
+            IsMeasuringRecycleBin = IsMeasuringTemp = IsMeasuringBrowsers = IsMeasuringUpdateCache = false;
+        }
+    }
+
+    // Пересчёт одной категории после её очистки (спиннер на время подсчёта).
+    private async Task RefreshSizeAsync(Func<long> measure, Action<string> setText, Action<bool> setMeasuring, int version)
+    {
+        setMeasuring(true);
+        try
+        {
+            var bytes = await Task.Run(measure).ConfigureAwait(true);
+            if (version == _measureVersion)
+            {
+                setText(FormatSize(bytes));
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("CLEAN | size refresh failed | " + exception.Message);
+        }
+        finally
+        {
+            setMeasuring(false);
+        }
+    }
+
+    private void RefreshRecycleBinSize() => _ = RefreshSizeAsync(
+        () => Interop.RecycleBinInfo.Query()?.Bytes ?? 0,
+        value => RecycleBinSizeText = value,
+        value => IsMeasuringRecycleBin = value,
+        Interlocked.Increment(ref _measureVersion));
+
+    private void RefreshTempSize() => _ = RefreshSizeAsync(
+        () => FileCleanupService.MeasureBytes(FileCleanupService.GetTempTargets()),
+        value => TempSizeText = value,
+        value => IsMeasuringTemp = value,
+        Interlocked.Increment(ref _measureVersion));
+
+    private void RefreshBrowsersSize() => _ = RefreshSizeAsync(
+        () => FileCleanupService.MeasureBytes(FileCleanupService.GetBrowserCacheTargets()),
+        value => BrowsersSizeText = value,
+        value => IsMeasuringBrowsers = value,
+        Interlocked.Increment(ref _measureVersion));
+
+    private void RefreshUpdateCacheSize() => _ = RefreshSizeAsync(
+        () => FileCleanupService.MeasureBytes(FileCleanupService.GetUpdateCacheTargets()),
+        value => UpdateCacheSizeText = value,
+        value => IsMeasuringUpdateCache = value,
+        Interlocked.Increment(ref _measureVersion));
+
+    internal static string FormatSize(long bytes)
+    {
+        const long kb = 1024;
+        const long mb = kb * 1024;
+        const long gb = mb * 1024;
+        return bytes >= gb
+            ? (bytes / (double)gb).ToString("F1", CultureInfo.CurrentCulture) + " GB"
+            : bytes >= mb
+                ? (bytes / (double)mb).ToString("F1", CultureInfo.CurrentCulture) + " MB"
+                : bytes >= kb
+                    ? (bytes / (double)kb).ToString("F0", CultureInfo.CurrentCulture) + " KB"
+                    : bytes + " " + L.T("байт");
+    }
 
     private bool Confirm(string title, string message, string confirmText) =>
         _dialogs.Ask(title, message, confirmText);

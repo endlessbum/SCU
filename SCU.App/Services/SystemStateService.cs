@@ -117,19 +117,39 @@ public sealed class SystemStateService
 
         await RunAreaAsync(snapshot, progress, AreaStartup, async () =>
         {
-            // Тот же механизм и тот же файл кэша, что у StartupViewModel (StartupList ps1).
-            var outFile = Path.Combine(GetCacheDirectory(), "startup_list.txt");
-            var result = await _runner.RunAsync(
-                "StartupList",
-                new Dictionary<string, string?> { ["OutFile"] = outFile },
-                progress: null,
-                ct).ConfigureAwait(false);
-            if (!result.IsSuccess)
+            // Тот же механизм, что у вкладки «Автозагрузка» (StartupList ps1), но
+            // файл кэша УНИКАЛЬНЫЙ на вызов: параллельные снимки (Dashboard,
+            // Бэнчмарк, прогрузка вкладки) иначе перезаписывали бы общий
+            // startup_list.txt и читали чужой недописанный файл.
+            var outFile = Path.Combine(GetCacheDirectory(), $"startup_list_{Guid.NewGuid():N}.txt");
+            try
             {
-                throw new InvalidOperationException(result.Message);
-            }
+                var result = await _runner.RunAsync(
+                    "StartupList",
+                    new Dictionary<string, string?> { ["OutFile"] = outFile },
+                    progress: null,
+                    ct).ConfigureAwait(false);
+                if (!result.IsSuccess)
+                {
+                    throw new InvalidOperationException(result.Message);
+                }
 
-            snapshot.StartupCount = CountStartupItems(outFile);
+                snapshot.StartupCount = CountStartupItems(outFile);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(outFile))
+                    {
+                        File.Delete(outFile);
+                    }
+                }
+                catch
+                {
+                    // Временный файл не критичен.
+                }
+            }
         }).ConfigureAwait(false);
 
         await RunAreaAsync(snapshot, progress, AreaServices, async () =>

@@ -1,0 +1,146 @@
+﻿<UserControl x:Class="SCU.Views.Sections.BrowserView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800">
+
+    <!-- Раздел 22 «Браузер»: только карточка запуска. Сам браузер открывается
+         в отдельном развёрнутом окне (Views/BrowserWindow) после «Запустить». -->
+    <StackPanel>
+        <!-- Карточка запуска: видна, пока браузер не запущен -->
+        <StackPanel>
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsBrowserStarted}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                   Text="{DynamicResource S_BrowserTitle}" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   TextWrapping="Wrap"
+                                   Text="{DynamicResource S_BrowserDescription}" />
+                        <TextBlock Margin="0,6,0,0"
+                                   Style="{StaticResource CaptionText}"
+                                   Text="{DynamicResource S_BrowserEntryHint}" />
+                        <TextBlock Margin="0,4,0,0"
+                                   Style="{StaticResource SectionWarnText}"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding ElevationHint}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Control VerticalAlignment="Center" Margin="0,0,8,0">
+                            <Control.Style>
+                                <Style TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsStarting}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Control.Style>
+                        </Control>
+                        <Button Content="{DynamicResource S_BrowserLaunch}"
+                                Command="{Binding StartBrowserCommand}"
+                                ToolTip="{DynamicResource S_BrowserLaunchTip}"
+                                ToolTipService.InitialShowDelay="300" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Runtime отсутствует: понятное состояние + официальная установка -->
+            <Border>
+                <Border.Style>
+                    <Style TargetType="Border" BasedOn="{StaticResource SectionCard}">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsRuntimeMissing}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                   Text="{DynamicResource S_BrowserRuntimeMissing}" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   TextWrapping="Wrap"
+                                   Text="{DynamicResource S_BrowserRuntimeHint}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Control VerticalAlignment="Center" Margin="0,0,8,0">
+                            <Control.Style>
+                                <Style TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsInstallingRuntime}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Control.Style>
+                        </Control>
+                        <Button Content="{DynamicResource S_BrowserRuntimeInstall}"
+                                Style="{StaticResource SmallButton}"
+                                Command="{Binding InstallRuntimeCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <TextBlock Margin="0,4,0,0"
+                       Style="{StaticResource SectionStatusText}"
+                       Text="{Binding StatusText}" />
+        </StackPanel>
+
+        <!-- Браузер запущен: окно открыто отдельно, из карточки его можно вывести вперёд -->
+        <Border>
+            <Border.Style>
+                <Style TargetType="Border" BasedOn="{StaticResource SectionCard}">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsBrowserStarted}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <TextBlock Style="{StaticResource RowHeaderText}"
+                               Text="{DynamicResource S_BrowserRunningTitle}" />
+                    <TextBlock Style="{StaticResource RowActionText}"
+                               TextWrapping="Wrap"
+                               Text="{DynamicResource S_BrowserRunningHint}" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Content="{DynamicResource S_BrowserShowWindow}"
+                        Command="{Binding ShowBrowserWindowCommand}"
+                        ToolTipService.InitialShowDelay="300" />
+            </Grid>
+        </Border>
+    </StackPanel>
+</UserControl>

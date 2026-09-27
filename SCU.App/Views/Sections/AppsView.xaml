@@ -50,7 +50,32 @@
                                            TextTrimming="CharacterEllipsis"
                                            Text="{Binding Subtitle}" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <!-- Прочерк важности для системы: зелёный — можно удалить,
+                                     жёлтый — системный компонент, серый — системное приложение
+                                     (кнопка «Удалить» неактивна) -->
+                                <TextBlock FontSize="18"
+                                           Width="22"
+                                           TextAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,12,0"
+                                           Text="{Binding DashText}"
+                                           ToolTip="{Binding DashTooltip}"
+                                           ToolTipService.InitialShowDelay="200">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Importance}" Value="System">
+                                                    <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Importance}" Value="Critical">
+                                                    <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                                 <Button Content="{DynamicResource S_Uninstall}"
                                         Command="{Binding DataContext.UninstallCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}"
@@ -60,7 +85,7 @@
                                         <Style TargetType="Button" BasedOn="{StaticResource SmallButton}">
                                             <Setter Property="IsEnabled" Value="False" />
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HasUninstaller}" Value="True">
+                                                <DataTrigger Binding="{Binding CanUninstall}" Value="True">
                                                     <Setter Property="IsEnabled" Value="True" />
                                                 </DataTrigger>
                                             </Style.Triggers>
@@ -97,5 +122,6 @@
         <TextBlock Grid.Row="3"
                    Style="{StaticResource SectionStatusText}"
                    Text="{Binding StatusText}" />
-    </Grid>
+    
+</Grid>
 </UserControl>

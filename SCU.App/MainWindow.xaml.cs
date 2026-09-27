@@ -43,19 +43,9 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         Loaded += OnLoaded;
         SourceInitialized += OnSourceInitialized;
-        StateChanged += (_, _) => UpdateMaximizedState();
-        // Окно стартует развёрнутым (WindowState=Maximized в XAML): событие StateChanged
-        // при этом может не сработать — выставляем глиф кнопки сразу.
-        UpdateMaximizedState();
 
         // Блок журнала скрывается тумблером в «Настройках»: меню и контент занимают всю высоту.
-        _viewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(MainViewModel.ShowLog))
-            {
-                UpdateJournalLayout(_viewModel.ShowLog);
-            }
-        };
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         UpdateJournalLayout(_viewModel.ShowLog);
 
         // Стартовая тема из настроек — до подписки, чтобы DWM-хуки не срабатывали до SourceInitialized.
@@ -63,9 +53,10 @@ public partial class MainWindow : Window
         ThemeManager.ApplyTheme(_viewModel.ThemeMode);
         ThemeManager.ThemeApplied += OnThemeApplied;
 
-        // Знак в заголовке и значок окна красятся акцентом; при ApplyTheme выше
-        // AccentChanged ещё не был подписан, поэтому стартовая покраска — явно.
-        ThemeManager.AccentChanged += OnAccentChanged;
+        // Значок окна (панель задач, Alt+Tab) красится цветом иконки (отдельная
+        // настройка, не зависящая от акцента); при ApplyTheme выше событие ещё не
+        // было подписано — стартовая покраска выполняется явно.
+        ThemeManager.IconAccentChanged += OnIconAccentChanged;
         RefreshAccentIcons();
 
         // Подсказка поиска «Главной» открыла раздел — вокруг найденной карточки
@@ -75,7 +66,9 @@ public partial class MainWindow : Window
 
         // Navigation host: подписка на смену раздела + начальный раздел.
         _viewModel.CurrentSectionChanged += ShowSectionView;
+        _viewModel.MenuApplied += OnMenuApplied;
         ShowSectionView(_viewModel.CurrentSection?.Number);
+
 
         _textSelection = new TextSelectionManager(this);
     }
@@ -84,10 +77,102 @@ public partial class MainWindow : Window
 
     // Mica, скругление углов и тёмный режим DWM. При недоступности бэкдропа —
     // непрозрачный фон из словаря темы вместо прозрачного окна.
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.ShowLog))
+        {
+            UpdateJournalLayout(_viewModel.ShowLog);
+        }
+        else if (e.PropertyName == nameof(MainViewModel.GlobalHotkeysEnabled))
+        {
+            RegisterGlobalHotkey();
+        }
+    }
+
+    private HwndSource? _hwndSource;
+    private bool _globalHotkeyRegistered;
+
+    private void RegisterGlobalHotkey()
+    {
+        if (_hwndSource is null)
+        {
+            return;
+        }
+
+        if (_globalHotkeyRegistered)
+        {
+            Interop.GlobalHotkeys.Unregister(_hwndSource.Handle);
+            _globalHotkeyRegistered = false;
+        }
+
+        if (ThemeManager.GlobalHotkeysEnabled)
+        {
+            _globalHotkeyRegistered = Interop.GlobalHotkeys.Register(_hwndSource.Handle);
+            if (!_globalHotkeyRegistered)
+            {
+                _logger.Warn("HOTKEY | register failed | Ctrl+Alt+S занят другим приложением");
+            }
+        }
+    }
+
+    private IntPtr OnGlobalHotkeyWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (Interop.GlobalHotkeys.IsHotkeyMessage(msg, unchecked((int)wParam)))
+        {
+            ToggleWindowVisibility();
+            handled = true;
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private void ToggleWindowVisibility()
+    {
+        if (IsVisible && IsActive)
+        {
+            Hide();
+            return;
+        }
+
+        Show();
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+    }
+
+    // Внутренние горячие клавиши: Ctrl+1..9 — быстрый переход к разделам меню.
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0
+            || e.Key is < Key.D1 or > Key.D9)
+        {
+            return;
+        }
+
+        var index = e.Key - Key.D1;
+        var sections = _viewModel.Sections;
+        if (index < sections.Count)
+        {
+            _viewModel.SelectSectionByNumber(sections[index].Number);
+            e.Handled = true;
+        }
+    }
+
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         var source = (HwndSource)PresentationSource.FromVisual(this)!;
         source.AddHook(new Interop.WindowMinMaxHandler(this).WndProc);
+
+        // Глобальная горячая клавиша Ctrl+Alt+S: показать/скрыть SCU из любого
+        // приложения. Включается тумблером в «Настройки → Горячие клавиши».
+        _hwndSource = source;
+        source.AddHook(OnGlobalHotkeyWndProc);
+        RegisterGlobalHotkey();
 
         var isDark = ThemeManager.IsDarkTheme(_viewModel.ThemeMode);
         _micaApplied = WindowEffects.TryApplyMica(this, isDark);
@@ -95,11 +180,14 @@ public partial class MainWindow : Window
         {
             Background = (Brush)FindResource("SolidRootBrush");
         }
+
+        // Строка заголовка — цветом фона приложения, чтобы не выделялась.
+        WindowEffects.ApplyCaptionColor(this, isDark);
     }
 
     private void OnThemeApplied(bool isDark)
     {
-        WindowEffects.UpdateDarkMode(this, isDark);
+        WindowEffects.ApplyCaptionColor(this, isDark);
 
         // Без Mica окно непрозрачное: при живой смене темы словарь подменяется,
         // но Background не обновляется через DynamicResource — перекрашиваем вручную
@@ -110,14 +198,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnAccentChanged() => RefreshAccentIcons();
+    private void OnIconAccentChanged() => RefreshAccentIcons();
 
-    // Иконка и знак SCU в заголовке, значок окна (панель задач, Alt+Tab) следуют
-    // за акцентным цветом из настроек: цвет тот же, что у AccentFillBrush.
+    // Значок окна в системном заголовке, на панели задач и в Alt+Tab красится
+    // акцентом (Window.Icon — системная кнопка и меню сами его показывают).
     private void RefreshAccentIcons()
     {
-        TitleIcon.Source = AccentIconManager.GetTitleBarIcon();
-        Icon = AccentIconManager.GetWindowIcon();
+        Icon = AccentIconManager.GetWindowIcon(ThemeManager.CurrentIconAccentColor);
     }
 
     // Журнал скрыт: нижняя строка сетки схлопывается, splitter убирается —
@@ -212,20 +299,7 @@ public partial class MainWindow : Window
     }
 
     // WndProc/монитор/MINMAXINFO: Interop/WindowMinMaxHandler (п. 13).
-
-    private void UpdateMaximizedState()
-    {
-        // Скругление и тень от DWM; при maximize система сама убирает скругление.
-        // Меняется только глиф кнопки: развернуть (E922) / восстановить (E923).
-        MaximizeGlyph.Text = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
-    }
-
-    private void OnMinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
-
-    private void OnMaximizeRestoreClick(object sender, RoutedEventArgs e) =>
-        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-
-    private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
+    // Кнопки заголовка и перетаскивание — системные (как в окне браузера).
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -246,6 +320,8 @@ public partial class MainWindow : Window
     {
         if (number is null)
         {
+            // Разделов не осталось (все скрыты): контент очищается.
+            SectionHost.Content = null;
             return;
         }
 
@@ -254,10 +330,35 @@ public partial class MainWindow : Window
             SectionHost.Content = _sectionViews.TryGetValue(number.Value, out var cached)
                 ? cached
                 : CreateSectionView(number.Value);
+
+            // Вкладка всегда открывается с начала страницы: смещение общего
+            // ContentScroll иначе сохраняется между вкладками и переживает
+            // перевёрстку после ленивой инициализации. Повторный сброс — после
+            // перевёрстки (подсветка через поиск прокручивает позже и выигрывает).
+            ContentScroll.ScrollToHome();
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+                () => ContentScroll.ScrollToHome());
         }
         catch (Exception exception)
         {
             _logger.Error("NAV | view create failed | " + number + " | " + exception);
+        }
+    }
+
+    // После правок меню: кэш view пользовательских вкладок недействителен
+    // (переиспользование id показывало старое содержимое).
+    private void OnMenuApplied()
+    {
+        var actualCustomNumbers = _viewModel.Sections
+            .Where(section => section.Number >= 100)
+            .Select(section => section.Number)
+            .ToHashSet();
+        foreach (var number in _sectionViews.Keys.Where(number => number >= 100).ToList())
+        {
+            if (!actualCustomNumbers.Contains(number))
+            {
+                _sectionViews.Remove(number);
+            }
         }
     }
 
@@ -287,6 +388,11 @@ public partial class MainWindow : Window
             19 => new Views.Sections.AppsView { DataContext = viewModel.Apps },
             20 => new Views.Sections.BenchmarkView { DataContext = viewModel.Benchmark },
             21 => new Views.Sections.ScannerView { DataContext = viewModel.Scanner },
+            22 => new Views.Sections.BrowserView { DataContext = viewModel.Browser },
+            >= 100 => new Views.Sections.CustomUtilitiesView
+            {
+                DataContext = viewModel.GetCustomSectionViewModel(number),
+            },
             _ => new Views.Sections.InfoView { DataContext = viewModel.Info }
         };
 
@@ -297,8 +403,14 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         Loaded -= OnLoaded;
+        _viewModel.MenuApplied -= OnMenuApplied;
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        if (_globalHotkeyRegistered && _hwndSource is not null)
+        {
+            Interop.GlobalHotkeys.Unregister(_hwndSource.Handle);
+        }
         ThemeManager.ThemeApplied -= OnThemeApplied;
-        ThemeManager.AccentChanged -= OnAccentChanged;
+        ThemeManager.IconAccentChanged -= OnIconAccentChanged;
         _viewModel.Dispose();
         base.OnClosing(e);
     }

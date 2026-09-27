@@ -179,6 +179,27 @@ public sealed class FileCleanupService
                 "Microsoft", "Windows", "DeliveryOptimization", "Cache"))
     ];
 
+    // Объём файлов, доступных для очистки, по целям (сводка для карточек раздела).
+    // Занятые и нечитаемые файлы посчитать нельзя — они были бы пропущены и при очистке.
+    public static long MeasureBytes(IReadOnlyList<CleanupTarget> targets)
+    {
+        long total = 0;
+        foreach (var target in targets)
+        {
+            if (string.IsNullOrWhiteSpace(target.Directory) || !Directory.Exists(target.Directory))
+            {
+                continue;
+            }
+
+            foreach (var file in EnumerateFilesSafe(target.Directory, target.Mask))
+            {
+                total += file.Length;
+            }
+        }
+
+        return total;
+    }
+
     private List<CleanupItemResult> CleanAll(
         IReadOnlyList<CleanupTarget> targets,
         IProgress<string>? progress,

@@ -22,6 +22,17 @@ public sealed record AppxScanState(bool Scanned, IReadOnlyDictionary<string, str
         !Scanned || !Values.TryGetValue(key, out var value) ? "неизвестно (скан не удался)"
         : value == "1" ? "установлено"
         : "отсутствует";
+
+    // Имена пакетов, оставшихся в системе (AppxScan пишет строку '<Key>Left=A,B' для Xbox).
+    public IReadOnlyList<string> LeftoverNames(string key)
+    {
+        if (!Values.TryGetValue(key + "Left", out var raw) || string.IsNullOrWhiteSpace(raw))
+        {
+            return [];
+        }
+
+        return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
 }
 
 // Раздел 4 «Удаление мусорного ПО» — аналог :BloatMenu из Utilities.bat.
@@ -145,8 +156,9 @@ public sealed class BloatService
         RemoveAsync(Apps.First(a => a.ScanKey == "Store"), ct);
 
     // Xbox в BAT: удаление + повторная проверка. Скрипт AppxRemove сам проверяет отсутствие
-    // запрошенных пакетов (rc=0), дополнительно сверять по скану нельзя: шаблон 'Xbox' ловит
-    // системный Microsoft.XboxGameCallableUI, который удалить штатно невозможно.
+    // запрошенных пакетов (rc=0). Сверка по скану допустима: шаблоны скана перечисляют
+    // только съёмные компоненты, системный XboxGameCallableUI в них не входит; остатки
+    // скан сообщает в строке 'XboxLeft=…' (см. AppxScanState.LeftoverNames).
     public async Task<Result> RemoveXboxAsync(CancellationToken ct = default)
     {
         var app = Apps.First(a => a.ScanKey == "Xbox");

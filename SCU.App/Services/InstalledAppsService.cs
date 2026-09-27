@@ -7,6 +7,20 @@ namespace SCU.Services;
 // Установленное приложение из ARP-раздела реестра (Add/Remove Programs).
 // Показывается всё, у чего есть DisplayName, включая скрытые SystemComponent
 // записи — вкладка «Приложения» задумана как полный список программ системы.
+// Насколько приложение важно для работы системы (прочерк слева от «Удалить»).
+public enum AppImportance
+{
+    // Игра или скачанное пользователем приложение/лаунчер — можно удалить.
+    User,
+
+    // Системное приложение/компонент: удалить можно, но возможны проблемы
+    // в работе зависимых программ.
+    System,
+
+    // Критичный системный компонент: удаление может вывести систему из строя.
+    Critical,
+}
+
 public sealed class InstalledApp
 {
     public string DisplayName { get; init; } = string.Empty;
@@ -14,7 +28,31 @@ public sealed class InstalledApp
     public string? Publisher { get; init; }
     public string? InstallLocation { get; init; }
     public string? UninstallString { get; init; }
+
+    // Важность для системы: считается при чтении реестра (см. Classify).
+    public AppImportance Importance { get; set; } = AppImportance.User;
+
     public bool HasUninstaller => !string.IsNullOrWhiteSpace(UninstallString);
+
+    // Кнопка «Удалить» доступна только для не-критичных приложений с деинсталлятором.
+    public bool CanUninstall => HasUninstaller && Importance != AppImportance.Critical;
+
+    public string DashText => "—";
+
+    public string DashBrush => Importance switch
+    {
+        AppImportance.System => "WarnBrush",
+        AppImportance.Critical => "TertiaryTextBrush",
+        _ => "SuccessBrush",
+    };
+
+    public string DashTooltip => Importance switch
+    {
+        AppImportance.System => L.T(
+            "Системный компонент. Удалять не рекомендуется: могут перестать работать зависящие от него программы и компоненты. При необходимости его можно установить заново."),
+        AppImportance.Critical => L.T("Системное приложение"),
+        _ => L.T("Можно удалить"),
+    };
 
     public string Subtitle
     {
@@ -101,6 +139,10 @@ public sealed class InstalledAppsService
                             (subKey.GetValue("QuietUninstallString") as string)?.Trim()
                             ?? (subKey.GetValue("UninstallString") as string)?.Trim())
                     };
+                    entry.Importance = Classify(entry,
+                        IsFlagSet(subKey, "SystemComponent"),
+                        IsFlagSet(subKey, "NoRemove"),
+                        isPerUser: hive == RegistryHive.CurrentUser);
 
                     // Одна программа видна в 64- и 32-битной ветках — дубль убираем
                     // по имени, версии и команде удаления.
@@ -117,6 +159,79 @@ public sealed class InstalledAppsService
             _logger.Warn($"APPS | read {hive}\\{path} | {exception.Message}");
         }
     }
+
+    private static bool IsFlagSet(RegistryKey key, string name) =>
+        key.GetValue(name) is int value && value != 0;
+
+    // Классификация важности для системы:
+    // • Critical — установщик запретил удаление (NoRemove), запись помечена
+    //   скрытой системной (SystemComponent) либо это обновление/редистрибутив/
+    //   среда выполнения, удаление которых может вывести систему из строя;
+    // • System — компонент Microsoft/драйвер/платформа: удалить можно, но
+    //   возможны проблемы у зависимых программ;
+    // • User — игры, лаунчеры и обычные скачанные пользователем приложения
+    //   (пер-установленные в HKCU и всё стороннее не из списка системных).
+    internal static AppImportance Classify(
+        InstalledApp entry, bool systemComponent, bool noRemove, bool isPerUser)
+    {
+        var name = entry.DisplayName;
+        var publisher = entry.Publisher ?? string.Empty;
+        var location = entry.InstallLocation ?? string.Empty;
+        var haystack = $"{name} {publisher} {location} {entry.UninstallString}";
+
+        if (noRemove || systemComponent || IsCriticalPattern(name))
+        {
+            return AppImportance.Critical;
+        }
+
+        // Игры и лаунчеры — всегда пользовательское, даже если издатель Microsoft
+        // (Xbox-игры из Store) или путь в WindowsApps: проверяются до системных
+        // паттернов.
+        if (IsGameOrLauncher(haystack))
+        {
+            return AppImportance.User;
+        }
+
+        if (IsSystemPattern(haystack))
+        {
+            return AppImportance.System;
+        }
+
+        return isPerUser
+            ? AppImportance.User
+            : AppImportance.System;
+    }
+
+    private static bool IsCriticalPattern(string name) =>
+        ContainsAny(name,
+            [
+                "Microsoft Edge", "WebView2", "Visual C++", "DirectX",
+                ".NET", "DotNet", "Windows App Runtime", "Windows SDK",
+                "Обновление", "Update for", "Security Update", "Накопительное",
+            ],
+            StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSystemPattern(string haystack) =>
+        ContainsAny(haystack,
+            [
+                "Microsoft", "Windows", "Visual Studio", "NVIDIA", "AMD",
+                "Realtek", "Intel", "Driver", "Драйвер", "Runtime",
+                "Redistributable", "Распространяемый", "WindowsApps",
+            ],
+            StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsGameOrLauncher(string haystack) =>
+        ContainsAny(haystack,
+            [
+                "Steam", "Epic Games", "GOG", "Origin", "EA app", "EA Games",
+                "Ubisoft", "Uplay", "Battle.net", "Blizzard", "Riot Games",
+                "Rockstar", "Minecraft", "itch.io", "Epic Games Launcher",
+                "лаунчер", "launcher", "игра", "game",
+            ],
+            StringComparison.OrdinalIgnoreCase);
+
+    private static bool ContainsAny(string text, IReadOnlyList<string> patterns, StringComparison comparison) =>
+        patterns.Any(pattern => text.Contains(pattern, comparison));
 
     // MSI-записи вида «MsiExec.exe /I{GUID}» переключаются на /X: иначе вместо
     // удаления открывается диалог «изменить установку».

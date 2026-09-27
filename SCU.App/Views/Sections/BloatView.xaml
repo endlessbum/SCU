@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:controls="clr-namespace:SCU.Views.Controls"
+            
              mc:Ignorable="d"
              d:DesignHeight="620" d:DesignWidth="900">
     <Grid>
@@ -45,6 +45,22 @@
                                            Text="{Binding Title}" />
                                 <TextBlock Style="{StaticResource RowActionText}"
                                            Text="{Binding RemoveNames}" />
+                                <!-- Компоненты, которые не удалось удалить (подтверждено ресканом) -->
+                                <TextBlock Text="{Binding LeftoverText}"
+                                           TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                                            <Setter Property="Margin" Value="0,2,0,0" />
+                                            <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasLeftover}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                             </StackPanel>
                             <Grid Grid.Column="1" VerticalAlignment="Center">
                                 <Button Content="{DynamicResource S_Remove}"
@@ -125,5 +141,6 @@
                        Text="{Binding StatusText}" />
             <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />
         </StackPanel>
-    </Grid>
+    
+</Grid>
 </UserControl>

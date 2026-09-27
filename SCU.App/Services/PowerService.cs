@@ -7,7 +7,7 @@ using SCU.Models;
 
 namespace SCU.Services;
 
-// Раздел 8 «Utilities.bat» — питание, память, CPU.
+// Раздел 8 «Utilities.bat» — питание, память и CPU.
 // powercfg/bcdedit — через LongProcessRunner, реестр — через RegistryHelper, WMI — напрямую.
 public sealed class PowerService
 {

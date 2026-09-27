@@ -48,7 +48,16 @@ public static class ThemeManager
     private const string ColorsDarkSource = "colors.dark.xaml";
     private const string ColorsLightSource = "colors.light.xaml";
 
-    public static AppAccent Accent { get; private set; } = AppAccent.System;
+    // Дефолт — синий: после установки (settings.json отсутствует) приложение
+    // всегда стартует в синем акценте, а не в цвете Windows.
+    public static AppAccent Accent { get; private set; } = AppAccent.Blue;
+
+    // Отдельный цвет иконки приложения (рабочий стол, панель задач): не зависит
+    // от акцентного цвета интерфейса. Дефолт — тоже синий.
+    public static AppAccent IconAccent { get; internal set; } = AppAccent.Blue;
+
+    // Поднимается при смене цвета иконки (слушает MainWindow для перерисовки значка).
+    public static event Action? IconAccentChanged;
 
     // Режим прозрачности применяется централизованно: одни и те же ключи поверхностей
     // (glass/control/card/popup) перекрываются набором значений выбранного режима.
@@ -77,6 +86,16 @@ public static class ThemeManager
             _cachedAccentColor = color;
             _cachedAccentDark = dark;
             return color;
+        }
+    }
+
+    // Цвет иконки приложения: тот же расчёт пресетов, но по IconAccent, а не Accent.
+    public static Color CurrentIconAccentColor
+    {
+        get
+        {
+            var dark = IsDarkTheme(GetCachedThemeMode());
+            return GetPresetColor(IconAccent, dark);
         }
     }
 
@@ -211,7 +230,7 @@ public static class ThemeManager
             var path = GetSettingsPath();
             if (!File.Exists(path))
             {
-                return AppAccent.System;
+                return AppAccent.Blue;
             }
 
             using var document = JsonDocument.Parse(File.ReadAllText(path));
@@ -227,20 +246,61 @@ public static class ThemeManager
                 "orange" => AppAccent.Orange,
                 // Явное legacy-значение: раньше был пункт «Как в системе», мигрируем на синий.
                 "system" => AppAccent.Blue,
-                // Нераспознанное значение — тот же fallback, что у отсутствующего файла и
-                // сбоя чтения: AppAccent.System. ComboBox сам показывает корректный пункт
-                // (System маппится на «синий» в AccentModeIndex).
-                _ => AppAccent.System
+                // Нераспознанное значение — тот же fallback, что у отсутствующего
+                // файла и сбоя чтения: дефолтный синий.
+                _ => AppAccent.Blue
             };
         }
         catch
         {
-            return AppAccent.System;
+            return AppAccent.Blue;
         }
     }
 
-    // Режим прозрачности: значение из настроек; параметр отсутствует — «Прозрачный»
-    // (выраженный Liquid Glass), нераспознанное значение — тот же fallback.
+    // Цвет иконки приложения: значение из настроек; параметр отсутствует — синий.
+    public static AppAccent LoadIconAccent()
+    {
+        try
+        {
+            var path = GetSettingsPath();
+            if (File.Exists(path))
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                var raw = document.RootElement.TryGetProperty("iconAccent", out var iconAccent)
+                    ? iconAccent.GetString()
+                    : null;
+                return raw?.ToLowerInvariant() switch
+                {
+                    "blue" => AppAccent.Blue,
+                    "skyblue" => AppAccent.SkyBlue,
+                    "purple" => AppAccent.Purple,
+                    "green" => AppAccent.Green,
+                    "orange" => AppAccent.Orange,
+                    _ => AppAccent.Blue
+                };
+            }
+        }
+        catch
+        {
+        }
+
+        return AppAccent.Blue;
+    }
+
+    // Смена цвета иконки: применяется сразу и сохраняется в settings.json.
+    public static void SetIconAccent(AppAccent accent)
+    {
+        if (IconAccent == accent)
+        {
+            return;
+        }
+
+        IconAccent = accent;
+        IconAccentChanged?.Invoke();
+    }
+
+    // Режим прозрачности: значение из настроек; параметр отсутствует — «Тусклый»
+    // нераспознанное значение — тот же fallback.
     public static AppTransparency LoadTransparency()
     {
         try
@@ -275,6 +335,10 @@ public static class ThemeManager
         SaveSettings(GetCachedThemeMode(), Accent, L.Current, LoadShowLog(), LoadUacConfirmations());
     }
 
+    // Глобальные горячие клавиши (Ctrl+Alt+S — показать/скрыть SCU): переключаются
+    // в «Настройки → Горячие клавиши», хранятся в общем settings.json.
+    public static bool GlobalHotkeysEnabled { get; internal set; } = true;
+
     public static void SaveSettings(AppTheme theme, AppAccent accent, AppLanguage language, bool showLog, bool uacConfirmations = true)
     {
         InvalidateCaches();
@@ -290,7 +354,9 @@ public static class ThemeManager
                     transparency = Transparency.ToString().ToLowerInvariant(),
                     language = language == AppLanguage.En ? "en" : "ru",
                     showLog = showLog,
-                    uacConfirmations = uacConfirmations
+                    uacConfirmations = uacConfirmations,
+                    globalHotkeys = GlobalHotkeysEnabled,
+                    iconAccent = IconAccent.ToString().ToLowerInvariant()
                 },
                 new JsonSerializerOptions { WriteIndented = true });
 
@@ -324,6 +390,29 @@ public static class ThemeManager
                     && (uac.ValueKind == JsonValueKind.True || uac.ValueKind == JsonValueKind.False))
                 {
                     return uac.GetBoolean();
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return true;
+    }
+
+    // Глобальные горячие клавиши: значение из настроек; параметр отсутствует — включены.
+    public static bool LoadGlobalHotkeys()
+    {
+        try
+        {
+            var path = GetSettingsPath();
+            if (File.Exists(path))
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                if (document.RootElement.TryGetProperty("globalHotkeys", out var hotkeys)
+                    && (hotkeys.ValueKind == JsonValueKind.True || hotkeys.ValueKind == JsonValueKind.False))
+                {
+                    return hotkeys.GetBoolean();
                 }
             }
         }
@@ -520,13 +609,17 @@ public static class ThemeManager
         }
     }
 
-    private static Color GetAccentColor(bool dark)
+    // Цвет пресета для произвольного режима акцента (выбор в «Настройках»).
+    public static Color GetPresetColor(AppAccent accent, bool dark) => accent switch
     {
-        if (AccentPresets.TryGetValue(Accent, out var preset))
-        {
-            return dark ? preset.Dark : preset.Light;
-        }
+        AppAccent.System => GetSystemAccent(dark),
+        _ when AccentPresets.TryGetValue(accent, out var preset) => dark ? preset.Dark : preset.Light,
+        _ => GetSystemAccent(dark)
+    };
 
+    // Системный акцент Windows (fallback для AppAccent.System).
+    private static Color GetSystemAccent(bool dark)
+    {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\DWM");
@@ -545,8 +638,10 @@ public static class ThemeManager
         {
         }
 
-        return dark ? Color.FromRgb(0x0A, 0x84, 0xFF) : Color.FromRgb(0x00, 0x7A, 0xFF);
+        return dark ? AccentPresets[AppAccent.Blue].Dark : AccentPresets[AppAccent.Blue].Light;
     }
+
+    private static Color GetAccentColor(bool dark) => GetPresetColor(Accent, dark);
 
     private static void SetBrush(Application application, string key, Color color)
     {

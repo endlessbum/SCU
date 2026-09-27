@@ -235,7 +235,7 @@ echo  %Bold%[ 6]%Reset%  Службы Windows
 echo  %Bold%[ 7]%Reset%  Автозагрузка
 echo.
 echo  %Gray%  5. Производительность%Reset%
-echo  %Bold%[ 8]%Reset%  Питание, память, CPU
+echo  %Bold%[ 8]%Reset%  Питание, память и CPU
 echo  %Bold%[ 9]%Reset%  Сеть
 echo.
 echo  %Gray%  6. Интерфейс и ввод%Reset%
@@ -2427,12 +2427,12 @@ explorer shell:common startup
 goto StartUpMenu
 
 rem ========================================================================
-rem  8. ПИТАНИЕ, ПАМЯТЬ, CPU
+rem  8. ПИТАНИЕ, ПАМЯТЬ И CPU
 rem ========================================================================
 :PerfMenu
 call :RequireAdmin
 if errorlevel 1 goto MainMenu
-call :Hdr "ПИТАНИЕ, ПАМЯТЬ, CPU"
+call :Hdr "ПИТАНИЕ, ПАМЯТЬ И CPU"
 echo  %Bold%[1]%Reset%  План электропитания
 echo  %Bold%[2]%Reset%  Гибернация
 echo  %Bold%[3]%Reset%  Быстрый запуск

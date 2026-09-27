@@ -11,80 +11,25 @@
         MinHeight="700"
         WindowStartupLocation="CenterScreen"
         WindowState="Maximized"
-        WindowStyle="None"
-        AllowsTransparency="False"
-        Background="Transparent"
+        Background="{DynamicResource SolidRootBrush}"
         Icon="SCU.ico"
         Foreground="{DynamicResource PrimaryTextBrush}"
         FontFamily="{DynamicResource AppFontFamily}"
         FontSize="14"
         ResizeMode="CanResize">
-    <WindowChrome.WindowChrome>
-        <!-- Заголовок ниже прежних 48 px, но выше системного: фон строки —
-             прозрачный, поэтому она сливается с фоном приложения (Mica/тема). -->
-        <shell:WindowChrome CaptionHeight="38"
-                            ResizeBorderThickness="8"
-                            GlassFrameThickness="-1"
-                            CornerRadius="0"
-                            UseAeroCaptionButtons="False" />
-    </WindowChrome.WindowChrome>
+
 
     <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="38" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition x:Name="JournalRow" Height="150" MinHeight="120" MaxHeight="480" />
         </Grid.RowDefinitions>
 
-        <!-- ===================== Строка заголовка (38 px) ===================== -->
-        <Grid Grid.Row="0" Background="Transparent">
-            <StackPanel Margin="12,0,0,0"
-                        Orientation="Horizontal"
-                        VerticalAlignment="Center">
-                <Image x:Name="TitleIcon"
-                       Height="18"
-                       Stretch="Uniform"
-                       RenderOptions.BitmapScalingMode="HighQuality"
-                       VerticalAlignment="Center" />
-                <TextBlock Margin="8,0,0,0"
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           Foreground="{DynamicResource PrimaryTextBrush}"
-                           Text="SCU" />
-            </StackPanel>
-
-            <StackPanel HorizontalAlignment="Right"
-                        Orientation="Horizontal">
-                <Button Style="{StaticResource WindowButton}"
-                        WindowChrome.IsHitTestVisibleInChrome="True"
-                        Click="OnMinimizeClick"
-                        ToolTip="{DynamicResource S_CaptionMinimize}"
-                        AutomationProperties.Name="{DynamicResource S_CaptionMinimize}">
-                    <TextBlock FontFamily="{DynamicResource IconFontFamily}" FontSize="10" Text="&#xE921;" />
-                </Button>
-                <Button Style="{StaticResource WindowButton}"
-                        WindowChrome.IsHitTestVisibleInChrome="True"
-                        Click="OnMaximizeRestoreClick"
-                        ToolTip="{DynamicResource S_CaptionMaximize}"
-                        AutomationProperties.Name="{DynamicResource S_CaptionMaximize}">
-                    <TextBlock x:Name="MaximizeGlyph"
-                               FontFamily="{DynamicResource IconFontFamily}"
-                               FontSize="10"
-                               Text="&#xE922;" />
-                </Button>
-                <Button Style="{StaticResource CloseWindowButton}"
-                        WindowChrome.IsHitTestVisibleInChrome="True"
-                        Click="OnCloseClick"
-                        ToolTip="{DynamicResource S_CaptionClose}"
-                        AutomationProperties.Name="{DynamicResource S_CaptionClose}">
-                    <TextBlock FontFamily="{DynamicResource IconFontFamily}" FontSize="10" Text="&#xE8BB;" />
-                </Button>
-            </StackPanel>
-        </Grid>
-
-        <!-- ===================== Тело: сайдбар + контент ===================== -->
-        <Grid Grid.Row="1">
+        <!-- ===================== Тело: сайдбар + контент =====================
+             Заголовок — системный (как в окне браузера): кнопки и перетаскивание
+             отдаёт Windows, цвет строки задаёт DWM-подложка Mica/фона приложения. -->
+        <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="300" MinWidth="260" MaxWidth="360" />
                 <ColumnDefinition Width="Auto" />
@@ -152,12 +97,14 @@
                           ResizeBehavior="PreviousAndNext"
                           ResizeDirection="Columns" />
 
-            <!-- Контент раздела: заголовок, описание, InfoBar, затем разделы -->
+            <!-- Контент раздела: заголовок, описание, InfoBar, разделы,
+                 пользовательские скрипты -->
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <StackPanel Grid.Row="0" Margin="32,12,32,0">
@@ -235,6 +182,7 @@
                 </Border>
 
                 <ScrollViewer x:Name="ContentScroll"
+                              Style="{StaticResource OverlayScrollViewerStyle}"
                               Grid.Row="2"
                               Margin="32,12,32,8"
                               HorizontalAlignment="Stretch"
@@ -300,11 +248,19 @@
                     </Grid>
                     </Border>
                 </ScrollViewer>
+
+                <!-- Пользовательские скрипты открытого раздела («Добавить свой скрипт») -->
+                <controls:UserScriptsStrip Grid.Row="3"
+                                           x:Name="UserScriptsStripHost"
+                                           SectionNumber="{Binding CurrentSection.Number, Mode=OneWay}"
+                                           Margin="32,0,32,8"
+                                           MaxHeight="280"
+                                           VerticalAlignment="Top" />
             </Grid>
         </Grid>
 
         <!-- Перетаскивание меняет высоту журнала -->
-        <GridSplitter x:Name="JournalSplitter" Grid.Row="2"
+        <GridSplitter x:Name="JournalSplitter" Grid.Row="1"
                       Height="8"
                       HorizontalAlignment="Stretch"
                       Background="Transparent"
@@ -312,18 +268,49 @@
                       ResizeDirection="Rows" />
 
         <!-- Журнал: панель с разделителем сверху, не карточка -->
-        <Border Grid.Row="3"
+        <Border Grid.Row="2"
                 Background="Transparent"
                 BorderBrush="{DynamicResource SeparatorBrush}"
                 BorderThickness="0,1,0,0">
             <controls:LogPane DataContext="{Binding}" />
         </Border>
 
+        <!-- Глобальное затемнение при прогрузке/обновлении открытой вкладки:
+             тот же SearchScrimBrush на всё окно (как при активации поиска),
+             крупный акцентный спиннер по центру. Не блокирует ввод. -->
+        <Grid Grid.Row="0" Grid.RowSpan="3"
+              Panel.ZIndex="80"
+              IsHitTestVisible="False">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsCurrentSectionBusy}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Border Background="{DynamicResource SearchScrimBrush}" />
+            <Control Width="80"
+                     Height="80"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"
+                     Style="{StaticResource AccentSpinner}" />
+        </Grid>
+
+        <!-- Центр уведомлений: тосты в стиле UAC-диалогов, справа сверху -->
+        <controls:NotificationHost Grid.Row="0" Grid.RowSpan="3"
+                                   Margin="0,56,24,0"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Top"
+                                   Panel.ZIndex="90" />
+
         <!-- Затемнение фона при активном поиске на «Главной» или в «Приложениях»:
              слегка темнее всё приложение, акцент остаётся на поле поиска
              (и подсказках на «Главной»: Popup живёт в отдельном окне и затемнения
              не касается). Пропускает мышь — не мешает работе с интерфейсом. -->
-        <Border Grid.Row="0" Grid.RowSpan="4">
+        <Border Grid.Row="0" Grid.RowSpan="3">
             <Border.Style>
                 <Style TargetType="Border">
                     <Setter Property="Background" Value="{DynamicResource SearchScrimBrush}" />

@@ -39,11 +39,12 @@
         <!-- Бегущая по периметру выключателя полоса: сегмент штриха движется
              по контуру капсулы (прямоугольник с максимальным скруглением),
              вынесенной наружу на 12 px, в цвет акцента приложения.
-             Периметр капсулы 244×154 = 2·(244−154) + π·154 ≈ 663.8 px;
-             в единицах StrokeDashArray (× толщина 2) это ≈ 331.9. -->
+             Периметр капсулы 301×154 = 2·(301−154) + π·154 ≈ 777.8 px;
+             StrokeDashArray задаётся в единицах толщины обводки (2 px):
+             период массива = 777.8 / 2 = 388.9 (как 331.9 для старой капсулы). -->
         <Storyboard x:Key="BatchRingStoryboard" RepeatBehavior="Forever">
             <DoubleAnimation Storyboard.TargetProperty="StrokeDashOffset"
-                             From="331.9" To="0"
+                             From="388.9" To="0"
                              Duration="0:0:1.4" />
         </Storyboard>
     </UserControl.Resources>
@@ -156,8 +157,8 @@
         <!-- ===================== Выключатель и список утилит ===================== -->
         <!-- Прокрутки у раздела нет: при свёрнутом списке всё помещается,
              при развёрнутом крутится внешний ContentScroll из MainWindow. -->
-        <!-- 880: карточки шире прежних 760, но не во всю ширину на широких окнах -->
-        <StackPanel Grid.Row="1" MaxWidth="880" HorizontalAlignment="Center" Margin="0,0,0,16">
+        <!-- 1320: карточки списка утилит в 1.5 раза шире прежних 880, но не во всю ширину вкладки -->
+        <StackPanel Grid.Row="1" MaxWidth="1320" HorizontalAlignment="Center" Margin="0,0,0,16">
 
             <!-- ===================== Большой выключатель ===================== -->
             <!-- Блок закреплён: верхний отступ считает code-behind от видимой
@@ -169,12 +170,12 @@
                 <StackPanel x:Name="ToggleCore">
                     <Grid HorizontalAlignment="Center">
                         <!-- Индикатор выполнения: бегущая по периметру полоса -->
-                        <Rectangle Width="244"
+                        <Rectangle Width="301"
                                    Height="154"
                                    RadiusX="77"
                                    RadiusY="77"
                                    StrokeThickness="2"
-                                   StrokeDashArray="40 291.9"
+                                   StrokeDashArray="46.7 342.2"
                                    StrokeDashCap="Round"
                                    Stroke="{DynamicResource AccentFillBrush}"
                                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
@@ -269,17 +270,24 @@
             <Expander Margin="0,16,0,0"
                       HorizontalAlignment="Stretch">
                 <Expander.Header>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Margin="0,0,8,0"
+                    <!-- Фиксированные колонки: заголовок не сдвигается по горизонтали
+                         при раскрытии/свёртывании списка -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="22" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
                                    VerticalAlignment="Center"
                                    FontFamily="{DynamicResource IconFontFamily}"
                                    FontSize="14"
                                    Foreground="{DynamicResource AccentFillBrush}"
                                    Text="&#xE713;" />
-                        <TextBlock VerticalAlignment="Center"
+                        <TextBlock Grid.Column="1"
+                                   VerticalAlignment="Center"
                                    Style="{StaticResource PageSubtitleText}"
                                    Text="{DynamicResource D_BatchSettings}" />
-                    </StackPanel>
+                    </Grid>
                 </Expander.Header>
                 <ItemsControl Margin="12,8,0,0" ItemsSource="{Binding FilteredGroups}">
                     <ItemsControl.ItemTemplate>

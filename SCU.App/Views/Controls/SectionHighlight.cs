@@ -45,12 +45,15 @@ internal sealed class SectionHighlight
     {
         if (!string.IsNullOrEmpty(elementTitle) && FindRowCardByText(elementTitle) is { } card)
         {
-            // Прокрутка к строке, затем отступ от верхнего края: карточка,
-            // прижатая к границе окна, обрезала бы контур.
-            card.BringIntoView();
+            // Прокрутка так, чтобы карточка с запасом на контур была видна ЦЕЛИКОМ:
+            // BringIntoView выравнивает карточку по нижней границе области просмотра,
+            // и у пользователя она могла остаться наполовину за окном терминала.
+            // Повторный проход после рендера страхует от поздних layout-сдвигов
+            // (ленивый refresh раздела переставляет карточки).
+            EnsureCardVisible(card);
             _owner.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
             {
-                _contentScroll.ScrollToVerticalOffset(Math.Max(0, _contentScroll.VerticalOffset - OutlineScrollMargin));
+                EnsureCardVisible(card);
                 _owner.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => StartOutline(card));
             });
             return;
@@ -62,6 +65,35 @@ internal sealed class SectionHighlight
     // Контур выступает за границы карточки на полпикселя; столько пикселей
     // отводим сверху и снизу при прокрутке, чтобы рамка была видна целиком.
     private const double OutlineScrollMargin = 8;
+
+    // Прокрутка, гарантирующая полную видимость карточки с отступом под контур:
+    // позиция карточки считается в координатах контента ScrollViewer и
+    // сопоставляется с текущим окном просмотра (учитывает и низ, и верх).
+    private void EnsureCardVisible(FrameworkElement card)
+    {
+        if (_contentScroll.Content is not Visual contentVisual
+            || _contentScroll.ViewportHeight <= 0
+            || card.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        var rect = card.TransformToVisual(contentVisual)
+            .TransformBounds(new Rect(new Point(0, 0), card.RenderSize));
+        var offset = _contentScroll.VerticalOffset;
+        var viewportBottom = offset + _contentScroll.ViewportHeight;
+        var bottom = rect.Bottom + OutlineScrollMargin;
+        var top = rect.Top - OutlineScrollMargin;
+
+        if (bottom > viewportBottom)
+        {
+            _contentScroll.ScrollToVerticalOffset(bottom - _contentScroll.ViewportHeight);
+        }
+        else if (top < offset)
+        {
+            _contentScroll.ScrollToVerticalOffset(top);
+        }
+    }
 
     // Ищет в открытом разделе карточку, в которой лежит заголовок утилиты из
     // подсказки. Совпадение сначала точное; если раздел называет параметр иначе

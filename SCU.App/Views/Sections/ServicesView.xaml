@@ -61,12 +61,13 @@
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
                                                 <Style.Triggers>
-                                                    <!-- Не найдена / нет доступа — единый красный статус -->
+                                                    <!-- Отсутствует / нет доступа — нейтральный цвет
+                                                         (как у «Остановлена»), без красной подсветки -->
                                                     <DataTrigger Binding="{Binding QueryStatus}" Value="{x:Static models:ServiceQueryStatus.NotFound}">
-                                                        <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding QueryStatus}" Value="{x:Static models:ServiceQueryStatus.AccessDenied}">
-                                                        <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding StartupType}" Value="{x:Static models:ServiceStartupType.Disabled}">
                                                         <Setter Property="Foreground" Value="{DynamicResource StateDisabledBrush}" />
@@ -116,5 +117,6 @@
 
         <TextBlock Grid.Row="3"
                    Style="{StaticResource SectionStatusText}" Text="{Binding StatusText}" />
-    </Grid>
+    
+</Grid>
 </UserControl>

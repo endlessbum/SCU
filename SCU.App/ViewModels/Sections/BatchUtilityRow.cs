@@ -18,8 +18,15 @@ public sealed class BatchUtility
 
     public required string TitleKey { get; init; }
 
+    // Родной раздел утилиты (из реестра); проставляется при построении реестра
+    // и не меняется — используется для возврата при удалении пользовательской
+    // вкладки и сбросе меню.
+    public int OriginalSection { get; internal set; }
+
     // Номер раздела-владельца: группировка списка настроек и заголовок группы.
-    public required int Section { get; init; }
+    // Изменяется при перемещении утилиты в пользовательскую вкладку
+    // («Редактирование меню») — глобальный поиск находит её там, где она теперь.
+    public required int Section { get; set; }
 
     // true — TitleKey это ключ XAML-словаря; false — русский текст, перевод через L.T.
     public bool IsRawTitle { get; init; }
@@ -40,6 +47,9 @@ public sealed class BatchUtility
 
     public string ResolveTitle() =>
         IsRawTitle ? L.T(TitleKey) : Application.Current?.TryFindResource(TitleKey) as string ?? TitleKey;
+
+    // Для биндингов DisplayMemberPath (редактор меню).
+    public string Title => ResolveTitle();
 }
 
 // Строка списка настроек: включённость в пакет (сохраняется) и результат

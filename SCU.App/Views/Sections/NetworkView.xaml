@@ -382,5 +382,6 @@
             <TextBlock Style="{StaticResource SectionStatusText}" Text="{Binding StatusText}" />
             <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />
         </StackPanel>
-    </Grid>
+    
+</Grid>
 </UserControl>

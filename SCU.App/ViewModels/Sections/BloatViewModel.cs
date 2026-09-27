@@ -16,6 +16,7 @@ namespace SCU.ViewModels.Sections;
 public sealed class BloatRow : INotifyPropertyChanged
 {
     private string _stateText;
+    private string? _leftoverText;
 
     public BloatRow(BloatApp app, string stateText)
     {
@@ -34,6 +35,20 @@ public sealed class BloatRow : INotifyPropertyChanged
     public string RemoveNames => App.RemoveNames;
 
     public bool Irreversible => App.Irreversible;
+
+    // Компоненты, которые не удалось удалить (подтверждено ресканом после попытки).
+    public string? LeftoverText
+    {
+        get => _leftoverText;
+        set
+        {
+            _leftoverText = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasLeftover));
+        }
+    }
+
+    public bool HasLeftover => !string.IsNullOrEmpty(_leftoverText);
 
     public string ToolTipText =>
         $"Пакеты: {RemoveNames}\n" +
@@ -92,9 +107,11 @@ public partial class BloatViewModel : ObservableObject, IDisposable, ISectionOpe
     private bool _isBusy;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RemoveAllCommand))]
     private bool _isAdmin;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RemoveAllCommand))]
     private bool _isScanAvailable;
 
     [ObservableProperty]
@@ -113,7 +130,7 @@ public partial class BloatViewModel : ObservableObject, IDisposable, ISectionOpe
 
         foreach (var app in _bloatService.Apps)
         {
-            Rows.Add(new BloatRow(app, "неизвестно — выполните скан"));
+            Rows.Add(TrackRow(new BloatRow(app, "неизвестно — выполните скан")));
         }
 
         Rows.Add(new BloatRow(
@@ -149,6 +166,25 @@ public partial class BloatViewModel : ObservableObject, IDisposable, ISectionOpe
     private bool CanModify() => !IsBusy && IsAdmin && IsScanAvailable;
     private bool CanRefresh() => !IsBusy && IsScanAvailable;
     private bool CanCancel() => IsBusy;
+
+    // «Удалить всё» активна, только если есть что удалять: скан должен быть
+    // выполнен, и хотя бы один пункт — установлен. Когда все приложения и
+    // компоненты удалены, кнопка гаснет.
+    private bool CanRemoveAll() =>
+        !IsBusy && IsAdmin && IsScanAvailable && Rows.Any(r => r.CanRemove || r.IsUnknown);
+
+    // Статусы строк меняются вне команд (скан/рескан) — следим за ними напрямую.
+    private BloatRow TrackRow(BloatRow row)
+    {
+        row.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(BloatRow.StateText))
+            {
+                RemoveAllCommand.NotifyCanExecuteChanged();
+            }
+        };
+        return row;
+    }
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
@@ -207,17 +243,21 @@ public partial class BloatViewModel : ObservableObject, IDisposable, ISectionOpe
             }
             // Дать системе время применить состояние AppX, иначе рескан видит ещё не удалённый пакет.
             await Task.Delay(2500, ct).ConfigureAwait(true);
-            await RescanIntoRowsAsync(ct).ConfigureAwait(true);
-            if (row.ScanKey == "Xbox" && result.IsSuccess)
+            var scanState = await RescanIntoRowsAsync(ct).ConfigureAwait(true);
+            if (row.ScanKey == "Xbox")
             {
-                // Скановый шаблон 'Xbox' ловит несъёмный системный XboxGameCallableUI —
-                // показываем факт: удаляемые пакеты отсутствуют (подтверждено скриптом).
+                // Попытка удаления уже выполнена: оставляем галочку, даже если часть
+                // компонентов удалить не удалось — список остатков пишем под пакетами.
+                var leftovers = scanState.LeftoverNames("Xbox");
                 row.StateText = "пакеты удалены (проверено скриптом)";
+                row.LeftoverText = leftovers.Count > 0
+                    ? L.T("Не удалось удалить: {0}", string.Join(", ", leftovers))
+                    : null;
             }
         }).ConfigureAwait(true);
     }
 
-    [RelayCommand(CanExecute = nameof(CanModify))]
+    [RelayCommand(CanExecute = nameof(CanRemoveAll))]
     private async Task RemoveAllAsync()
     {
         if (!_dialogs.Ask(
@@ -268,26 +308,29 @@ public partial class BloatViewModel : ObservableObject, IDisposable, ISectionOpe
         _operationCts?.Cancel();
     }
 
-    private async Task RescanIntoRowsAsync(CancellationToken ct)
+    private async Task<AppxScanState> RescanIntoRowsAsync(CancellationToken ct)
     {
         var scan = await _bloatService.ScanAsync(ct).ConfigureAwait(true);
-        UpdateRows(scan.IsSuccess && scan.Value is not null
+        var state = scan.IsSuccess && scan.Value is not null
             ? scan.Value
-            : new AppxScanState(false, new Dictionary<string, string>()));
+            : new AppxScanState(false, new Dictionary<string, string>());
+        UpdateRows(state);
+        return state;
     }
 
     private void UpdateRows(AppxScanState scan)
     {
         foreach (var row in Rows)
         {
+            row.LeftoverText = null;
             row.StateText = scan.StateText(row.ScanKey);
         }
 
         if (Rows.All(r => r.ScanKey != "Edge"))
         {
-            Rows.Add(new BloatRow(
+            Rows.Add(TrackRow(new BloatRow(
                 new BloatApp("Edge", "Microsoft Edge", "(setup.exe + winget)", Irreversible: true),
-                _bloatService.IsEdgeInstalled() ? "установлено" : "отсутствует"));
+                _bloatService.IsEdgeInstalled() ? "установлено" : "отсутствует")));
         }
         else
         {

@@ -13,13 +13,18 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 # не детектировал собственные скрипты при Full Scan.
 set(SCU_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../SCU.App/Assets")
 set(GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+# DEPENDS на сами ассеты: без этого изменение Utilities.bat/SCU.ps1 не
+# перегенерирует allowlist, и сканер начинает детектить собственные скрипты.
+file(GLOB SCU_ASSET_FILES LIST_DIRECTORIES false
+    "${SCU_ASSETS_DIR}/*.ps1"
+    "${SCU_ASSETS_DIR}/*.bat")
 add_custom_command(
     OUTPUT "${GENERATED_DIR}/component_allowlist.h"
     COMMAND ${CMAKE_COMMAND}
         -DASSETS_DIR=${SCU_ASSETS_DIR}
         -DOUT_FILE=${GENERATED_DIR}/component_allowlist.h
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/component_allowlist.cmake
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/cmake/component_allowlist.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/cmake/component_allowlist.cmake ${SCU_ASSET_FILES}
     COMMENT "Generating component_allowlist.h (SHA-256 of SCU scripts)"
 )
 add_custom_target(allowlist_header DEPENDS "${GENERATED_DIR}/component_allowlist.h")

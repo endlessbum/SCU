@@ -1,0 +1,470 @@
+﻿<Window x:Class="SCU.Views.BrowserWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="SCU Browser"
+        MinWidth="1040" MinHeight="700"
+        WindowState="Maximized"
+        Background="{DynamicResource SolidRootBrush}"
+        PreviewKeyDown="OnWindowPreviewKeyDown"
+        d:DesignHeight="720" d:DesignWidth="1200">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <!-- Кнопка панели инструментов: глиф Segoe MDL2 в существующей кнопке темы -->
+        <Style x:Key="BrowserToolButton" TargetType="Button" BasedOn="{StaticResource SmallButton}">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="MinWidth" Value="34" />
+            <Setter Property="FontFamily" Value="{DynamicResource IconFontFamily}" />
+            <Setter Property="FontSize" Value="15" />
+        </Style>
+        <!-- Спиннер загрузки страницы в статус-баре -->
+        <Style x:Key="PageSpinner" TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ActiveTab.IsLoading}" Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Панель инструментов -->
+        <Grid Grid.Row="0" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Логотип браузера: глобус в акцентном цвете -->
+            <Grid Grid.Column="0" Width="22" Height="22" Margin="0,0,8,0" VerticalAlignment="Center">
+                <Path Data="{Binding GlobeData, RelativeSource={RelativeSource AncestorType=Window}}"
+                      Fill="Transparent"
+                      Stroke="{DynamicResource AccentFillBrush}" />
+            </Grid>
+
+            <Button Grid.Column="1" Style="{StaticResource BrowserToolButton}"
+                    Content="&#xE72B;" Command="{Binding GoBackCommand}"
+                    ToolTip="{DynamicResource S_BrowserBack}" ToolTipService.InitialShowDelay="300" />
+            <Button Grid.Column="2" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+                    Content="&#xE72A;" Command="{Binding GoForwardCommand}"
+                    ToolTip="{DynamicResource S_BrowserForward}" ToolTipService.InitialShowDelay="300" />
+            <Button Grid.Column="3" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+                    Content="&#xE72C;" Command="{Binding ReloadCommand}"
+                    ToolTip="{DynamicResource S_BrowserReload}" ToolTipService.InitialShowDelay="300" />
+            <Button Grid.Column="4" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+                    Content="&#xE711;" Command="{Binding StopCommand}"
+                    ToolTip="{DynamicResource S_BrowserStop}" ToolTipService.InitialShowDelay="300" />
+
+            <!-- Адресная строка: URL или поиск в Google -->
+            <TextBox Grid.Column="5"
+                     x:Name="AddressBox"
+                     Margin="8,0"
+                     VerticalContentAlignment="Center"
+                     GotKeyboardFocus="OnAddressGotKeyboardFocus"
+                     LostKeyboardFocus="OnAddressLostKeyboardFocus"
+                     KeyDown="OnAddressKeyDown"
+                     ToolTip="{DynamicResource S_BrowserAddress}">
+                <TextBox.Text>
+                    <Binding Path="AddressText" UpdateSourceTrigger="PropertyChanged" Mode="TwoWay" />
+                </TextBox.Text>
+            </TextBox>
+
+            <Button Grid.Column="6" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+                    Content="&#xE734;" Command="{Binding ToggleBookmarkCommand}"
+                    ToolTip="{DynamicResource S_BrowserBookmarkAdd}" ToolTipService.InitialShowDelay="300" />
+
+            <StackPanel Grid.Column="7" Orientation="Horizontal">
+                <!-- Тумблеры popup-панелей: Click + PreviewMouseDown вместо Command,
+                     чтобы повторный клик закрывал, а не переоткрывал панель
+                     (StaysOpen=False закрывает popup по mousedown вне него и через
+                     TwoWay пишет false в VM раньше Click). -->
+                <Button x:Name="DownloadsButton" Style="{StaticResource BrowserToolButton}"
+                        Content="&#xE896;" Tag="Downloads"
+                        PreviewMouseDown="OnPopupTogglePreviewMouseDown" Click="OnPopupToggleClick"
+                        ToolTip="{DynamicResource S_BrowserDownloads}" ToolTipService.InitialShowDelay="300" />
+                <Button x:Name="HistoryButton" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+                        Content="&#xE81C;" Tag="History"
+                        PreviewMouseDown="OnPopupTogglePreviewMouseDown" Click="OnPopupToggleClick"
+                        ToolTip="{DynamicResource S_BrowserHistory}" ToolTipService.InitialShowDelay="300" />
+                <Button x:Name="BookmarksButton" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+                        Content="&#xE8A4;" Tag="Bookmarks"
+                        PreviewMouseDown="OnPopupTogglePreviewMouseDown" Click="OnPopupToggleClick"
+                        ToolTip="{DynamicResource S_BrowserBookmarks}" ToolTipService.InitialShowDelay="300" />
+                <Button x:Name="SettingsButton" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+                        Content="&#xE713;" Tag="Settings"
+                        PreviewMouseDown="OnPopupTogglePreviewMouseDown" Click="OnPopupToggleClick"
+                        ToolTip="{DynamicResource S_BrowserSettings}" ToolTipService.InitialShowDelay="300" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Вкладки -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,6">
+            <Button Style="{StaticResource BrowserToolButton}"
+                    Content="&#xE710;" Command="{Binding NewTabCommand}"
+                    ToolTip="{DynamicResource S_BrowserNewTab}" ToolTipService.InitialShowDelay="300" />
+            <ItemsControl ItemsSource="{Binding Tabs}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <!-- Без обёртки Button: ButtonBase захватывает мышь на LeftDown и
+                             гасит MouseBinding'ы дочерних элементов. Middle-click работает всегда. -->
+                        <Border Margin="6,0,0,0"
+                                CornerRadius="6"
+                                Padding="8,4"
+                                Cursor="Hand">
+                            <Border.InputBindings>
+                                <MouseBinding MouseAction="LeftClick"
+                                              Command="{Binding DataContext.ActivateTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              CommandParameter="{Binding}" />
+                                <MouseBinding MouseAction="MiddleClick"
+                                              Command="{Binding DataContext.CloseTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              CommandParameter="{Binding}" />
+                            </Border.InputBindings>
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
+                                    <Setter Property="BorderThickness" Value="1" />
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource ControlFillBrush}" />
+                                        </Trigger>
+                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource AccentTintBrush}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentStrokeBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock VerticalAlignment="Center"
+                                           MaxWidth="160"
+                                           TextTrimming="CharacterEllipsis"
+                                           Style="{StaticResource CaptionText}"
+                                           Text="{Binding Title}" />
+                                <TextBlock Margin="8,0,0,0"
+                                           VerticalAlignment="Center"
+                                           Cursor="Hand"
+                                           FontFamily="{DynamicResource IconFontFamily}"
+                                           FontSize="11"
+                                           ToolTip="{DynamicResource S_BrowserCloseTab}"
+                                           ToolTipService.InitialShowDelay="300"
+                                           Text="&#xE711;">
+                                    <TextBlock.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick"
+                                                      Command="{Binding DataContext.CloseTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                      CommandParameter="{Binding}" />
+                                    </TextBlock.InputBindings>
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+
+        <!-- Web-контент: созданные вкладки живут здесь, видима только активная -->
+        <Grid Grid.Row="2" x:Name="WebViewPanel" />
+
+        <!-- Статус / загрузки -->
+        <Border Grid.Row="3" Margin="0,6,0,0"
+                Padding="8,4"
+                CornerRadius="6"
+                Background="{DynamicResource ControlFillBrush}">
+            <StackPanel Orientation="Horizontal">
+                <Control Style="{StaticResource PageSpinner}" />
+                <TextBlock VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Style="{StaticResource CaptionText}"
+                           Text="{Binding StatusText}" />
+            </StackPanel>
+        </Border>
+
+        <!-- ===================== Всплывающие панели (под своими кнопками) ===================== -->
+
+        <!-- Загрузки -->
+        <Popup Grid.Row="0"
+               x:Name="DownloadsPopup"
+               IsOpen="{Binding IsDownloadsOpen, Mode=TwoWay}"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PlacementTarget="{Binding ElementName=DownloadsButton}"
+               Placement="Bottom"
+               VerticalOffset="4">
+            <Border Style="{StaticResource SectionCard}"
+                    MinWidth="440" MaxWidth="560" MaxHeight="360"
+                    Margin="8">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource RowHeaderText}"
+                               Text="{DynamicResource S_BrowserDownloads}" />
+                    <ItemsControl ItemsSource="{Binding Downloads}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Style="{StaticResource CaptionText}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding FileName}" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Style="{StaticResource CaptionText}"
+                                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                                       Text="{Binding State}" />
+                                            <TextBlock Margin="8,0,0,0"
+                                                       Text="{Binding ScanResult}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                                                        <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasScanResult}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Margin="4,0,0,0"
+                                            Style="{StaticResource SmallButton}"
+                                            Content="{DynamicResource S_BrowserOpen}"
+                                            Command="{Binding DataContext.OpenDownloadFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Grid.Column="2" Margin="4,0,0,0"
+                                            Style="{StaticResource SmallButton}"
+                                            Content="{DynamicResource S_BrowserOpenFolder}"
+                                            Command="{Binding DataContext.OpenDownloadFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Grid.Column="3" Margin="4,0,0,0"
+                                            Style="{StaticResource SmallButton}"
+                                            Content="{DynamicResource S_BrowserRetry}"
+                                            Command="{Binding DataContext.RetryDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Grid.Column="4" Margin="4,0,0,0"
+                                            Style="{StaticResource SmallButton}"
+                                            Content="{DynamicResource S_Cancel}"
+                                            Command="{Binding DataContext.RemoveDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <!-- История -->
+        <Popup Grid.Row="0"
+               x:Name="HistoryPopup"
+               IsOpen="{Binding IsHistoryOpen, Mode=TwoWay}"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PlacementTarget="{Binding ElementName=HistoryButton}"
+               Placement="Bottom"
+               VerticalOffset="4">
+            <Border Style="{StaticResource SectionCard}"
+                    MinWidth="420" MaxWidth="560" MaxHeight="360"
+                    Margin="8">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                   Text="{DynamicResource S_BrowserHistory}" />
+                        <Button Grid.Column="1"
+                                Style="{StaticResource SmallButton}"
+                                Content="{DynamicResource S_BrowserClearHistory}"
+                                Command="{Binding ClearHistoryCommand}" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding HistoryEntries}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,4">
+                                    <Grid.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick"
+                                                      Command="{Binding DataContext.OpenBookmarkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                      CommandParameter="{Binding Url}" />
+                                    </Grid.InputBindings>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Cursor="Hand">
+                                        <TextBlock Style="{StaticResource CaptionText}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding Title}" />
+                                        <TextBlock Style="{StaticResource CaptionText}"
+                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding Url}" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Margin="8,0,0,0"
+                                            Style="{StaticResource SmallButton}"
+                                            Content="{DynamicResource S_BrowserDelete}"
+                                            Command="{Binding DataContext.RemoveBookmarkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding Url}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <!-- Закладки -->
+        <Popup Grid.Row="0"
+               x:Name="BookmarksPopup"
+               IsOpen="{Binding IsBookmarksOpen, Mode=TwoWay}"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PlacementTarget="{Binding ElementName=BookmarksButton}"
+               Placement="Bottom"
+               VerticalOffset="4">
+            <Border Style="{StaticResource SectionCard}"
+                    MinWidth="420" MaxWidth="560" MaxHeight="360"
+                    Margin="8">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource RowHeaderText}"
+                               Text="{DynamicResource S_BrowserBookmarks}" />
+                    <ItemsControl ItemsSource="{Binding BookmarkEntries}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,4">
+                                    <Grid.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick"
+                                                      Command="{Binding DataContext.OpenBookmarkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                      CommandParameter="{Binding Url}" />
+                                    </Grid.InputBindings>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Cursor="Hand">
+                                        <TextBlock Style="{StaticResource CaptionText}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding Title}" />
+                                        <TextBlock Style="{StaticResource CaptionText}"
+                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding Url}" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Margin="8,0,0,0"
+                                            Style="{StaticResource SmallButton}"
+                                            Content="{DynamicResource S_BrowserDelete}"
+                                            Command="{Binding DataContext.RemoveBookmarkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding Url}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <!-- Настройки -->
+        <Popup Grid.Row="0"
+               x:Name="SettingsPopup"
+               IsOpen="{Binding IsSettingsOpen, Mode=TwoWay}"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PlacementTarget="{Binding ElementName=SettingsButton}"
+               Placement="Bottom"
+               VerticalOffset="4">
+            <Border Style="{StaticResource SectionCard}"
+                    MinWidth="440" MaxWidth="560" MaxHeight="420"
+                    Margin="8">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource RowHeaderText}"
+                               Text="{DynamicResource S_BrowserSettings}" />
+                    <TextBlock Margin="0,8,0,2"
+                               Style="{StaticResource CaptionText}"
+                               Text="{DynamicResource S_BrowserSettingsDownloads}" />
+                    <TextBox Text="{Binding Settings.DownloadFolder, Mode=OneWay}"
+                             IsReadOnly="True" Margin="0,2" />
+                    <Button HorizontalAlignment="Left" Margin="0,2"
+                            Style="{StaticResource SmallButton}"
+                            Content="{DynamicResource S_BrowserSettingsChangeFolder}"
+                            Click="OnPickDownloadFolderClick" />
+                    <CheckBox Margin="0,4,0,0"
+                              IsChecked="{Binding AskDownloadPath, Mode=TwoWay}"
+                              Content="{DynamicResource S_BrowserSettingsAskPath}" />
+                    <CheckBox Margin="0,2,0,0"
+                              IsChecked="{Binding ScanDownloads, Mode=TwoWay}"
+                              Content="{DynamicResource S_BrowserSettingsScan}" />
+                    <TextBlock Margin="0,10,0,2"
+                               Style="{StaticResource CaptionText}"
+                               Text="{DynamicResource S_BrowserSettingsPrivacy}" />
+                    <CheckBox Margin="0,2,0,0"
+                              IsChecked="{Binding SaveHistory, Mode=TwoWay}"
+                              Content="{DynamicResource S_BrowserSettingsSaveHistory}" />
+                    <CheckBox Margin="0,2,0,0"
+                              IsChecked="{Binding ClearHistoryOnExit, Mode=TwoWay}"
+                              Content="{DynamicResource S_BrowserSettingsClearHistoryExit}" />
+                    <CheckBox Margin="0,2,0,0"
+                              IsChecked="{Binding ClearCookiesOnExit, Mode=TwoWay}"
+                              Content="{DynamicResource S_BrowserSettingsClearCookiesExit}" />
+                    <CheckBox Margin="0,2,0,0"
+                              IsChecked="{Binding ClearCacheOnExit, Mode=TwoWay}"
+                              Content="{DynamicResource S_BrowserSettingsClearCacheExit}" />
+                    <Button HorizontalAlignment="Left" Margin="0,8,0,0"
+                            Style="{StaticResource SmallButton}"
+                            Content="{DynamicResource S_BrowserClearDataNow}"
+                            Command="{Binding ClearBrowsingDataNowCommand}" />
+                    <TextBlock Margin="0,10,0,2"
+                               Style="{StaticResource CaptionText}"
+                               Text="{DynamicResource S_BrowserSettingsAbout}" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               Text="{Binding RuntimeVersionText}" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               Text="{Binding ProfilePathText}" />
+                </StackPanel>
+            </Border>
+        </Popup>
+    </Grid>
+</Window>

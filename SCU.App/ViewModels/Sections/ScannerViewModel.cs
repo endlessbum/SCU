@@ -47,6 +47,21 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     [ObservableProperty]
     private string _databaseInfoText = L.T("База: встроенная (EICAR)");
 
+    // Прогресс сканирования: процент по файлам и объёму + оценка времени до конца.
+    [ObservableProperty]
+    private double _scanProgressPercent;
+
+    [ObservableProperty]
+    private string _scanEtaText = string.Empty;
+
+    private readonly Dictionary<string, long> _scanFileSizes = new(StringComparer.OrdinalIgnoreCase);
+    private long _scanTotalFiles;
+    private long _scanTotalBytes;
+    private long _scanBytesDone;
+    private string? _scanCurrentFile;
+    private DateTime _scanStartedUtc;
+    private bool _scanElapsedKnown;
+
     public ScannerViewModel(Logger logger, ScannerRunner scanner, HistoryStore history)
     {
         _logger = logger;
@@ -442,7 +457,101 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         finally
         {
             IsBusy = false;
+            ScanEtaText = string.Empty;
+            _scanFileSizes.Clear();
         }
+    }
+
+    // Подсчёт целевого объекта: файл → сам файл; папка → все файлы рекурсивно.
+    private void EnumerateScanTarget(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                _scanFileSizes[path] = new FileInfo(path).Length;
+            }
+            else if (Directory.Exists(path))
+            {
+                var options = new EnumerationOptions
+                {
+                    IgnoreInaccessible = true,
+                    RecurseSubdirectories = true,
+                };
+                foreach (var file in new DirectoryInfo(path).EnumerateFiles("*", options))
+                {
+                    _scanFileSizes[file.FullName] = file.Length;
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            // Подсчёт не удался — ETA по файлам, проценты продолжат считаться.
+            _logger.Warn("SCAN | size estimate failed | " + exception.Message);
+        }
+
+        _scanTotalFiles = _scanFileSizes.Count;
+        _scanTotalBytes = _scanFileSizes.Values.Sum();
+    }
+
+    // Процент: гибрид файлы+объём. Объём считается по файлам, которые сканер уже
+    // reported как текущие (события progress идут в порядке обработки) — точнее
+    // файлов, потому что большие файлы сканируются дольше.
+    private void UpdateScanProgress(ScanEvent scanEvent)
+    {
+        if (!_scanElapsedKnown)
+        {
+            _scanStartedUtc = DateTime.UtcNow;
+            _scanElapsedKnown = true;
+        }
+
+        if (_scanCurrentFile is { } previous
+            && !string.Equals(previous, scanEvent.Current, StringComparison.OrdinalIgnoreCase)
+            && _scanFileSizes.TryGetValue(previous, out var size))
+        {
+            _scanBytesDone += size;
+        }
+        _scanCurrentFile = scanEvent.Current;
+
+        var filesDone = scanEvent.Scanned + scanEvent.Skipped;
+        double fraction;
+        if (_scanTotalBytes > 0 && _scanBytesDone > 0)
+        {
+            var bytesFraction = Math.Clamp((double)_scanBytesDone / _scanTotalBytes, 0.0, 1.0);
+            var filesFraction = _scanTotalFiles > 0
+                ? Math.Clamp((double)filesDone / _scanTotalFiles, 0.0, 1.0)
+                : bytesFraction;
+            // Объём доминирует, файлы подтягивают заниженный bytesDone (события
+            // progress идут с шагом больше одного файла).
+            fraction = Math.Max(bytesFraction, 0.35 * bytesFraction + 0.65 * filesFraction);
+        }
+        else if (_scanTotalFiles > 0)
+        {
+            fraction = Math.Clamp((double)filesDone / _scanTotalFiles, 0.0, 1.0);
+        }
+        else
+        {
+            ScanProgressPercent = 0;
+            ScanEtaText = string.Empty;
+            return;
+        }
+
+        ScanProgressPercent = Math.Round(fraction * 100.0, 1);
+
+        var elapsed = DateTime.UtcNow - _scanStartedUtc;
+        ScanEtaText = fraction < 0.005
+            ? L.T("Осталось ≈ оценка…")
+            : L.T("Осталось ≈ {0}", FormatEta(TimeSpan.FromSeconds(elapsed.TotalSeconds * (1.0 - fraction) / fraction)));
+    }
+
+    private static string FormatEta(TimeSpan remaining)
+    {
+        if (remaining.TotalMinutes >= 1)
+        {
+            return $"{(int)remaining.TotalMinutes} мин {remaining.Seconds} с";
+        }
+
+        return Math.Ceiling(remaining.TotalSeconds) + " с";
     }
 
     private static string ExtractVersion(string updateMessage)
@@ -471,15 +580,26 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         IsBusy = true;
         Detections.Clear();
         LastScanSummaryText = string.Empty;
+        ScanProgressPercent = 0;
+        ScanEtaText = L.T("Оценка объёма…");
         StatusText = L.T("Сканирование: {0}…", path);
 
         try
         {
+            // Предварительный подсчёт файлов и объёма: база для процента и ETA.
+            _scanFileSizes.Clear();
+            _scanTotalFiles = 0;
+            _scanTotalBytes = 0;
+            _scanBytesDone = 0;
+            _scanCurrentFile = null;
+            _scanElapsedKnown = false;
+            await Task.Run(() => EnumerateScanTarget(path), _operationCts.Token).ConfigureAwait(true);
             var progress = new Progress<ScanEvent>(scanEvent =>
             {
                 // Событие уже разобрано в ScannerRunner — VM только отражает статус.
                 if (scanEvent.Kind == ScanEventKind.Progress)
                 {
+                    UpdateScanProgress(scanEvent);
                     StatusText = L.T("Просканировано: {0} | Пропущено: {1} | Обнаружений: {2}",
                         scanEvent.Scanned, scanEvent.Skipped, scanEvent.Detections);
                 }
@@ -515,6 +635,10 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                 else if (summary.Detections > 0)
                 {
                     StatusText = L.T("Обнаружено проблем: {0}.", summary.Detections);
+                    AppNotificationCenter.Instance.Push(
+                        L.T("Сканер: обнаружены угрозы"),
+                        L.T("Проверка «{0}»: проблемных объектов — {1}.", path, summary.Detections),
+                        AppNotificationKind.Danger);
                 }
                 else
                 {

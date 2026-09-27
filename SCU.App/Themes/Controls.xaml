@@ -8,7 +8,7 @@
       Геометрия: кнопки/поля 12, карточки 16, popup 14, диалог 20, навигация 12,
       тумблеры — капсулы. Отступы кратны 4 (4/8/12/16/20/24/32).
       Цвета — только токены из Colors.Dark/Light.xaml; плотность поверхностей
-      (Прозрачный/Матовый) управляется централизованно ThemeManager'ом.
+      (Тусклый/Насыщенный) управляется централизованно ThemeManager'ом.
     -->
 
     <!-- Шрифты: Segoe UI Variable (ближайший системный аналог SF Pro,
@@ -446,7 +446,11 @@
 
     <!-- ===================== ToggleSwitch: капсула iOS 44×26 ===================== -->
     <Style x:Key="SystemToggleSwitch" TargetType="ToggleButton">
-        <Setter Property="Width" Value="44" />
+        <!-- Копия переключателя с сайта SCU («Примени настройки в один клик»):
+             серая пилюля #444444, белый пилюльный ползунок с мягкой тенью,
+             при включении трек становится акцентным, ползунок уезжает вправо
+             по кривой cubic-bezier(0.4, 0, 0.2, 1) за 0.32 с. Масштаб приложения. -->
+        <Setter Property="Width" Value="56" />
         <Setter Property="Height" Value="26" />
         <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
@@ -456,56 +460,57 @@
                     <Grid Background="Transparent">
                         <Border x:Name="Track"
                                 CornerRadius="13"
-                                Background="{DynamicResource SwitchTrackOffBrush}" />
-                        <Ellipse x:Name="Knob"
-                                 Width="22"
-                                 Height="22"
-                                 Margin="2,0,0,0"
-                                 HorizontalAlignment="Left"
-                                 VerticalAlignment="Center"
-                                 Fill="{DynamicResource SwitchKnobOffBrush}">
-                            <Ellipse.Effect>
-                                <DropShadowEffect BlurRadius="6"
+                                Background="#FF444444" />
+                        <Border x:Name="Knob"
+                                Width="23"
+                                Height="20"
+                                CornerRadius="10"
+                                Margin="3,0,0,0"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Background="#FFFFFFFF">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="4"
                                                   ShadowDepth="1"
                                                   Direction="270"
                                                   Opacity="0.25"
                                                   Color="#000000" />
-                            </Ellipse.Effect>
-                        </Ellipse>
+                            </Border.Effect>
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="KnobShift" X="0" />
+                            </Border.RenderTransform>
+                        </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentFillBrush}" />
-                            <Setter TargetName="Knob" Property="Margin" Value="20,0,0,0" />
-                            <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource SwitchKnobBrush}" />
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <ThicknessAnimation Storyboard.TargetName="Knob"
-                                                            Storyboard.TargetProperty="Margin"
-                                                            To="20,0,0,0"
-                                                            Duration="0:0:0.15" />
+                                        <DoubleAnimationUsingKeyFrames
+                                            Storyboard.TargetName="Knob"
+                                            Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
+                                            <SplineDoubleKeyFrame KeyTime="0:0:0.32"
+                                                                  Value="27"
+                                                                  KeySpline="0.4,0 0.2,1" />
+                                        </DoubleAnimationUsingKeyFrames>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
                             <Trigger.ExitActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <ThicknessAnimation Storyboard.TargetName="Knob"
-                                                            Storyboard.TargetProperty="Margin"
-                                                            To="2,0,0,0"
-                                                            Duration="0:0:0.15" />
+                                        <DoubleAnimationUsingKeyFrames
+                                            Storyboard.TargetName="Knob"
+                                            Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
+                                            <SplineDoubleKeyFrame KeyTime="0:0:0.32"
+                                                                  Value="0"
+                                                                  KeySpline="0.4,0 0.2,1" />
+                                        </DoubleAnimationUsingKeyFrames>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
                         </Trigger>
-                        <MultiTrigger>
-                            <MultiTrigger.Conditions>
-                                <Condition Property="IsMouseOver" Value="True" />
-                                <Condition Property="IsChecked" Value="False" />
-                            </MultiTrigger.Conditions>
-                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource ControlFillTertiaryBrush}" />
-                        </MultiTrigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />
                         </Trigger>
@@ -523,8 +528,11 @@
     <!-- Большой выключатель «Состояния ПК» — тот же SystemToggleSwitch, масштаб 5×
          (220×130, ручка 110): пропорции и шаги затемнения один в один, как у
          тумблера во вкладках; анимация ручки чуть дольше, чтобы двигалась заметно. -->
+    <!-- Большой выключатель «Состояния ПК» — копия переключателя сайта
+         (вытянутые пропорции 2.13:1: 277×130, ползунок 116×100): белый
+         пилюльный ползунок, серый трек → акцент, сдвиг по той же кривой. -->
     <Style x:Key="BigToggleSwitch" TargetType="ToggleButton">
-        <Setter Property="Width" Value="220" />
+        <Setter Property="Width" Value="277" />
         <Setter Property="Height" Value="130" />
         <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
@@ -534,56 +542,57 @@
                     <Grid Background="Transparent">
                         <Border x:Name="Track"
                                 CornerRadius="65"
-                                Background="{DynamicResource SwitchTrackOffBrush}" />
-                        <Ellipse x:Name="Knob"
-                                 Width="110"
-                                 Height="110"
-                                 Margin="10,0,0,0"
-                                 HorizontalAlignment="Left"
-                                 VerticalAlignment="Center"
-                                 Fill="{DynamicResource SwitchKnobOffBrush}">
-                            <Ellipse.Effect>
-                                <DropShadowEffect BlurRadius="20"
-                                                  ShadowDepth="3"
+                                Background="#FF444444" />
+                        <Border x:Name="Knob"
+                                Width="116"
+                                Height="100"
+                                CornerRadius="50"
+                                Margin="12,0,0,0"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Background="#FFFFFFFF">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="10"
+                                                  ShadowDepth="2"
                                                   Direction="270"
                                                   Opacity="0.25"
                                                   Color="#000000" />
-                            </Ellipse.Effect>
-                        </Ellipse>
+                            </Border.Effect>
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="KnobShift" X="0" />
+                            </Border.RenderTransform>
+                        </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentFillBrush}" />
-                            <Setter TargetName="Knob" Property="Margin" Value="100,0,0,0" />
-                            <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource SwitchKnobBrush}" />
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <ThicknessAnimation Storyboard.TargetName="Knob"
-                                                            Storyboard.TargetProperty="Margin"
-                                                            To="100,0,0,0"
-                                                            Duration="0:0:0.2" />
+                                        <DoubleAnimationUsingKeyFrames
+                                            Storyboard.TargetName="Knob"
+                                            Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
+                                            <SplineDoubleKeyFrame KeyTime="0:0:0.42"
+                                                                  Value="137"
+                                                                  KeySpline="0.4,0 0.2,1" />
+                                        </DoubleAnimationUsingKeyFrames>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
                             <Trigger.ExitActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <ThicknessAnimation Storyboard.TargetName="Knob"
-                                                            Storyboard.TargetProperty="Margin"
-                                                            To="10,0,0,0"
-                                                            Duration="0:0:0.2" />
+                                        <DoubleAnimationUsingKeyFrames
+                                            Storyboard.TargetName="Knob"
+                                            Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
+                                            <SplineDoubleKeyFrame KeyTime="0:0:0.42"
+                                                                  Value="0"
+                                                                  KeySpline="0.4,0 0.2,1" />
+                                        </DoubleAnimationUsingKeyFrames>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
                         </Trigger>
-                        <MultiTrigger>
-                            <MultiTrigger.Conditions>
-                                <Condition Property="IsMouseOver" Value="True" />
-                                <Condition Property="IsChecked" Value="False" />
-                            </MultiTrigger.Conditions>
-                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource ControlFillTertiaryBrush}" />
-                        </MultiTrigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />
                         </Trigger>
@@ -788,10 +797,6 @@
         </Setter>
     </Style>
 
-    <!-- ===================== Сегментированный контроль (iOS) ===================== -->
-    <!-- Капсула-подложка со скруглёнными сегментами; выбранный сегмент —
-         «всплывающая» поверхность с мягкой тенью. Используется с ListBox +
-         SelectedIndex, как ComboBox-настройки раздела «Настройки». -->
     <Style x:Key="SegmentedControl" TargetType="ListBox">
         <Setter Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
         <Setter Property="BorderThickness" Value="0" />
@@ -949,8 +954,9 @@
 
     <!-- ===================== AccentSpinner (круговой индикатор загрузки) ===================== -->
     <!-- Дуга акцентного цвета вращается, пока контрол видим (Enter/ExitActions:
-         скрытый спиннер не крутится). Размер по умолчанию 20x20 — производные
-         стили ComponentsView только переключают видимость. -->
+         скрытый спиннер не крутится). Рисунок задан в координатах 20x20 и
+         масштабируется Viewbox'ом на фактический размер контрола — крупные
+         размеры (оверлей загрузки раздела, 80x80) рисуют корректную дугу. -->
     <Style x:Key="AccentSpinner" TargetType="Control">
         <Setter Property="Width" Value="20" />
         <Setter Property="Height" Value="20" />
@@ -958,30 +964,32 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Control">
-                    <Grid>
-                        <Ellipse Stroke="{DynamicResource ControlStrokeBrush}"
-                                 StrokeThickness="2" />
-                        <Path x:Name="Arc"
-                              Stroke="{DynamicResource AccentFillBrush}"
-                              StrokeThickness="2"
-                              StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round"
-                              RenderTransformOrigin="0.5,0.5">
-                            <Path.Data>
-                                <PathGeometry>
-                                    <PathFigure StartPoint="10,1">
-                                        <ArcSegment Point="1,10"
-                                                    Size="9,9"
-                                                    IsLargeArc="True"
-                                                    SweepDirection="Clockwise" />
-                                    </PathFigure>
-                                </PathGeometry>
-                            </Path.Data>
-                            <Path.RenderTransform>
-                                <RotateTransform Angle="0" />
-                            </Path.RenderTransform>
-                        </Path>
-                    </Grid>
+                    <Viewbox Stretch="Uniform">
+                        <Grid Width="20" Height="20">
+                            <Ellipse Stroke="{DynamicResource ControlStrokeBrush}"
+                                     StrokeThickness="2" />
+                            <Path x:Name="Arc"
+                                  Stroke="{DynamicResource AccentFillBrush}"
+                                  StrokeThickness="2"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  RenderTransformOrigin="0.5,0.5">
+                                <Path.Data>
+                                    <PathGeometry>
+                                        <PathFigure StartPoint="10,1">
+                                            <ArcSegment Point="1,10"
+                                                        Size="9,9"
+                                                        IsLargeArc="True"
+                                                        SweepDirection="Clockwise" />
+                                        </PathFigure>
+                                    </PathGeometry>
+                                </Path.Data>
+                                <Path.RenderTransform>
+                                    <RotateTransform Angle="0" />
+                                </Path.RenderTransform>
+                            </Path>
+                        </Grid>
+                    </Viewbox>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsVisible" Value="True">
                             <Trigger.EnterActions>
@@ -1006,6 +1014,43 @@
         </Setter>
     </Style>
 
+    <!-- ===================== ScrollViewer с накладным скроллбаром =====================
+         Скроллбар рисуется ПОВЕРХ контента, а не отдельной колонкой: появление/
+         исчезновение полосы прокрутки не меняет ширину области контента и не
+         сдвигает элементы (список утилит на «Главной», длинные таблицы).
+         Имена PART_* обязательны контракту ScrollViewer. -->
+    <Style x:Key="OverlayScrollViewerStyle" TargetType="ScrollViewer">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollViewer">
+                    <Grid>
+                        <ScrollContentPresenter
+                            Margin="{TemplateBinding Padding}"
+                            CanContentScroll="{TemplateBinding CanContentScroll}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}" />
+                        <ScrollBar x:Name="PART_VerticalScrollBar"
+                                   Orientation="Vertical"
+                                   HorizontalAlignment="Right"
+                                   Margin="0,2,2,2"
+                                   Value="{TemplateBinding VerticalOffset}"
+                                   Maximum="{TemplateBinding ScrollableHeight}"
+                                   ViewportSize="{TemplateBinding ViewportHeight}"
+                                   Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" />
+                        <ScrollBar x:Name="PART_HorizontalScrollBar"
+                                   Orientation="Horizontal"
+                                   VerticalAlignment="Bottom"
+                                   Margin="2,0,2,2"
+                                   Value="{TemplateBinding HorizontalOffset}"
+                                   Maximum="{TemplateBinding ScrollableWidth}"
+                                   ViewportSize="{TemplateBinding ViewportWidth}"
+                                   Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===================== ScrollBar (тонкая капсула, авто-скрытие) =====================
          Ползунок невидим, пока курсор не наведён на окно (ScrollViewer-хозяин),
          затем плавно проявляется и так же плавно исчезает. -->
@@ -1013,6 +1058,10 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Width" Value="12" />
         <Setter Property="Opacity" Value="0" />
+        <!-- Невидимая полоса не перехватывает мышь (триггер ниже возвращает
+             hit-test, когда курсор над хозяином-ScrollViewer): иначе прозрачные
+             12 px по краю ловили бы клики/колесо над контентом вслепую. -->
+        <Setter Property="IsHitTestVisible" Value="False" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">
@@ -1068,6 +1117,9 @@
                  раздела). Вне окна — прозрачность 0, при наведении — плавное появление. -->
             <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollViewer}}" Value="True">
                 <Setter Property="Opacity" Value="1" />
+                <!-- Наведённая полоса принимает мышь; невидимая — не перехватывает
+                     клики/колесо над контентом у правого края. -->
+                <Setter Property="IsHitTestVisible" Value="True" />
                 <DataTrigger.EnterActions>
                     <BeginStoryboard>
                         <Storyboard>

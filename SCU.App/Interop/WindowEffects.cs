@@ -1,6 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace SCU.Interop;
 
@@ -12,6 +13,7 @@ namespace SCU.Interop;
 public static class WindowEffects
 {
     private const int DwmwaUseImmersiveDarkMode = 20;
+    private const int DwmwaCaptionColor = 35;
     private const int DwmwaUseImmersiveDarkModeBefore20H1 = 19;
     private const int DwmwaWindowCornerPreference = 33;
     private const int DwmwaSystemBackdropType = 3819;
@@ -35,6 +37,36 @@ public static class WindowEffects
         public int Right;
         public int Top;
         public int Bottom;
+    }
+
+    // Цвет строки заголовка = цвету фона приложения (SolidRootBrush текущей
+    // темы): заголовок перестаёт выделяться на фоне содержимого. Атрибут
+    // DWMWA_CAPTION_COLOR поддерживается Windows 11; на старых системах
+    // вызов молча пропускается — заголовок остаётся системным.
+    // COLORREF кодируется как 0x00BBGGRR.
+    public static void ApplyCaptionColor(Window window, bool isDarkTheme)
+    {
+        UpdateDarkMode(window, isDarkTheme);
+        try
+        {
+            if (Application.Current?.TryFindResource("SolidRootBrush") is not SolidColorBrush brush)
+            {
+                return;
+            }
+
+            var hwnd = new WindowInteropHelper(window).Handle;
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            var colorref = brush.Color.R | (brush.Color.G << 8) | (brush.Color.B << 16);
+            DwmSetWindowAttribute(hwnd, DwmwaCaptionColor, ref colorref, sizeof(int));
+        }
+        catch
+        {
+            // Нет dwmapi/старая система — заголовок системного цвета, не критично.
+        }
     }
 
     // Включает Mica (DWMSBT_TABBEDWINDOW), скругление и тёмный режим DWM.

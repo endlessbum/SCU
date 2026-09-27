@@ -4,10 +4,10 @@ using System.Windows.Media.Imaging;
 
 namespace SCU.Common;
 
-// Перекраска фирменных знаков приложения под текущий акцентный цвет. Исходная
-// графика монохромная (SCU.png в заголовке окна, SCU.ico в панели задач), поэтому
-// перекраска — это замена RGB на акцент с сохранением альфа-канала: прозрачность,
-// сглаженные края и форма знака остаются неизменными. Результаты кэшируются по цвету.
+// Перекраска фирменных знаков приложения под цвет иконки (ThemeManager.IconAccent,
+// отдельная настройка, не зависящая от акцента интерфейса). Исходная графика
+// монохромная (SCU.png, SCU.ico), поэтому перекраска — это замена RGB на цвет
+// с сохранением альфа-канала. Результаты кэшируются по цвету.
 public static class AccentIconManager
 {
     private const string TitleIconUri = "pack://application:,,,/Assets/SCU.png";
@@ -21,10 +21,9 @@ public static class AccentIconManager
     private static readonly Dictionary<Color, BitmapSource> TitleIconCache = new();
     private static readonly Dictionary<Color, BitmapSource> WindowIconCache = new();
 
-    // Знак «SCU» для заголовка окна в цвете текущего акцента.
-    public static ImageSource GetTitleBarIcon()
+    // Знак «SCU» для заголовка окна в заданном цвете.
+    public static ImageSource GetTitleBarIcon(Color color)
     {
-        var color = ThemeManager.CurrentAccentColor;
         if (!TitleIconCache.TryGetValue(color, out var icon))
         {
             icon = Tint(GetTitleIconBase(), color);
@@ -34,10 +33,9 @@ public static class AccentIconManager
         return icon;
     }
 
-    // Квадратный знак-шестерёнка для Icon окна (панель задач, Alt+Tab) в цвете акцента.
-    public static ImageSource GetWindowIcon()
+    // Квадратный знак-шестерёнка для Icon окна (панель задач, Alt+Tab) в заданном цвете.
+    public static ImageSource GetWindowIcon(Color color)
     {
-        var color = ThemeManager.CurrentAccentColor;
         if (!WindowIconCache.TryGetValue(color, out var icon))
         {
             icon = Tint(GetWindowIconBase(), color);

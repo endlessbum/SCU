@@ -60,7 +60,7 @@ public sealed class InputService
         [
             new InputSwitchOption(
                 "mouse-acceleration",
-                "Ускорение мыши (Enhance Pointer Precision)",
+                "Ускорение мыши",
                 "Отключение даёт предсказуемую чувствительность — часто удобнее для игр. Для обычной работы включённое ускорение мыши может быть комфортнее.",
                 [
                     SZ(RegistryHive.CurrentUser, Mouse, "MouseSpeed", "1"),

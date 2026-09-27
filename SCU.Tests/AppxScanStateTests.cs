@@ -50,4 +50,23 @@ public class AppxScanStateTests
 
         Assert.Equal("неизвестно (скан не удался)", state.StateText("Edge"));
     }
+
+    [Fact]
+    public void LeftoverNames_ReadsKeyLeftLine()
+    {
+        var state = Create(true, ("Xbox", "1"), ("XboxLeft", "Microsoft.XboxGamingOverlay, Microsoft.Xbox.TCUI"));
+
+        var leftovers = state.LeftoverNames("Xbox");
+
+        Assert.Equal(2, leftovers.Count);
+        Assert.Equal("Microsoft.XboxGamingOverlay", leftovers[0]);
+        Assert.Equal("Microsoft.Xbox.TCUI", leftovers[1]);
+    }
+
+    [Fact]
+    public void LeftoverNames_MissingOrEmpty_ReturnsEmpty()
+    {
+        Assert.Empty(Create(true, ("Xbox", "0")).LeftoverNames("Xbox"));
+        Assert.Empty(Create(true, ("Xbox", "1"), ("XboxLeft", " ")).LeftoverNames("Xbox"));
+    }
 }
