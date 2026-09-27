@@ -340,6 +340,71 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         }
     }
 
+    // Автообновление базы при старте приложения: тихое — состояния вкладки и
+    // историю не трогает; о новом пакете сообщает уведомлением. Сбой (нет сети,
+    // сервер недоступен) остаётся только в журнале.
+    public async Task AutoUpdateDatabaseAsync()
+    {
+        if (!IsScannerReady())
+        {
+            return;
+        }
+
+        var tempPath = string.Empty;
+        try
+        {
+            var download = await _updateService.DownloadPackageAsync(_updateService.ResolveUrl())
+                .ConfigureAwait(true);
+            if (!download.IsSuccess || download.Value is null)
+            {
+                _logger.Warn($"DBUPDATE | auto download failed | rc={download.Code} | {download.Message}");
+                return;
+            }
+
+            tempPath = download.Value;
+            var result = await _scanner.RunUpdateAsync(tempPath).ConfigureAwait(true);
+            if (result.IsSuccess)
+            {
+                DatabaseInfoText = L.T("База: {0}", ExtractVersion(result.Value));
+                _logger.Info("DBUPDATE | auto | " + result.Value);
+                AppNotificationCenter.Instance.Push(
+                    L.T("База сканера обновлена"),
+                    L.T("Установлен пакет базы: {0}", ExtractVersion(result.Value)),
+                    AppNotificationKind.Success);
+            }
+            else
+            {
+                _logger.Warn($"DBUPDATE | auto failed | rc={result.Code} | {result.Message}");
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("DBUPDATE | auto failed | " + exception.Message);
+        }
+        finally
+        {
+            TryDelete(tempPath);
+        }
+    }
+
+    private static void TryDelete(string? path)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(path) && File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Временный файл не критичен.
+        }
+    }
+
+    private bool IsScannerReady() =>
+        _scanner.IsAvailable && ScannerAvailable;
+
     // Обновление базы по HTTPS (п. 30): скачать во временный файл →
     // установка с проверкой подписи в ScannerCore.
     [RelayCommand(CanExecute = nameof(CanScan))]

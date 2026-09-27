@@ -691,6 +691,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Тот же ленивый init (InitializeAsync + refresh), помечается как загруженный.
         EnsureSectionInitialized(7);
 
+        // Тихое автообновление базы сканера с GitHub Releases при старте.
+        TaskRunner.RunAndForget(Scanner.AutoUpdateDatabaseAsync(), _logger, "scanner db auto-update");
+
         // «К применению» на «Главной»: статусы Dashboard уже прочитаны.
         Dashboard.RecomputePending();
 
