@@ -14,12 +14,11 @@ namespace SCU.Services;
 
 public sealed class ScannerUpdateService
 {
-    // Адрес по умолчанию задаёт издатель при развёртывании; переопределяется
-    // файлом %APPDATA%\SCU\scanner-update.json ({"url": "..."}).
-    // ВНИМАНИЕ: .local — placeholder. Production-сборка обязана задавать
-    // боевой endpoint этим конфигом (п. 9 аудита); выпускать прод с .local
-    // запрещено.
-    public const string DefaultUrl = "https://updates.scu.local/database-latest.zip";
+    // Адрес по умолчанию — ассет database-latest.zip последнего релиза GitHub
+    // (издатель публикует пакет к релизу); переопределяется файлом
+    // %APPDATA%\SCU\scanner-update.json ({"url": "..."}).
+    public const string DefaultUrl =
+        "https://github.com/endlessbum/SCU/releases/latest/download/database-latest.zip";
 
     private const int MaxRedirects = 3;
 
@@ -163,13 +162,15 @@ public sealed class ScannerUpdateService
             or HttpStatusCode.TemporaryRedirect
             or HttpStatusCode.PermanentRedirect;
 
-    // Разрешён переход только на тот же хост, схема не понижается (https→http
-    // запрещён всегда). Исключение loopback — для тестов/локальной раздачи.
+    // Разрешён переход на тот же хост либо на CDN GitHub (github.com отдаёт
+    // ассеты через objects.githubusercontent.com), схема не понижается
+    // (https→http запрещён всегда). Исключение loopback — для тестов.
     internal static bool IsAllowedRedirect(Uri from, Uri to)
     {
         if (to.Scheme == Uri.UriSchemeHttps)
         {
-            return string.Equals(from.Host, to.Host, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(from.Host, to.Host, StringComparison.OrdinalIgnoreCase)
+                || IsGitHubCdnHost(to.Host);
         }
 
         return to.Scheme == Uri.UriSchemeHttp
@@ -186,6 +187,12 @@ public sealed class ScannerUpdateService
 
     private static bool IsLoopback(Uri uri) =>
         uri.Host is "localhost" or "127.0.0.1" or "::1";
+
+    private static bool IsGitHubCdnHost(string host) =>
+        host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith(".objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase)
+        || host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith(".release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
 
     private static void TryDelete(string path)
     {
