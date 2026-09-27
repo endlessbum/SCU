@@ -337,40 +337,6 @@ SecurityScanner/tools/corpus/
 
 ---
 
-## Скриншоты
-
-В исходном архиве, который использовался для подготовки этого README, **готовых снимков интерфейса WPF не было**. Поэтому я не добавлял в репозиторий искусственные «скриншоты», которые могли бы выдавать концепт за реальный UI.
-
-Для GitHub лучше добавить 3–5 настоящих кадров из собранной версии:
-
-```text
-docs/
-└── screenshots/
-    ├── dashboard.png
-    ├── cleanup.png
-    ├── privacy.png
-    ├── scanner.png
-    └── settings.png
-```
-
-И затем заменить этот блок, например, на:
-
-```md
-## Screenshots
-
-| Dashboard | Очистка |
-|---|---|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Cleanup](docs/screenshots/cleanup.png) |
-
-| Security Scanner | Settings |
-|---|---|
-| ![Scanner](docs/screenshots/scanner.png) | ![Settings](docs/screenshots/settings.png) |
-```
-
-Так README будет показывать именно реальный интерфейс, а не сгенерированный макет.
-
----
-
 ## Принципы разработки
 
 SCU старается держать системные операции максимально предсказуемыми:
