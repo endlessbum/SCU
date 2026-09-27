@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>System Control Utility</strong><br>
+  <strong>Safecleanup</strong><br>
   Современный набор инструментов для настройки, обслуживания и диагностики Windows.
 </p>
 
@@ -31,7 +31,7 @@
 
 ## О проекте
 
-**SCU (System Control Utility)** — desktop-приложение для Windows, которое объединяет в одном интерфейсе инструменты, обычно разбросанные по системным настройкам, классической панели управления и сторонним утилитам.
+**SCU (Safecleanup)** — desktop-приложение для Windows, которое объединяет в одном интерфейсе инструменты, обычно разбросанные по системным настройкам, классической панели управления и сторонним утилитам.
 
 Проект построен вокруг нескольких принципов:
 
@@ -408,6 +408,6 @@ SCU старается держать системные операции мак
 ---
 
 <p align="center">
-  <sub>SCU — System Control Utility</sub><br>
+  <sub>SCU — Safecleanup</sub><br>
   <sub>Windows system tools without the clutter.</sub>
 </p>
