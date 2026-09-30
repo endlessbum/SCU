@@ -71,11 +71,13 @@ jobs:
 
       # Контроль, что пакет не «пустой» и подписан: размеры членов ZIP и
       # количество записей выводятся DatabaseBuilder (package written: N entries).
+      # Пакет лежит в SecurityScanner/build (../../build относительно каталога
+      # tools); шаги ниже выполняются из корня репозитория — путь полный.
       - name: Sanity check package
         run: |
-          test -s build/database-latest.zip || { echo "::error::пакет не создан"; exit 1; }
-          unzip -l build/database-latest.zip
-          unzip -p build/database-latest.zip db-version.json
+          test -s SecurityScanner/build/database-latest.zip || { echo "::error::пакет не создан"; exit 1; }
+          unzip -l SecurityScanner/build/database-latest.zip
+          unzip -p SecurityScanner/build/database-latest.zip db-version.json
 
       - name: Publish release
         env:
@@ -84,7 +86,7 @@ jobs:
         run: |
           # Перезапуск воркфлоу за тот же день: старый релиз сносятся и создаётся заново.
           gh release delete "$TAG" --cleanup-tag -y 2>/dev/null || true
-          gh release create "$TAG" build/database-latest.zip \
+          gh release create "$TAG" SecurityScanner/build/database-latest.zip \
             --latest \
             --title "Scanner database $DB_VERSION" \
             --notes "Автосборка базы сигнатур из внешних дампатов за $DB_VERSION."
