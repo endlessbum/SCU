@@ -1,3 +1,4 @@
+using System.Globalization;
 using SCU.Infrastructure.Windows.Apps;
 using SCU.ViewModels.Sections;
 using Xunit;
@@ -24,7 +25,7 @@ public class InstalledAppSizeTests
     [InlineData(500L * 1024, "500", "КБ", "KB")]
     public void FormatSizeBytes_HumanReadable(long bytes, string number, string ruUnit, string enUnit)
     {
-        AssertSizeText(InstalledAppsService.FormatSizeBytes(bytes), number, ruUnit, enUnit);
+        WithRuCulture(() => AssertSizeText(InstalledAppsService.FormatSizeBytes(bytes), number, ruUnit, enUnit));
     }
 
     [Fact]
@@ -138,18 +139,38 @@ public class InstalledAppSizeTests
     private static InstalledApp App(string name, long? size = null, DateTime? date = null) =>
         new() { DisplayName = name, SizeBytes = size, InstallDate = date };
 
+    // Форматирование размеров и сортировка по имени используют CurrentCulture —
+    // это правильное поведение UI, но тесты фиксируют ru-RU: на CI локаль en-US
+    // даёт «1.5» вместо «1,5» и иное упорядочение кириллицы и латиницы.
+    private static void WithRuCulture(Action action)
+    {
+        var previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("ru-RU");
+        try
+        {
+            action();
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
     [Fact]
     public void SortApps_ByName_BothDirections()
     {
-        var apps = new[] { App("бета"), App("Альфа"), App("gamma") };
+        WithRuCulture(() =>
+        {
+            var apps = new[] { App("бета"), App("Альфа"), App("gamma") };
 
-        var ascending = AppsViewModel.SortApps(apps, AppSortMode.Name, ascending: true)
-            .Select(app => app.DisplayName).ToArray();
-        var descending = AppsViewModel.SortApps(apps, AppSortMode.Name, ascending: false)
-            .Select(app => app.DisplayName).ToArray();
+            var ascending = AppsViewModel.SortApps(apps, AppSortMode.Name, ascending: true)
+                .Select(app => app.DisplayName).ToArray();
+            var descending = AppsViewModel.SortApps(apps, AppSortMode.Name, ascending: false)
+                .Select(app => app.DisplayName).ToArray();
 
-        Assert.Equal(new[] { "Альфа", "бета", "gamma" }, ascending);
-        Assert.Equal(new[] { "gamma", "бета", "Альфа" }, descending);
+            Assert.Equal(new[] { "Альфа", "бета", "gamma" }, ascending);
+            Assert.Equal(new[] { "gamma", "бета", "Альфа" }, descending);
+        });
     }
 
     [Fact]
