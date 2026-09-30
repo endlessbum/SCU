@@ -19,7 +19,7 @@
     <RootNamespace>SCU</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <!-- Версия сборки: показывается в «Настройки → О приложении» (три части). -->
-    <Version>2.3.1</Version>
+    <Version>3.1.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
