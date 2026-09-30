@@ -28,6 +28,30 @@ public sealed class UpdateCheckServiceTests
         Assert.Null(UpdateCheckService.NormalizeVersion(tag));
 
     [Fact]
+    public void SelectVersionTag_SkipsDatabaseReleases()
+    {
+        // Latest-релизом бывает датный релиз базы (db-*): версией приложения
+        // считается первый тег, разбираемый как версия.
+        var tags = new[] { "db-2026.10.01", "v3.1.1", "v2.2.0" };
+
+        Assert.Equal("v3.1.1", UpdateCheckService.SelectVersionTag(tags));
+    }
+
+    [Fact]
+    public void SelectVersionTag_FirstParseableTag_Wins()
+    {
+        Assert.Equal("v3.2.0-beta1", UpdateCheckService.SelectVersionTag(new[] { "v3.2.0-beta1", "v3.1.1" }));
+        Assert.Equal("v3.1.1", UpdateCheckService.SelectVersionTag(new[] { "v3.1.1" }));
+    }
+
+    [Fact]
+    public void SelectVersionTag_NothingParseable_ReturnsNull()
+    {
+        Assert.Null(UpdateCheckService.SelectVersionTag(Array.Empty<string?>()));
+        Assert.Null(UpdateCheckService.SelectVersionTag(new string?[] { "db-2026.10.01", "release", null, "" }));
+    }
+
+    [Fact]
     public void CurrentVersion_ReportsThreePartVersion() =>
         Assert.Matches(@"^\d+\.\d+\.\d+$", new UpdateCheckService().CurrentVersion);
 }

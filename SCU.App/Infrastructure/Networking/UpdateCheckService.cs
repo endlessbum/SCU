@@ -14,13 +14,17 @@ public sealed record UpdateCheckResult(
     string ReleaseUrl,
     string Error);
 
-// Проверка обновлений SCU по GitHub Releases:
-// https://api.github.com/repos/endlessbum/SCU/releases/latest → tag_name.
+// Проверка обновлений SCU по GitHub Releases.
+// Последний релиз может быть датным релизом базы (db-ГГГГ.ММ.ДД, публикуется
+// database.yml с флагом --latest, чтобы автообновление базы попадало на
+// releases/latest/download/database-latest.zip). Поэтому читается список релизов,
+// и версией приложения считается первый тег, разбираемый как версия: db-* пропускаются.
 // Сравнение — по трём частям версии сборки (2.2.0), тег допускает префикс «v».
 public sealed class UpdateCheckService
 {
     public const string ReleasesPageUrl = "https://github.com/endlessbum/SCU/releases";
-    private const string ReleasesApiUrl = "https://api.github.com/repos/endlessbum/SCU/releases/latest";
+    private const string ReleasesListUrl =
+        "https://api.github.com/repos/endlessbum/SCU/releases?per_page=10";
 
     public string CurrentVersion { get; } =
         (Assembly.GetEntryAssembly()?.GetName().Version is { } version
@@ -43,7 +47,7 @@ public sealed class UpdateCheckService
     {
         try
         {
-            using var response = await SharedClient.GetAsync(ReleasesApiUrl, ct).ConfigureAwait(false);
+            using var response = await SharedClient.GetAsync(ReleasesListUrl, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 return new UpdateCheckResult(false, false, null, CurrentVersion, ReleasesPageUrl,
@@ -52,19 +56,24 @@ public sealed class UpdateCheckService
 
             await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             using var json = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-            var tag = json.RootElement.TryGetProperty("tag_name", out var tagName)
-                ? tagName.GetString()
-                : null;
+            var tags = json.RootElement.ValueKind == JsonValueKind.Array
+                ? json.RootElement.EnumerateArray()
+                    .Select(release => release.TryGetProperty("tag_name", out var tagName)
+                        ? tagName.GetString()
+                        : null)
+                : Enumerable.Empty<string?>();
 
-            // Пререлизы (тег с суффиксом «-…») обновлением не предлагаются.
-            var isPrerelease = tag?.Contains('-', StringComparison.Ordinal) == true;
-
-            var latest = NormalizeVersion(tag);
-            if (latest is null)
+            var chosenTag = SelectVersionTag(tags);
+            if (chosenTag is null)
             {
                 return new UpdateCheckResult(false, false, null, CurrentVersion, ReleasesPageUrl,
-                    "не удалось разобрать версию релиза");
+                    "в релизах не найдена версия приложения");
             }
+
+            // Пререлизы (тег с суффиксом «-…») обновлением не предлагаются.
+            var isPrerelease = chosenTag.Contains('-', StringComparison.Ordinal);
+
+            var latest = NormalizeVersion(chosenTag)!;
 
             var current = Version.TryParse(CurrentVersion, out var parsed) ? parsed : new Version(0, 0, 0);
             return new UpdateCheckResult(
@@ -83,6 +92,33 @@ public sealed class UpdateCheckService
                 : exception.Message;
             return new UpdateCheckResult(false, false, null, CurrentVersion, ReleasesPageUrl, message);
         }
+    }
+
+    // Первый тег, разбираемый как версия приложения, в порядке свежести релизов.
+    // Датные релизы базы (db-…) пропускаются: это не версии SCU.
+    internal static string? SelectVersionTag(IEnumerable<string?> tags)
+    {
+        foreach (var tag in tags)
+        {
+            if (string.IsNullOrWhiteSpace(tag))
+            {
+                continue;
+            }
+
+            if (tag.StartsWith("db-", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (NormalizeVersion(tag) is null)
+            {
+                continue;
+            }
+
+            return tag;
+        }
+
+        return null;
     }
 
     // «v2.3.1» / «2.3.1» / «2.3» → Version; null, если разобрать не удалось.
