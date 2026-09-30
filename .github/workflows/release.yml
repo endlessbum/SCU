@@ -25,6 +25,9 @@ jobs:
     runs-on: windows-latest
     env:
       ALLOW_UNSIGNED: ${{ inputs.allow_unsigned == true && '1' || '0' }}
+      # secrets нельзя читать в step-условиях (workflow становится невалидным) —
+      # факт наличия сертификата выносится в job-level env.
+      HAS_CERT: ${{ secrets.WINDOWS_CERT_PFX != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -70,7 +73,7 @@ jobs:
 
       # ---- Sign (Authenticode) ----
       - name: Import signing certificate
-        if: ${{ secrets.WINDOWS_CERT_PFX != '' }}
+        if: env.HAS_CERT == 'true'
         env:
           WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
@@ -84,7 +87,7 @@ jobs:
         shell: pwsh
 
       - name: Sign artifacts
-        if: ${{ secrets.WINDOWS_CERT_PFX != '' }}
+        if: env.HAS_CERT == 'true'
         run: |
           $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
             Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
@@ -100,7 +103,7 @@ jobs:
       # Release без подписи не собирается: отсутствие секрета сертификата —
       # ошибка, если явно не разрешён неподписанный dev-прогон.
       - name: Verify signing (Authenticode)
-        if: ${{ secrets.WINDOWS_CERT_PFX != '' }}
+        if: env.HAS_CERT == 'true'
         run: |
           $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
             Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
@@ -109,7 +112,7 @@ jobs:
         shell: pwsh
 
       - name: Enforce signing policy
-        if: ${{ secrets.WINDOWS_CERT_PFX == '' && inputs.allow_unsigned != true }}
+        if: env.HAS_CERT == 'false' && env.ALLOW_UNSIGNED != '1'
         run: |
           Write-Host "::error::Release без подписи запрещён (п. 18/фаза 7). Задайте секрет WINDOWS_CERT_PFX или запустите с allow_unsigned=true для dev-прогона."
           exit 1
