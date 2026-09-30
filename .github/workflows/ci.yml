@@ -57,6 +57,15 @@ jobs:
           Get-Content scanner-sha256.txt
         shell: pwsh
 
+      # Копия в корень: upload-artifact v4 сохраняет структуру каталогов (общий
+      # корень путей), и без копии exe лёг бы в артефакт как
+      # SecurityScanner/out/Release/ScannerCore.exe. Тогда тесты находили бы его
+      # там же, а seeded-база (security/database в корне) оказывалась бы не рядом
+      # с ним — update падал бы с «failed to write hashes.txt».
+      - name: Stage ScannerCore flat
+        run: Copy-Item SecurityScanner/out/Release/ScannerCore.exe .
+        shell: pwsh
+
       # П. 18/фаза 7: SBOM основных C#-компонентов (CycloneDX).
       # GitHub license resolution в 6.x выключен по умолчанию (--enable-github-licenses
       # — opt-in), отдельный флаг отключения из 5.x больше не существует.
@@ -87,7 +96,7 @@ jobs:
         with:
           name: scanner-core
           path: |
-            SecurityScanner/out/Release/ScannerCore.exe
+            ScannerCore.exe
             scanner-sha256.txt
           if-no-files-found: error
 
