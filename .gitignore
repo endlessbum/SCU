@@ -10,6 +10,7 @@ sbom/
 # Приложения
 .zcode/
 .kiro/
+.zcodeignore
 
 # C++ промежуточные артефакты
 *.obj
