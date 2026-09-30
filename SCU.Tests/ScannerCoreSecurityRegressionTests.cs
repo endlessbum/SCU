@@ -95,6 +95,19 @@ public partial class ScannerCoreIntegrationTests
                 startInfo.ArgumentList.Add("--dev-unsigned-ok");
             });
 
+            if (exitCode != 0)
+            {
+                // Диагностика на CI: события update и отпечаток приватного ключа
+                // (только SHA256 — сам ключ не печатается), чтобы отличить
+                // «не тот ключ» от иных причин сбоя установки пакета.
+                Console.WriteLine(
+                    "UPDATE FAILED | rc=" + exitCode
+                    + " | key-sha256=" + Convert.ToHexString(
+                        System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(keyPath))).ToLowerInvariant()[..16]
+                    + " | events=" + string.Join("; ", events.Select(e =>
+                        e.Kind + "/" + e.UpdateStatus + "/" + e.Message)));
+            }
+
             Assert.Equal(0, exitCode);
             var updateEvent = Assert.Single(events, e => e.Kind == ScanEventKind.Update);
             Assert.Equal("ok", updateEvent.UpdateStatus);
