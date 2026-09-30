@@ -9,9 +9,12 @@
         Background="{DynamicResource SolidRootBrush}"
         FontFamily="{DynamicResource AppFontFamily}"
         FontSize="14">
-    <!-- Мастер размещения карточки скрипта: раздел → имя → комментарий/информер -->
+    <!-- Мастер размещения карточки скрипта: раздел → имя → комментарий/информер.
+         Кнопки в отдельной строке Row=3: раньше они лежали поверх контента шагов
+         (RowSpan) и на узком окне наложались на текст шага. -->
     <Grid x:Name="Root" Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -56,8 +59,8 @@
                      ToolTip="{DynamicResource S_ScriptWizardTooltip}" />
         </StackPanel>
 
-        <!-- Кнопки -->
-        <StackPanel Grid.Row="1" Grid.RowSpan="2"
+        <!-- Кнопки: отдельная строка под контентом шага -->
+        <StackPanel Grid.Row="3"
                     Margin="0,20,0,0"
                     HorizontalAlignment="Right"
                     Orientation="Horizontal">

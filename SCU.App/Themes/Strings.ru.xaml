@@ -36,7 +36,7 @@
     <sys:String x:Key="S_Section11_Desc">Мышь, Edge, Game Bar и DVR</sys:String>
     <sys:String x:Key="S_Section12_Title">Поиск и целостность</sys:String>
     <sys:String x:Key="S_Section12_Desc">Индексация, DISM и SFC</sys:String>
-    <sys:String x:Key="S_Section13_Title">Безопасность (UAC)</sys:String>
+    <sys:String x:Key="S_Section13_Title">UAC</sys:String>
     <sys:String x:Key="S_Section13_Desc">Параметры контроля учетных записей</sys:String>
     <!-- Раздел 21 «Сканер»: ключи нумеруются по SectionItem, а не по строке словаря -->
     <sys:String x:Key="S_Section21_Title">Сканер</sys:String>
@@ -65,6 +65,27 @@
     <sys:String x:Key="S_Section15_Desc">Резерв, отключение и откат выбранных задач</sys:String>
     <sys:String x:Key="S_Section16_Title">Обновления Windows</sys:String>
     <sys:String x:Key="S_Section16_Desc">Пауза, драйверы и блокировка служб обновления</sys:String>
+    <sys:String x:Key="S_Section25_Title">Драйверы</sys:String>
+    <sys:String x:Key="S_Section25_Desc">Инвентарь ключевого оборудования и обновление драйверов через Windows Update</sys:String>
+    <sys:String x:Key="S_DrvStateTitle">Состояние драйверов</sys:String>
+    <sys:String x:Key="S_DrvStateDesc">Ключевое оборудование и его драйверы; проблемные устройства помечаются значком предупреждения.</sys:String>
+    <sys:String x:Key="S_DrvRescan">Проверить ещё раз</sys:String>
+    <sys:String x:Key="S_DrvUpdatesTitle">Обновления драйверов</sys:String>
+    <sys:String x:Key="S_DrvUpdatesDesc">Поиск по серверам Windows Update — тот же канал, которым Windows ставит драйверы сама: подбор по устройству и подпись Microsoft.</sys:String>
+    <sys:String x:Key="S_DrvSearch">Проверить обновления</sys:String>
+    <sys:String x:Key="S_DrvInstall">Обновить</sys:String>
+    <sys:String x:Key="S_DrvInstallAll">Обновить всё</sys:String>
+    <sys:String x:Key="S_DrvDevicesTitle">Устройства и драйверы</sys:String>
+    <sys:String x:Key="S_DrvProblemsTitle">Проблемные устройства</sys:String>
+    <sys:String x:Key="S_DrvDevManager">Диспетчер устройств</sys:String>
+    <sys:String x:Key="S_DrvSafetyTitle">Безопасность</sys:String>
+    <sys:String x:Key="S_DrvRestorePoint">Точка восстановления перед установкой</sys:String>
+    <sys:String x:Key="S_DrvRestorePointDesc">Тип «установка драйвера» — создаётся один раз перед пакетной установкой.</sys:String>
+    <sys:String x:Key="S_DrvWuAllowed">Драйверы через Windows Update</sys:String>
+    <sys:String x:Key="S_DrvWuAllowedDesc">Разрешить установку драйверов вместе с обновлениями Windows. Выключите, если ставите драйверы только вручную.</sys:String>
+    <sys:String x:Key="S_DrvExportTitle">Резервная копия драйверов</sys:String>
+    <sys:String x:Key="S_DrvExportDesc">Экспорт всех сторонних пакетов драйверов (pnputil /export-driver) в выбранную папку. Набор может занимать гигабайты.</sys:String>
+    <sys:String x:Key="S_DrvExport">Экспортировать…</sys:String>
     <sys:String x:Key="S_Section17_Title">Настройки</sys:String>
     <sys:String x:Key="S_Section17_Desc">Тема и акцентный цвет приложения</sys:String>
     <sys:String x:Key="S_Section18_Title">История</sys:String>
@@ -109,6 +130,7 @@
     <sys:String x:Key="S_SettingsIconAccentDesc">Цвет значка на рабочем столе и панели задач — отдельная настройка, не зависящая от акцентного цвета.</sys:String>
     <sys:String x:Key="S_AccentChooseColor">Выбрать цвет</sys:String>
     <sys:String x:Key="S_NotificationOpen">Открыть</sys:String>
+    <sys:String x:Key="S_NotificationDismiss">Закрыть уведомление</sys:String>
 
 
     <sys:String x:Key="S_SettingsLanguage">Язык интерфейса</sys:String>
@@ -127,7 +149,8 @@
     <sys:String x:Key="S_UiGroupVisualFx">Визуальные эффекты</sys:String>
     <sys:String x:Key="S_UiGroupStartMenu">Меню «Пуск»</sys:String>
 
-    <sys:String x:Key="S_PrivacyQuietMode">Все сразу</sys:String>
+    <sys:String x:Key="S_PrivacyEnableAll">Включить все</sys:String>
+    <sys:String x:Key="S_PrivacyEnableAllHint">Активна, пока хотя бы один переключатель ниже выключен.</sys:String>
     <sys:String x:Key="S_PrivacyToggleTip">Переключает категорию. Перед отключением исходные значения сохраняются в резерв.</sys:String>
 
     <sys:String x:Key="S_UacTitle">Контроль учётных записей (UAC)</sys:String>
@@ -205,8 +228,9 @@
     <sys:String x:Key="S_AppsRemoveHint">У этого приложения нет программы удаления.</sys:String>
 
     <sys:String x:Key="S_MaintIndexingTitle">Индексация поиска</sys:String>
-    <sys:String x:Key="S_MaintIndexingDesc">Отметьте диски — их содержимое будет помечено «не индексировать» (attrib +I, рекурсивно). Поиск станет чуть медленнее; служба Windows Search полностью не отключается.</sys:String>
-    <sys:String x:Key="S_MaintIndexingDisable">Отключить индексацию на выбранных</sys:String>
+    <sys:String x:Key="S_MaintIndexingDesc">Состояние считывается автоматически: галочка — содержимое диска уже помечено «не индексировать». Снимите галочку, чтобы вернуть индексацию (attrib +I / -I, рекурсивно). Служба Windows Search полностью не отключается.</sys:String>
+    <sys:String x:Key="S_MaintIndexingApply">Применить</sys:String>
+    <sys:String x:Key="S_MaintIndexingApplyHint">Изменений в индексации нет — переключите галочки у дисков.</sys:String>
     <sys:String x:Key="S_MaintIntegrityTitle">Проверка целостности</sys:String>
     <sys:String x:Key="S_MaintIntegrityDesc">DISM восстановит хранилище компонентов, затем SFC проверит системные файлы. Вывод обоих — в журнале. Операция долгая (от 10 минут), не прерывайте без необходимости.</sys:String>
     <sys:String x:Key="S_MaintIntegrityRun">Запустить DISM + SFC</sys:String>
@@ -263,6 +287,7 @@
 
     <sys:String x:Key="S_Backup">Бэкап</sys:String>
     <sys:String x:Key="S_Rollback">Откатить</sys:String>
+    <sys:String x:Key="S_TasksDisableAll">Отключить все</sys:String>
     <sys:String x:Key="S_SettingsLog">Журнал</sys:String>
     <sys:String x:Key="S_SettingsLogDesc">Показывать или скрывать блок журнала под окном. Применяется сразу.</sys:String>
     <sys:String x:Key="S_SettingsUac">UAC</sys:String>
@@ -271,6 +296,8 @@
     <sys:String x:Key="S_SettingsUpdatesDesc">Проверить наличие обновлений</sys:String>
     <sys:String x:Key="S_SettingsUpdatesButton">Проверить</sys:String>
     <sys:String x:Key="S_Restore">Откатить</sys:String>
+    <sys:String x:Key="S_ServicesDisableAll">Отключить все</sys:String>
+    <sys:String x:Key="S_ServicesDisableAllHint">Активна, пока хотя бы одна служба списка работает.</sys:String>
     <sys:String x:Key="S_ColSvcName">Имя</sys:String>
     <sys:String x:Key="S_ColDisplayName">Отображаемое имя</sys:String>
     <sys:String x:Key="S_ColState">Состояние</sys:String>
@@ -286,7 +313,7 @@
     <sys:String x:Key="S_ColFolder">Папка</sys:String>
 
     <sys:String x:Key="S_WuServicesTitle">Службы обновления</sys:String>
-    <sys:String x:Key="S_WuServicesDesc">Блокировка сохраняет исходное состояние служб в резерв и переводит их в «Отключена» (включая Windows Update Medic, который иначе возвращает wuauserv). Возврат выполняется из того же резерва.</sys:String>
+    <sys:String x:Key="S_WuServicesDesc">Блокировка сохраняет исходное состояние служб в резерв и переводит их в «Отключена» (включая Windows Update Medic, который иначе возвращает wuauserv).</sys:String>
     <sys:String x:Key="S_WuBlock">Заблокировать обновления</sys:String>
     <sys:String x:Key="S_WuUnblock">Вернуть обновления</sys:String>
     <sys:String x:Key="S_WuPauseTitle">Пауза обновлений</sys:String>
@@ -405,7 +432,6 @@
     <sys:String x:Key="D_TrendsUnitBytes">Б</sys:String>
 
     <!-- ===================== Раздел 18 «История» ===================== -->
-    <sys:String x:Key="D_HistoryFilterLabel">Категория:</sys:String>
     <sys:String x:Key="D_HistoryFilterAll">Все категории</sys:String>
     <sys:String x:Key="D_HistoryEmpty">История пуста — события появятся после операций в разделах.</sys:String>
 
@@ -420,7 +446,7 @@
     <sys:String x:Key="I_UiClearTaskbar">Удаляет закреплённые значки и сбрасывает настройки панели задач, затем перезапускает проводник. Состояние сохраняется в резерв — вернуть можно кнопкой «Восстановить панель задач».</sys:String>
     <sys:String x:Key="I_UiRestoreTaskbar">Возвращает закреплённые значки и настройки панели задач из резерва, созданного при последней очистке, и перезапускает проводник.</sys:String>
 
-    <sys:String x:Key="I_PrivacyQuietMode">Одним действием отключает всё перечисленное ниже: советы Windows, фоновые UWP-приложения, задачи телеметрии/CEIP, службу DiagTrack и Copilot. Исходные значения сохраняются в резерв.</sys:String>
+    <sys:String x:Key="I_PrivacyEnableAll">Отключает все перечисленные ниже категории: советы Windows, фоновые UWP-приложения, задачи телеметрии/CEIP, службу DiagTrack и Copilot. Значения восстанавливаются из резерва, а при его отсутствии — к заводским.</sys:String>
 
     <sys:String x:Key="I_PlanHigh">Высокая производительность: процессор не занижает частоту в простое. Расход энергии и нагрев выше.</sys:String>
     <sys:String x:Key="I_PlanUltimate">Максимальная: отключает почти все механизмы энергосбережения. Для стационарных ПК и ноутбуков в розетке.</sys:String>
@@ -457,6 +483,7 @@
 
     <sys:String x:Key="I_TasksBackup">Сохраняет в резерв состояние выбранных задач планировщика перед их отключением.</sys:String>
     <sys:String x:Key="I_TasksRestore">Возвращает задачи планировщика к состоянию из резерва, созданного кнопкой «Бэкап».</sys:String>
+    <sys:String x:Key="I_TasksDisableAll">Отключает все перечисленные задачи планировщика разом. Перед первым отключением создаётся резерв — вернуть прежние состояния можно кнопкой «Откатить».</sys:String>
 
     <!-- ===================== Раздел 20 «Бэнчмарк» ===================== -->
     <sys:String x:Key="S_Section20_Title">Бэнчмарк</sys:String>
@@ -477,6 +504,7 @@
     <sys:String x:Key="S_BenchColumnValue">Значение</sys:String>
     <sys:String x:Key="S_BenchColumnConformity">Соответствие</sys:String>
     <sys:String x:Key="S_BenchColumnStatus">Статус</sys:String>
+    <sys:String x:Key="S_BenchServicesFootnote">* Службы «Расширения и уведомления для принтеров» и «Диспетчер печати» не включаются в индекс, так как часто нужны пользователям и остаются включёнными.</sys:String>
     <sys:String x:Key="S_BenchPotentialHeader">Что может улучшить SCU</sys:String>
     <sys:String x:Key="S_BenchPotentialHint">Доступные баллы соответствия целевому состоянию по применимым метрикам. Это потенциал индекса, а не обещание ускорения.</sys:String>
     <sys:String x:Key="S_BenchPotentialTotal">Потенциал индекса:</sys:String>
@@ -485,6 +513,60 @@
     <sys:String x:Key="S_BenchPotentialEmpty">Все применимые цели универсального профиля достигнуты — доступных баллов соответствия не найдено.</sys:String>
     <sys:String x:Key="S_Section22_Title">Браузер</sys:String>
     <sys:String x:Key="S_Section22_Desc">Встроенный защищенный доступ в интернет</sys:String>
+    <sys:String x:Key="S_Section24_Title">AI</sys:String>
+    <sys:String x:Key="S_Section24_Desc">Чат с ассистентом по API</sys:String>
+    <sys:String x:Key="S_DeepSeekConnectTitle">Подключение по API</sys:String>
+    <sys:String x:Key="S_DeepSeekConnectDesc">Перейдите на </sys:String>
+    <sys:String x:Key="S_DeepSeekConnectDescAfter"> для получения API-ключа</sys:String>
+    <sys:String x:Key="S_DeepSeekOpenRouterDesc">Бесплатные модели DeepSeek: получите ключ на </sys:String>
+    <sys:String x:Key="S_DeepSeekProviderOfficial">DeepSeek</sys:String>
+    <sys:String x:Key="S_DeepSeekProviderOpenRouter">OpenRouter</sys:String>
+    <sys:String x:Key="S_DeepSeekProviderCloudflare">Cloudflare</sys:String>
+    <sys:String x:Key="S_DeepSeekCloudflareDesc">Бесплатный доступ к DeepSeek через Cloudflare: создайте токен на </sys:String>
+    <sys:String x:Key="S_DeepSeekCloudflareDescAfter"> с разрешением Account → Workers AI → Edit</sys:String>
+    <sys:String x:Key="S_DeepSeekAccountIdHint">Account ID аккаунта Cloudflare (32 символа) — дашборд → Workers &amp; Pages → «Account details»</sys:String>
+    <sys:String x:Key="S_DeepSeekKeyHint">API-ключ провайдера (sk-…)</sys:String>
+    <sys:String x:Key="S_DeepSeekIdPlaceholder">Введите ID</sys:String>
+    <sys:String x:Key="S_DeepSeekApiKeyPlaceholder">Введите API</sys:String>
+    <sys:String x:Key="S_DeepSeekConnect">Подключить</sys:String>
+    <sys:String x:Key="S_DeepSeekRemove">Удалить</sys:String>
+    <sys:String x:Key="S_DeepSeekChatTitle">Чат</sys:String>
+    <sys:String x:Key="S_DeepSeekChatDesc">Общайтесь с ассистентом прямо из приложения</sys:String>
+    <sys:String x:Key="S_DeepSeekChatOpen">Открыть</sys:String>
+    <sys:String x:Key="S_DeepSeekHistory">История</sys:String>
+    <sys:String x:Key="S_DeepSeekNewChat">Новый чат</sys:String>
+    <sys:String x:Key="S_DeepSeekDeleteChat">Удалить чат</sys:String>
+    <sys:String x:Key="S_DeepSeekSend">Отправить</sys:String>
+    <sys:String x:Key="S_DeepSeekStop">Стоп</sys:String>
+    <sys:String x:Key="S_DeepSeekInputHint">Enter — отправить, Shift+Enter — перенос строки</sys:String>
+    <sys:String x:Key="S_DeepSeekEmptyHint">Выберите чат из истории или создайте новый кнопкой «+», чтобы начать переписку.</sys:String>
+
+    <!-- SCU AI Assistant: агентный режим с tools и карточками (п. 19/20 ТЗ) -->
+    <sys:String x:Key="S_ScuAiTitle">AI-помощник SCU</sys:String>
+    <sys:String x:Key="S_ScuAiCardDesc">Помощник по функциям SCU: объясняет настройки, ищет внутреннюю справку, открывает разделы и меняет настройки с вашим подтверждением</sys:String>
+    <sys:String x:Key="S_ScuAiOpen">Открыть помощника</sys:String>
+    <sys:String x:Key="S_ScuAiSend">Отправить</sys:String>
+    <sys:String x:Key="S_ScuAiStop">Стоп</sys:String>
+    <sys:String x:Key="S_ScuAiInputHint">Спросите о функции SCU — Enter — отправить, Shift+Enter — перенос строки</sys:String>
+    <sys:String x:Key="S_ScuAiNotConnected">Подключите AI API в разделе выше, чтобы использовать AI-помощника SCU.</sys:String>
+    <sys:String x:Key="S_ScuAiCurrent">Сейчас:</sys:String>
+    <sys:String x:Key="S_ScuAiApply">Применить</sys:String>
+    <sys:String x:Key="S_ScuAiCancel">Отмена</sys:String>
+    <sys:String x:Key="S_ScuAiApplied">Изменение применено</sys:String>
+    <sys:String x:Key="S_ScuAiCancelled">Изменение отменено — настройки не затронуты</sys:String>
+    <sys:String x:Key="S_ScuAiRestartHint">После применения потребуется перезагрузка.</sys:String>
+    <sys:String x:Key="S_Section23_Title">Устранение неполадок</sys:String>
+    <sys:String x:Key="S_Section23_Desc">Диагностика и обнаружение проблем Windows</sys:String>
+    <sys:String x:Key="S_TS_Desc">Проверка состояния Windows и поиск распространённых проблем.</sys:String>
+    <sys:String x:Key="S_TS_Run">Проверить систему</sys:String>
+    <sys:String x:Key="S_TS_RunHint">Запустить read-only диагностику всех областей</sys:String>
+    <sys:String x:Key="S_TS_Cancel">Отмена</sys:String>
+    <sys:String x:Key="S_TS_LastRun">Последняя проверка:</sys:String>
+    <sys:String x:Key="S_TS_Skip">Пропустить</sys:String>
+    <sys:String x:Key="S_TS_SkipHint">Состояние перестанет учитываться в сводке и карточках</sys:String>
+    <sys:String x:Key="S_TS_Restore">Вернуть</sys:String>
+    <sys:String x:Key="S_TS_EmptyState">Диагностика ещё не выполнялась.&#x0a;Нажмите «Проверить систему», чтобы собрать состояние Windows.</sys:String>
+    <sys:String x:Key="S_DS_Open">Устранение неполадок</sys:String>
     <sys:String x:Key="S_BrowserTitle">SCU браузер</sys:String>
     <sys:String x:Key="S_BrowserDescription">Встроенный защищенный браузер SCU для выхода в интернет без необходимости устанавливать отдельный браузер в Windows.</sys:String>
     <sys:String x:Key="S_BrowserEntryHint">Запускается только по вашему запросу. Веб-контент работает в изолированной среде; скачанные файлы не запускаются автоматически.</sys:String>
@@ -499,6 +581,7 @@
     <sys:String x:Key="S_BrowserStop">Остановить загрузку</sys:String>
     <sys:String x:Key="S_BrowserNewTab">Новая вкладка</sys:String>
     <sys:String x:Key="S_BrowserAddress">Адрес или поисковый запрос</sys:String>
+    <sys:String x:Key="S_BrowserNotSecure">Не защищено</sys:String>
     <sys:String x:Key="S_BrowserBookmarkAdd">Добавить или удалить закладку (Ctrl+D)</sys:String>
     <sys:String x:Key="S_BrowserDownloads">Загрузки</sys:String>
     <sys:String x:Key="S_BrowserHistory">История</sys:String>
@@ -534,6 +617,7 @@
     <sys:String x:Key="S_MenuEditorMove">Перенести в группу</sys:String>
     <sys:String x:Key="S_MenuEditorRemove">Убрать</sys:String>
     <sys:String x:Key="S_MenuEditorAddUtility">Добавить утилиту</sys:String>
+    <sys:String x:Key="S_MenuEditorNoGroup">Без группы</sys:String>
     <sys:String x:Key="S_MenuEditorHint">Изменения применяются сразу и сохраняются автоматически. Утилиты, назначенные в пользовательские вкладки, поиск находит там, где они теперь размещены. «Сбросить» возвращает заводское меню (перезапустите SCU, чтобы восстановить удалённые утилиты).</sys:String>
     <sys:String x:Key="S_MenuEditorReset">Сбросить</sys:String>
     <sys:String x:Key="S_CustomSectionEmpty">Вкладка пуста — добавьте утилиты через «Настройки → Редактирование меню».</sys:String>

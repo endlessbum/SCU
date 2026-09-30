@@ -1,6 +1,5 @@
 using SCU.Common;
 using SCU.Models.Browser;
-using SCU.Services.Browser;
 using Xunit;
 
 namespace SCU.Tests;
@@ -78,6 +77,21 @@ public sealed class BrowserStateStoresTests : IDisposable
         var settings = new BrowserSettingsService(_logger, path).Load();
 
         Assert.Equal(BrowserSettingsModel.CreateDefault(), settings);
+    }
+
+    // Неудачная запись не оставляет .tmp-мусор в профиле: целевой путь занят
+    // каталогом, Move падает — временный файл обязан быть удалён.
+    [Fact]
+    public void Settings_SaveFailure_RemovesTempFile()
+    {
+        var path = FilePath("occupied.json");
+        Directory.CreateDirectory(path);
+
+        var service = new BrowserSettingsService(_logger, path);
+        service.Save(BrowserSettingsModel.CreateDefault());
+
+        Assert.False(File.Exists(path + ".tmp"));
+        Assert.True(Directory.Exists(path));
     }
 
     // ===================== История =====================

@@ -36,7 +36,7 @@
     <sys:String x:Key="S_Section11_Desc">Mouse, Edge, Game Bar and DVR</sys:String>
     <sys:String x:Key="S_Section12_Title">Search and Integrity</sys:String>
     <sys:String x:Key="S_Section12_Desc">Indexing, DISM and SFC</sys:String>
-    <sys:String x:Key="S_Section13_Title">Security (UAC)</sys:String>
+    <sys:String x:Key="S_Section13_Title">UAC</sys:String>
     <sys:String x:Key="S_Section13_Desc">User Account Control settings</sys:String>
     <sys:String x:Key="S_Section21_Title">Scanner</sys:String>
     <sys:String x:Key="S_Section21_Desc">On-demand scanning, quarantine and safe viewing</sys:String>
@@ -64,6 +64,27 @@
     <sys:String x:Key="S_Section15_Desc">Backup, disabling and rollback of selected tasks</sys:String>
     <sys:String x:Key="S_Section16_Title">Windows Updates</sys:String>
     <sys:String x:Key="S_Section16_Desc">Pause, drivers and update service blocking</sys:String>
+    <sys:String x:Key="S_Section25_Title">Drivers</sys:String>
+    <sys:String x:Key="S_Section25_Desc">Key hardware inventory and driver updates through Windows Update</sys:String>
+    <sys:String x:Key="S_DrvStateTitle">Driver status</sys:String>
+    <sys:String x:Key="S_DrvStateDesc">Key hardware and its drivers; problem devices are marked with a warning icon.</sys:String>
+    <sys:String x:Key="S_DrvRescan">Check again</sys:String>
+    <sys:String x:Key="S_DrvUpdatesTitle">Driver updates</sys:String>
+    <sys:String x:Key="S_DrvUpdatesDesc">Search on the Windows Update servers — the same channel Windows itself uses: matched per device and signed by Microsoft.</sys:String>
+    <sys:String x:Key="S_DrvSearch">Check for updates</sys:String>
+    <sys:String x:Key="S_DrvInstall">Update</sys:String>
+    <sys:String x:Key="S_DrvInstallAll">Update all</sys:String>
+    <sys:String x:Key="S_DrvDevicesTitle">Devices and drivers</sys:String>
+    <sys:String x:Key="S_DrvProblemsTitle">Problem devices</sys:String>
+    <sys:String x:Key="S_DrvDevManager">Device Manager</sys:String>
+    <sys:String x:Key="S_DrvSafetyTitle">Safety</sys:String>
+    <sys:String x:Key="S_DrvRestorePoint">Restore point before installation</sys:String>
+    <sys:String x:Key="S_DrvRestorePointDesc">Type «driver install» — created once before a batch installation.</sys:String>
+    <sys:String x:Key="S_DrvWuAllowed">Drivers via Windows Update</sys:String>
+    <sys:String x:Key="S_DrvWuAllowedDesc">Allow driver installation together with Windows updates. Turn off if you install drivers manually only.</sys:String>
+    <sys:String x:Key="S_DrvExportTitle">Driver backup</sys:String>
+    <sys:String x:Key="S_DrvExportDesc">Export all third-party driver packages (pnputil /export-driver) to a folder of your choice. The set can take gigabytes.</sys:String>
+    <sys:String x:Key="S_DrvExport">Export…</sys:String>
     <sys:String x:Key="S_Section17_Title">Settings</sys:String>
     <sys:String x:Key="S_Section17_Desc">App theme and accent color</sys:String>
     <sys:String x:Key="S_Section18_Title">History</sys:String>
@@ -108,6 +129,7 @@
     <sys:String x:Key="S_SettingsIconAccentDesc">The desktop and taskbar icon color — a separate setting, independent of the accent color.</sys:String>
     <sys:String x:Key="S_AccentChooseColor">Choose color</sys:String>
     <sys:String x:Key="S_NotificationOpen">Open</sys:String>
+    <sys:String x:Key="S_NotificationDismiss">Dismiss notification</sys:String>
 
 
     <sys:String x:Key="S_SettingsLanguage">Interface language</sys:String>
@@ -126,7 +148,8 @@
     <sys:String x:Key="S_UiGroupVisualFx">Visual effects</sys:String>
     <sys:String x:Key="S_UiGroupStartMenu">Start menu</sys:String>
 
-    <sys:String x:Key="S_PrivacyQuietMode">Quiet mode (all at once)</sys:String>
+    <sys:String x:Key="S_PrivacyEnableAll">Enable all</sys:String>
+    <sys:String x:Key="S_PrivacyEnableAllHint">Enabled while at least one toggle below is off.</sys:String>
     <sys:String x:Key="S_PrivacyToggleTip">Toggles the category. Original values are saved to a backup before disabling.</sys:String>
 
     <sys:String x:Key="S_UacTitle">User Account Control (UAC)</sys:String>
@@ -204,8 +227,9 @@
     <sys:String x:Key="S_AppsRemoveHint">This application has no uninstaller.</sys:String>
 
     <sys:String x:Key="S_MaintIndexingTitle">Search indexing</sys:String>
-    <sys:String x:Key="S_MaintIndexingDesc">Select drives — their contents will be marked «do not index» (attrib +I, recursively). Search becomes slightly slower; the Windows Search service is not fully disabled.</sys:String>
-    <sys:String x:Key="S_MaintIndexingDisable">Disable indexing on selected</sys:String>
+    <sys:String x:Key="S_MaintIndexingDesc">The state is read automatically: a checked drive is already marked «do not index». Uncheck a drive to restore indexing (attrib +I / -I, recursively). The Windows Search service is not fully disabled.</sys:String>
+    <sys:String x:Key="S_MaintIndexingApply">Apply</sys:String>
+    <sys:String x:Key="S_MaintIndexingApplyHint">No indexing changes to apply — toggle the drive checkboxes.</sys:String>
     <sys:String x:Key="S_MaintIntegrityTitle">Integrity check</sys:String>
     <sys:String x:Key="S_MaintIntegrityDesc">DISM repairs the component store, then SFC verifies system files. Output goes to the log. The operation is long (10+ minutes); do not interrupt unnecessarily.</sys:String>
     <sys:String x:Key="S_MaintIntegrityRun">Run DISM + SFC</sys:String>
@@ -262,6 +286,7 @@
 
     <sys:String x:Key="S_Backup">Backup</sys:String>
     <sys:String x:Key="S_Rollback">Restore</sys:String>
+    <sys:String x:Key="S_TasksDisableAll">Disable all</sys:String>
     <sys:String x:Key="S_SettingsLog">Journal</sys:String>
     <sys:String x:Key="S_SettingsLogDesc">Show or hide the journal block below the window. Applied immediately.</sys:String>
     <sys:String x:Key="S_SettingsUac">UAC</sys:String>
@@ -270,6 +295,8 @@
     <sys:String x:Key="S_SettingsUpdatesDesc">Check for updates</sys:String>
     <sys:String x:Key="S_SettingsUpdatesButton">Check</sys:String>
     <sys:String x:Key="S_Restore">Restore</sys:String>
+    <sys:String x:Key="S_ServicesDisableAll">Disable all</sys:String>
+    <sys:String x:Key="S_ServicesDisableAllHint">Enabled while at least one service in the list is running.</sys:String>
     <sys:String x:Key="S_ColSvcName">Name</sys:String>
     <sys:String x:Key="S_ColDisplayName">Display name</sys:String>
     <sys:String x:Key="S_ColState">State</sys:String>
@@ -402,7 +429,6 @@
     <sys:String x:Key="D_TrendsUnitBytes">B</sys:String>
 
     <!-- ===================== Section 18 «History» ===================== -->
-    <sys:String x:Key="D_HistoryFilterLabel">Category:</sys:String>
     <sys:String x:Key="D_HistoryFilterAll">All categories</sys:String>
     <sys:String x:Key="D_HistoryEmpty">History is empty — events will appear after operations in other sections.</sys:String>
 
@@ -417,7 +443,7 @@
     <sys:String x:Key="I_UiClearTaskbar">Removes pinned icons and resets taskbar settings, then restarts Explorer. The state is saved to a backup — restore it with the «Restore taskbar» button.</sys:String>
     <sys:String x:Key="I_UiRestoreTaskbar">Restores pinned icons and taskbar settings from the backup created by the last cleanup, and restarts Explorer.</sys:String>
 
-    <sys:String x:Key="I_PrivacyQuietMode">Disables everything listed below in one step: Windows tips, background UWP apps, telemetry/CEIP tasks, the DiagTrack service and Copilot. Original values are saved to a backup.</sys:String>
+    <sys:String x:Key="I_PrivacyEnableAll">Restores every category below to working state: Windows tips, background UWP apps, telemetry/CEIP tasks, the DiagTrack service and Copilot. Values are restored from the backup, or to factory defaults if no backup exists.</sys:String>
 
     <sys:String x:Key="I_PlanHigh">Activates the «High performance» plan: the CPU no longer downclocks at idle. Power draw and heat are higher.</sys:String>
     <sys:String x:Key="I_PlanUltimate">Activates the «Ultimate Performance» plan: nearly all power-saving mechanisms are disabled. For desktop PCs and plugged-in laptops.</sys:String>
@@ -454,6 +480,7 @@
 
     <sys:String x:Key="I_TasksBackup">Saves the state of the selected scheduled tasks to a backup before disabling them.</sys:String>
     <sys:String x:Key="I_TasksRestore">Restores the scheduled tasks to the state from the backup created by the «Backup» button.</sys:String>
+    <sys:String x:Key="I_TasksDisableAll">Disables every listed scheduled task at once. A backup is created before the first disable — restore the previous states with the «Restore» button.</sys:String>
 
     <!-- ===================== Section 20 «Benchmark» ===================== -->
     <sys:String x:Key="S_Section20_Title">Benchmark</sys:String>
@@ -474,6 +501,7 @@
     <sys:String x:Key="S_BenchColumnValue">Value</sys:String>
     <sys:String x:Key="S_BenchColumnConformity">Conformity</sys:String>
     <sys:String x:Key="S_BenchColumnStatus">Status</sys:String>
+    <sys:String x:Key="S_BenchServicesFootnote">* The “Printer Extensions and Notifications” and “Print Spooler” services are not included in the index, as users often need them and they remain enabled.</sys:String>
     <sys:String x:Key="S_BenchPotentialHeader">What SCU can improve</sys:String>
     <sys:String x:Key="S_BenchPotentialHint">Available conformity points against target state for applicable metrics. This is index potential, not a performance promise.</sys:String>
     <sys:String x:Key="S_BenchPotentialTotal">Index potential:</sys:String>
@@ -482,6 +510,60 @@
     <sys:String x:Key="S_BenchPotentialEmpty">All applicable universal-profile targets are met — no available conformity points found.</sys:String>
     <sys:String x:Key="S_Section22_Title">Browser</sys:String>
     <sys:String x:Key="S_Section22_Desc">Built-in protected access to the internet</sys:String>
+    <sys:String x:Key="S_Section24_Title">AI</sys:String>
+    <sys:String x:Key="S_Section24_Desc">Chat with an AI assistant via API</sys:String>
+    <sys:String x:Key="S_DeepSeekConnectTitle">API connection</sys:String>
+    <sys:String x:Key="S_DeepSeekConnectDesc">Go to </sys:String>
+    <sys:String x:Key="S_DeepSeekConnectDescAfter"> to get an API key</sys:String>
+    <sys:String x:Key="S_DeepSeekOpenRouterDesc">Free DeepSeek models: get a key at </sys:String>
+    <sys:String x:Key="S_DeepSeekProviderOfficial">DeepSeek</sys:String>
+    <sys:String x:Key="S_DeepSeekProviderOpenRouter">OpenRouter</sys:String>
+    <sys:String x:Key="S_DeepSeekProviderCloudflare">Cloudflare</sys:String>
+    <sys:String x:Key="S_DeepSeekCloudflareDesc">Free DeepSeek access via Cloudflare: create a token at </sys:String>
+    <sys:String x:Key="S_DeepSeekCloudflareDescAfter"> with permission Account → Workers AI → Edit</sys:String>
+    <sys:String x:Key="S_DeepSeekAccountIdHint">Cloudflare Account ID (32 chars) — dashboard → Workers &amp; Pages → «Account details»</sys:String>
+    <sys:String x:Key="S_DeepSeekKeyHint">Provider API key (sk-…)</sys:String>
+    <sys:String x:Key="S_DeepSeekIdPlaceholder">Enter ID</sys:String>
+    <sys:String x:Key="S_DeepSeekApiKeyPlaceholder">Enter API</sys:String>
+    <sys:String x:Key="S_DeepSeekConnect">Connect</sys:String>
+    <sys:String x:Key="S_DeepSeekRemove">Remove</sys:String>
+    <sys:String x:Key="S_DeepSeekChatTitle">Chat</sys:String>
+    <sys:String x:Key="S_DeepSeekChatDesc">Talk to the assistant right from the app</sys:String>
+    <sys:String x:Key="S_DeepSeekChatOpen">Open</sys:String>
+    <sys:String x:Key="S_DeepSeekHistory">History</sys:String>
+    <sys:String x:Key="S_DeepSeekNewChat">New chat</sys:String>
+    <sys:String x:Key="S_DeepSeekDeleteChat">Delete chat</sys:String>
+    <sys:String x:Key="S_DeepSeekSend">Send</sys:String>
+    <sys:String x:Key="S_DeepSeekStop">Stop</sys:String>
+    <sys:String x:Key="S_DeepSeekInputHint">Enter — send, Shift+Enter — new line</sys:String>
+    <sys:String x:Key="S_DeepSeekEmptyHint">Pick a chat from the history or create a new one with the «+» button to start a conversation.</sys:String>
+
+    <!-- SCU AI Assistant: agent mode with tools and cards -->
+    <sys:String x:Key="S_ScuAiTitle">SCU AI Assistant</sys:String>
+    <sys:String x:Key="S_ScuAiCardDesc">Assistant for SCU features: explains settings, searches internal help, opens sections and changes settings with your confirmation</sys:String>
+    <sys:String x:Key="S_ScuAiOpen">Open assistant</sys:String>
+    <sys:String x:Key="S_ScuAiSend">Send</sys:String>
+    <sys:String x:Key="S_ScuAiStop">Stop</sys:String>
+    <sys:String x:Key="S_ScuAiInputHint">Ask about an SCU feature — Enter to send, Shift+Enter for a new line</sys:String>
+    <sys:String x:Key="S_ScuAiNotConnected">Connect the AI API in the section above to use the SCU AI Assistant.</sys:String>
+    <sys:String x:Key="S_ScuAiCurrent">Now:</sys:String>
+    <sys:String x:Key="S_ScuAiApply">Apply</sys:String>
+    <sys:String x:Key="S_ScuAiCancel">Cancel</sys:String>
+    <sys:String x:Key="S_ScuAiApplied">Change applied</sys:String>
+    <sys:String x:Key="S_ScuAiCancelled">Change cancelled — settings untouched</sys:String>
+    <sys:String x:Key="S_ScuAiRestartHint">A reboot is required after applying.</sys:String>
+    <sys:String x:Key="S_Section23_Title">Troubleshooting</sys:String>
+    <sys:String x:Key="S_Section23_Desc">Windows diagnostics, problem detection and confirmed fixes</sys:String>
+    <sys:String x:Key="S_TS_Desc">Checks Windows state and looks for common problems. Diagnostics change nothing; every fix runs separately, after your confirmation.</sys:String>
+    <sys:String x:Key="S_TS_Run">Check system</sys:String>
+    <sys:String x:Key="S_TS_RunHint">Run read-only diagnostics of all areas</sys:String>
+    <sys:String x:Key="S_TS_Cancel">Cancel</sys:String>
+    <sys:String x:Key="S_TS_LastRun">Last check:</sys:String>
+    <sys:String x:Key="S_TS_Skip">Skip</sys:String>
+    <sys:String x:Key="S_TS_SkipHint">The state will no longer count toward the summary and cards</sys:String>
+    <sys:String x:Key="S_TS_Restore">Restore</sys:String>
+    <sys:String x:Key="S_TS_EmptyState">Diagnostics have not been run yet.&#x0a;Press «Check system» to collect the Windows state.</sys:String>
+    <sys:String x:Key="S_DS_Open">Troubleshooting</sys:String>
     <sys:String x:Key="S_BrowserTitle">SCU Browser</sys:String>
     <sys:String x:Key="S_BrowserDescription">Built-in protected browser for internet access without installing a separate browser in Windows.</sys:String>
     <sys:String x:Key="S_BrowserEntryHint">Launches only on your request. Web content runs in an isolated environment; downloaded files are never launched automatically.</sys:String>
@@ -496,6 +578,7 @@
     <sys:String x:Key="S_BrowserStop">Stop loading</sys:String>
     <sys:String x:Key="S_BrowserNewTab">New tab</sys:String>
     <sys:String x:Key="S_BrowserAddress">Address or search query</sys:String>
+    <sys:String x:Key="S_BrowserNotSecure">Not secure</sys:String>
     <sys:String x:Key="S_BrowserBookmarkAdd">Add or remove bookmark (Ctrl+D)</sys:String>
     <sys:String x:Key="S_BrowserDownloads">Downloads</sys:String>
     <sys:String x:Key="S_BrowserHistory">History</sys:String>
@@ -531,6 +614,7 @@
     <sys:String x:Key="S_MenuEditorMove">Move to group</sys:String>
     <sys:String x:Key="S_MenuEditorRemove">Remove</sys:String>
     <sys:String x:Key="S_MenuEditorAddUtility">Add utility</sys:String>
+    <sys:String x:Key="S_MenuEditorNoGroup">Ungrouped</sys:String>
     <sys:String x:Key="S_MenuEditorHint">Changes apply immediately and are saved automatically. Utilities assigned to custom tabs are found by search where they now live. \u00abReset\u00bb restores the default menu (restart SCU to bring back deleted utilities).</sys:String>
     <sys:String x:Key="S_MenuEditorReset">Reset</sys:String>
     <sys:String x:Key="S_CustomSectionEmpty">This tab is empty — add utilities via \u00abSettings → Menu editor\u00bb.</sys:String>

@@ -46,10 +46,11 @@
     <SolidColorBrush x:Key="NavSelectedFillBrush" Color="#1A007AFF" />
 
     <!-- Текст: система iOS — почти чёрный primary, серые secondary/tertiary.
-         Контраст выверен на светлом фоне (#F2F2F7), п. 16 аудита: secondary и
-         tertiary непрозрачны и дают ≥4.5:1 (secondary ≈ 7:1, tertiary ≈ 4.6:1) —
-         вторичность передаётся оттенком, а не прозрачностью; disabled заметно
-         бледнее и не теряется полностью (WCAG исключает disabled из порога). -->
+         П. 16 аудита, WCAG-аудит по худшей поверхности (включая hover-заливки
+         #EAEAF0 и matte-режим): secondary ≥7.4:1, tertiary ≥5.4:1; secondary и
+         tertiary непрозрачны — вторичность передаётся оттенком, а не прозрачностью.
+         Смысловые цвета как текст (success/warn/danger/dash) тоже ≥4.5:1 на худшей
+         поверхности; disabled бледнее и исключён из порога по WCAG. -->
     <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F01C1C1E" />
     <SolidColorBrush x:Key="SecondaryTextBrush" Color="#FF4A4A4E" />
     <SolidColorBrush x:Key="TertiaryTextBrush" Color="#FF5E5E63" />
@@ -69,23 +70,25 @@
     <SolidColorBrush x:Key="DangerStrokeBrush" Color="#4DFF3B30" />
     <SolidColorBrush x:Key="DangerFillBrush" Color="#FFFF3B30" />
     <SolidColorBrush x:Key="DangerPressedBrush" Color="#FFE03427" />
-    <SolidColorBrush x:Key="DangerBrush" Color="#FFE0302A" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#FFC8291F" />
 
     <!-- Семантика состояний -->
-    <SolidColorBrush x:Key="SuccessBrush" Color="#FF248A3D" />
-    <SolidColorBrush x:Key="WarnBrush" Color="#FFB25000" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#FF1C7A31" />
+    <SolidColorBrush x:Key="SuccessTintBrush" Color="#1A1C7A31" />
+    <SolidColorBrush x:Key="SuccessStrokeBrush" Color="#4D1C7A31" />
+    <SolidColorBrush x:Key="WarnBrush" Color="#FFA84B00" />
     <SolidColorBrush x:Key="WarnFillBrush" Color="#26FF9500" />
     <SolidColorBrush x:Key="WarnTextBrush" Color="#F01C1C1E" />
-    <SolidColorBrush x:Key="StateRunningBrush" Color="#FF248A3D" />
+    <SolidColorBrush x:Key="StateRunningBrush" Color="#FF1C7A31" />
     <SolidColorBrush x:Key="StateDisabledBrush" Color="#B34A4A4E" />
-    <SolidColorBrush x:Key="StateMissingBrush" Color="#996D6D72" />
+    <SolidColorBrush x:Key="StateMissingBrush" Color="#FF66666B" />
 
     <!-- Кнопки строки заголовка -->
     <SolidColorBrush x:Key="CaptionCloseHoverBrush" Color="#FFFF3B30" />
     <SolidColorBrush x:Key="CaptionClosePressedBrush" Color="#FFE03427" />
 
     <!-- Фиксированный белый: текст поверх красной заливки и ручка тумблера в ON.
-         Ручка тумблера в OFF — тоже белая: трек серый (#E4E4EA), как в iOS. -->
+         Ручка тумблера в OFF — тоже белая: трек серый (SwitchTrackOffBrush), как в iOS. -->
     <SolidColorBrush x:Key="OnDangerTextBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="SwitchKnobBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="SwitchKnobOffBrush" Color="#FFFFFFFF" />

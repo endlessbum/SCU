@@ -15,6 +15,9 @@ public partial class App : Application
     // и службы, резервы перезаписывали бы друг друга.
     private static Mutex? _singleInstanceMutex;
 
+    // Сигнальное событие «вторая копия запущена» — см. TryAcquireSingleInstanceMutex.
+    private static EventWaitHandle? _alreadyRunningNotify;
+
     // Защита от каскада MessageBox: вложенный pump диспетчера внутри MessageBox.Show
     // может обработать следующее исключение и наслоить новый диалог до stack overflow.
     private bool _uiCrashDialogOpen;
@@ -38,18 +41,14 @@ public partial class App : Application
     {
         if (!TryAcquireSingleInstanceMutex())
         {
-            MessageBox.Show(
-                "SCU уже запущен. Одновременно может работать только одна копия приложения.",
-                "SCU",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            NotifyRunningInstance();
             Shutdown(0);
             return;
         }
 
+        StartAlreadyRunningListener();
+
         DispatcherUnhandledException += OnDispatcherUnhandledException;
-        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
-        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
         // Заставка показывается до любой тяжёлой работы: резко, без анимации появления.
         var splash = new SplashWindow();
@@ -75,6 +74,12 @@ public partial class App : Application
             _logger = Logger.CreateForCurrentRun();
             Environment.SetEnvironmentVariable("SCU_LOGFILE", _logger.FilePath);
             ThemeManager.LogWarningSink = message => _logger.Warn(message);
+
+            // Системные события, связанные с SCU (исключения фоновых потоков и
+            // незаблюдаемых задач), перехватчик выводит карточками центра уведомлений
+            // в стиле приложения. Критическая ошибка UI-потока — в OnStartup: она
+            // фатальна, тост не успел бы прожить свою жизнь, остаётся модальный MessageBox.
+            SystemNotificationInterceptor.Attach(_logger);
 
             // П.2: контрольный обход backup-каталогов — хранятся только последние 10 файлов.
             BackupRetention.EnforceAll(logger: _logger);
@@ -120,7 +125,7 @@ public partial class App : Application
             TryLog("STARTUP | " + exception);
             WriteErrorToConsole("STARTUP | " + exception);
             MessageBox.Show(
-                "Не удалось запустить приложение:\n" + exception.Message,
+                L.T("Не удалось запустить приложение") + ":\n" + exception.Message,
                 "SCU",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -131,7 +136,110 @@ public partial class App : Application
     private static bool TryAcquireSingleInstanceMutex()
     {
         _singleInstanceMutex = new Mutex(initiallyOwned: true, @"Local\SCU.SingleInstance", out var createdNew);
-        return createdNew;
+        if (!createdNew)
+        {
+            return false;
+        }
+
+        // Сигнальное событие «вторая копия запущена»: работающая копия слушает его
+        // и показывает уведомление в стиле приложения. Без события (например,
+        // имя занято объектом другого типа) — деградация: вторая копия покажет
+        // системный MessageBox через fallback в NotifyRunningInstance.
+        try
+        {
+            _alreadyRunningNotify = new EventWaitHandle(
+                initialState: false, EventResetMode.AutoReset, @"Local\SCU.SingleInstance.Notify");
+        }
+        catch (Exception exception)
+        {
+            _alreadyRunningNotify = null;
+            Console.Error.WriteLine("SINGLE INSTANCE | notify event failed | " + exception.Message);
+        }
+
+        return true;
+    }
+
+    // Вторая копия не имеет ни окна, ни центра уведомлений: показать карточку в
+    // стиле приложения может только работающая копия. Сигнализируем событие —
+    // она сама выведет уведомление «уже запущено» и поднимет своё окно.
+    private static void NotifyRunningInstance()
+    {
+        try
+        {
+            if (EventWaitHandle.TryOpenExisting(@"Local\SCU.SingleInstance.Notify", out var handle))
+            {
+                using (handle)
+                {
+                    handle.Set();
+                }
+
+                return;
+            }
+        }
+        catch
+        {
+            // Сигнализация не удалась — fallback ниже.
+        }
+
+        MessageBox.Show(
+            L.T("SCU уже запущен") + " " + L.T("Одновременно может работать только одна копия приложения."),
+            "SCU",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    // Фоновый слушатель сигнала второй копии: сработал — карточка в стиле
+    // приложения (перехватчик) и поднятие работающего окна. Поток фоновый,
+    // завершается вместе с процессом; Dispose события при выходе гасит WaitOne
+    // через ObjectDisposedException — это штатное окончание ожидания.
+    private void StartAlreadyRunningListener()
+    {
+        var handle = _alreadyRunningNotify;
+        if (handle is null)
+        {
+            return;
+        }
+
+        var listener = new Thread(() =>
+        {
+            try
+            {
+                while (handle.WaitOne())
+                {
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        SystemNotificationInterceptor.ReportInfo(
+                            L.T("SCU уже запущен"),
+                            L.T("Одновременно может работать только одна копия приложения."));
+                        BringMainWindowToFront();
+                    });
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Событие удалено при выходе приложения — ожидание закончено.
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "SCU.AlreadyRunningListener",
+        };
+        listener.Start();
+    }
+
+    private void BringMainWindowToFront()
+    {
+        if (MainWindow is not { } window)
+        {
+            return;
+        }
+
+        if (window.WindowState == WindowState.Minimized)
+        {
+            window.WindowState = WindowState.Normal;
+        }
+
+        window.Activate();
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -140,7 +248,7 @@ public partial class App : Application
         // перед выходом — ничего не теряется молча.
         try
         {
-            Services.Dashboard.HistoryStore.FlushPendingAsync(TimeSpan.FromSeconds(2))
+            SCU.Infrastructure.Storage.HistoryStore.FlushPendingAsync(TimeSpan.FromSeconds(2))
                 .GetAwaiter().GetResult();
         }
         catch
@@ -148,6 +256,7 @@ public partial class App : Application
         }
 
         _singleInstanceMutex?.Dispose();
+        _alreadyRunningNotify?.Dispose();
         _logger?.Info($"EXIT | code={e.ApplicationExitCode}");
         // Writer лога не закрываем явно: фоновые readers внешних процессов могут
         // ещё доставить последние строки; при завершении процесса хэндл закроет ОС.
@@ -214,8 +323,8 @@ public partial class App : Application
         try
         {
             MessageBox.Show(
-                e.Exception.Message,
-                "Критическая ошибка",
+                e.Exception.Message + "\n\n" + L.T("Подробности в журнале (файл лога SCU)."),
+                L.T("Критическая ошибка"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
@@ -227,23 +336,5 @@ public partial class App : Application
         // После необработанного UI-исключения состояние окна/VM может быть неконсистентным.
         // Разрешаем WPF выполнить стандартное аварийное завершение вместо продолжения работы.
         e.Handled = false;
-    }
-
-    private void OnAppDomainUnhandledException(object? sender, UnhandledExceptionEventArgs e)
-    {
-        if (e.ExceptionObject is Exception exception)
-        {
-            TryLog("UNHANDLED | AppDomain | " + exception);
-        }
-        else
-        {
-            TryLog("UNHANDLED | AppDomain | неизвестный объект исключения");
-        }
-    }
-
-    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
-    {
-        TryLog("UNHANDLED | Task | " + e.Exception);
-        e.SetObserved();
     }
 }

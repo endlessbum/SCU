@@ -2,13 +2,10 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Win32;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models;
 using SCU.Models.Scan;
-using SCU.Services;
-using SCU.Services.Dashboard;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;
@@ -24,8 +21,18 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     private readonly HistoryStore _history;
     private readonly QuarantineService _quarantine;
     private readonly IConfirmDialogService _dialogs;
+    private readonly IFilePickerService _filePicker;
+    private readonly IShellOpenService _shell;
     private readonly ScannerUpdateService _updateService = new();
     private CancellationTokenSource? _operationCts;
+
+    // Сериализация доступа к ScannerCore: автообновление базы идёт вне IsBusy
+    // (тихое), и без общего gate оно могло стартовать параллельно с ручным
+    // сканом/установкой пакета — два процесса ScannerCore и гонка за файл базы.
+    private readonly SemaphoreSlim _scannerGate = new(1, 1);
+
+    // Останавливает автообновление при закрытии приложения.
+    private readonly CancellationTokenSource _lifetimeCts = new();
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ScanFileCommand))]
@@ -63,12 +70,25 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     private bool _scanElapsedKnown;
 
     public ScannerViewModel(Logger logger, ScannerRunner scanner, HistoryStore history)
+        : this(logger, scanner, history, new ConfirmDialogService(), new FilePickerService(), new ShellOpenService())
+    {
+    }
+
+    public ScannerViewModel(
+        Logger logger,
+        ScannerRunner scanner,
+        HistoryStore history,
+        IConfirmDialogService dialogs,
+        IFilePickerService filePicker,
+        IShellOpenService shell)
     {
         _logger = logger;
         _scanner = scanner;
         _history = history;
         _quarantine = new QuarantineService();
-        _dialogs = new ConfirmDialogService();
+        _dialogs = dialogs;
+        _filePicker = filePicker;
+        _shell = shell;
         StatusText = L.T(scanner.IsAvailable
             ? "ScannerCore доступен. Перетащите файл/папку или выберите путь."
             : "ScannerCore.exe не найден — сканирование недоступно.");
@@ -88,18 +108,13 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     [RelayCommand(CanExecute = nameof(CanScan))]
     private async Task ScanFileAsync()
     {
-        var dialog = new OpenFileDialog
-        {
-            CheckFileExists = true,
-            Multiselect = false,
-            Title = L.T("Выбор файла для проверки"),
-        };
-        if (dialog.ShowDialog() != true)
+        var path = _filePicker.PickOpenFile(L.T("Выбор файла для проверки"), filter: null);
+        if (path is null)
         {
             return;
         }
 
-        await RunScanAsync(dialog.FileName, scanDirectory: false).ConfigureAwait(true);
+        await RunScanAsync(path, scanDirectory: false).ConfigureAwait(true);
     }
 
     // Пути из drag-and-drop (View передаёт готовый список из DataObject).
@@ -261,28 +276,20 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     [RelayCommand(CanExecute = nameof(CanView))]
     private void ViewFile()
     {
-        var dialog = new OpenFileDialog
+        var path = _filePicker.PickOpenFile(L.T("Просмотр файла в безопасной среде"), filter: null);
+        if (path is not null)
         {
-            CheckFileExists = true,
-            Multiselect = false,
-            Title = L.T("Просмотр файла в безопасной среде"),
-        };
-        if (dialog.ShowDialog() == true)
-        {
-            SafeViewerViewModel.ShowFile(dialog.FileName);
+            SafeViewerViewModel.ShowFile(path);
         }
     }
 
     [RelayCommand(CanExecute = nameof(CanView))]
     private void ViewFolder()
     {
-        var dialog = new OpenFolderDialog
+        var folder = _filePicker.PickOpenFolder(L.T("Просмотр папки в безопасной среде"));
+        if (folder is not null)
         {
-            Title = L.T("Просмотр папки в безопасной среде"),
-        };
-        if (dialog.ShowDialog() == true)
-        {
-            SafeViewerViewModel.ShowFolder(dialog.FolderName);
+            SafeViewerViewModel.ShowFolder(folder);
         }
     }
 
@@ -353,29 +360,47 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         var tempPath = string.Empty;
         try
         {
-            var download = await _updateService.DownloadPackageAsync(_updateService.ResolveUrl())
-                .ConfigureAwait(true);
-            if (!download.IsSuccess || download.Value is null)
+            // Общий gate со сканом и ручными обновлениями: установка базы не должна
+            // выполняться параллельно со сканом. Отмена — при закрытии приложения.
+            await _scannerGate.WaitAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            try
             {
-                _logger.Warn($"DBUPDATE | auto download failed | rc={download.Code} | {download.Message}");
-                return;
-            }
+                var download = await _updateService
+                    .DownloadPackageAsync(_updateService.ResolveUrl(), _lifetimeCts.Token)
+                    .ConfigureAwait(true);
+                if (!download.IsSuccess || download.Value is null)
+                {
+                    _logger.Warn($"DBUPDATE | auto download failed | rc={download.Code} | {download.Message}");
+                    return;
+                }
 
-            tempPath = download.Value;
-            var result = await _scanner.RunUpdateAsync(tempPath).ConfigureAwait(true);
-            if (result.IsSuccess)
-            {
-                DatabaseInfoText = L.T("База: {0}", ExtractVersion(result.Value));
-                _logger.Info("DBUPDATE | auto | " + result.Value);
-                AppNotificationCenter.Instance.Push(
-                    L.T("База сканера обновлена"),
-                    L.T("Установлен пакет базы: {0}", ExtractVersion(result.Value)),
-                    AppNotificationKind.Success);
+                tempPath = download.Value;
+                var result = await _scanner.RunUpdateAsync(tempPath, _lifetimeCts.Token).ConfigureAwait(true);
+                if (result.IsSuccess && result.Value is not null)
+                {
+                    // Версия базы — календарная (yyyy.MM.dd), в карточке уведомления и
+                    // строке «База» показываем её в едином виде дд.мм.гггг.
+                    var version = L.Date(ExtractVersion(result.Value));
+                    DatabaseInfoText = L.T("База: {0}", version);
+                    _logger.Info("DBUPDATE | auto | " + result.Value);
+                    AppNotificationCenter.Instance.Push(
+                        L.T("База сканера обновлена"),
+                        L.T("Установлен пакет базы: {0}", version),
+                        AppNotificationKind.Success);
+                }
+                else
+                {
+                    _logger.Warn($"DBUPDATE | auto failed | rc={result.Code} | {result.Message}");
+                }
             }
-            else
+            finally
             {
-                _logger.Warn($"DBUPDATE | auto failed | rc={result.Code} | {result.Message}");
+                _scannerGate.Release();
             }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Info("DBUPDATE | auto cancelled (app closing)");
         }
         catch (Exception exception)
         {
@@ -413,8 +438,13 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         IsBusy = true;
         StatusText = L.T("Загрузка пакета базы…");
         var tempPath = string.Empty;
+        var gateHeld = false;
         try
         {
+            // Gate с тихим автообновлением базы и сканом.
+            await _scannerGate.WaitAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            gateHeld = true;
+
             var download = await _updateService.DownloadPackageAsync(_updateService.ResolveUrl())
                 .ConfigureAwait(true);
             if (!download.IsSuccess || download.Value is null)
@@ -427,10 +457,11 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
             tempPath = download.Value;
             StatusText = L.T("Установка загруженного пакета…");
             var result = await _scanner.RunUpdateAsync(tempPath).ConfigureAwait(true);
-            if (result.IsSuccess)
+            if (result.IsSuccess && result.Value is not null)
             {
-                StatusText = result.Value;
-                DatabaseInfoText = L.T("База: {0}", ExtractVersion(result.Value));
+                // Версия базы — календарная (yyyy.MM.dd): в статусе показываем дд.мм.гггг.
+                StatusText = L.T("База обновлена: {0}", L.Date(ExtractVersion(result.Value)));
+                DatabaseInfoText = L.T("База: {0}", L.Date(ExtractVersion(result.Value)));
                 _logger.Info("DBUPDATE | online | " + result.Value);
                 _history.Enqueue(new HistoryEvent(
                     DateTime.Now,
@@ -470,6 +501,11 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                 }
             }
 
+            if (gateHeld)
+            {
+                _scannerGate.Release();
+            }
+
             IsBusy = false;
         }
     }
@@ -477,34 +513,34 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     [RelayCommand(CanExecute = nameof(CanScan))]
     private async Task InstallDatabasePackageAsync()
     {
-        var dialog = new OpenFileDialog
-        {
-            CheckFileExists = true,
-            Multiselect = false,
-            Filter = "Пакет базы сигнатур (*.zip)|*.zip",
-            Title = L.T("Установка пакета базы (offline)"),
-        };
-        if (dialog.ShowDialog() != true)
+        var path = _filePicker.PickOpenFile(
+            L.T("Установка пакета базы (offline)"), "Пакет базы сигнатур (*.zip)|*.zip");
+        if (path is null)
         {
             return;
         }
 
         IsBusy = true;
         StatusText = L.T("Установка пакета базы…");
+        var gateHeld = false;
         try
         {
-            var result = await _scanner.RunUpdateAsync(dialog.FileName).ConfigureAwait(true);
-            if (result.IsSuccess)
+            // Gate с тихим автообновлением базы и сканом.
+            await _scannerGate.WaitAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            gateHeld = true;
+
+            var result = await _scanner.RunUpdateAsync(path).ConfigureAwait(true);
+            if (result.IsSuccess && result.Value is not null)
             {
                 StatusText = result.Value;
-                DatabaseInfoText = L.T("База: {0}", ExtractVersion(result.Value));
+                DatabaseInfoText = L.T("База: {0}", L.Date(ExtractVersion(result.Value)));
                 _logger.Info("DBUPDATE | " + result.Value);
                 _history.Enqueue(new HistoryEvent(
                     DateTime.Now,
                     L.T("Сканер"),
                     L.T("Установка пакета базы"),
                     HistoryEvent.StatusOk,
-                    Path.GetFileName(dialog.FileName)));
+                    Path.GetFileName(path)));
             }
             else
             {
@@ -516,11 +552,16 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                     L.T("Сканер"),
                     L.T("Установка пакета базы"),
                     HistoryEvent.StatusFail,
-                    Path.GetFileName(dialog.FileName)));
+                    Path.GetFileName(path)));
             }
         }
         finally
         {
+            if (gateHeld)
+            {
+                _scannerGate.Release();
+            }
+
             IsBusy = false;
             ScanEtaText = string.Empty;
             _scanFileSizes.Clear();
@@ -631,7 +672,13 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
 
     public void CancelOngoing() => _operationCts?.Cancel();
 
-    public void Dispose() => _operationCts?.Cancel();
+    public void Dispose()
+    {
+        // Gate не диспозим: держатель (например, автообновление) ещё releasing в
+        // finally, Release на disposed SemaphoreSlim бросил бы исключение.
+        _operationCts?.Cancel();
+        _lifetimeCts.Cancel();
+    }
 
     private async Task RunScanAsync(string path, bool scanDirectory)
     {
@@ -649,8 +696,13 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         ScanEtaText = L.T("Оценка объёма…");
         StatusText = L.T("Сканирование: {0}…", path);
 
+        var gateHeld = false;
         try
         {
+            // Gate с тихим автообновлением базы: не стартуем скан, пока идёт установка пакета.
+            await _scannerGate.WaitAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            gateHeld = true;
+
             // Предварительный подсчёт файлов и объёма: база для процента и ETA.
             _scanFileSizes.Clear();
             _scanTotalFiles = 0;
@@ -671,8 +723,10 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                 else if (scanEvent.Kind == ScanEventKind.Started)
                 {
                     // Database freshness (п. 32): показываем версию и дату базы.
+                    // DbDate приходит от ScannerCore в ISO (yyyy-MM-dd) — приводим
+                    // к единому виду интерфейса (дд.мм.гггг).
                     DatabaseInfoText = scanEvent.DbVersion.Length > 0
-                        ? L.T("База: {0} (от {1})", scanEvent.DbVersion, scanEvent.DbDate)
+                        ? L.T("База: {0} (от {1})", scanEvent.DbVersion, L.Date(scanEvent.DbDate))
                         : L.T("База: встроенная (EICAR)");
                 }
             });
@@ -743,6 +797,11 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         }
         finally
         {
+            if (gateHeld)
+            {
+                _scannerGate.Release();
+            }
+
             IsBusy = false;
         }
     }

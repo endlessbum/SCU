@@ -1,11 +1,12 @@
 using System.Net;
-using SCU.Services;
 using Xunit;
 
 namespace SCU.Tests;
 
 // HTTPS-загрузчик пакетов базы (п. 30): сетевой http запрещён, loopback
 // разрешён (тесты/локальная раздача), содержимое пишется во временный файл.
+// Suite=Integration: нужны реальные loopback-соединения.
+[Trait("Suite", "Integration")]
 public class ScannerUpdateServiceTests
 {
     [Fact]
@@ -104,6 +105,29 @@ public class ScannerUpdateServiceTests
 
     // П. 8 аудита: redirect обрабатывается вручную — только HTTPS/loopback,
     // без смены хоста, без понижения схемы, с лимитом количества переходов.
+    // URL-override из %APPDATA% ограничен доверенными хостами: иначе процесс
+    // того же пользователя уводил бы автообновление базы на свой сервер.
+    [Fact]
+    public void OverridePolicy_GithubAndLoopbackAllowed()
+    {
+        Assert.True(ScannerUpdateService.IsAllowedOverride(
+            "https://github.com/endlessbum/SCU/releases/latest/download/database-latest.zip"));
+        Assert.True(ScannerUpdateService.IsAllowedOverride(
+            "https://release-assets.githubusercontent.com/anything/database-latest.zip"));
+        Assert.True(ScannerUpdateService.IsAllowedOverride("http://127.0.0.1:9001/db.zip"));
+        Assert.True(ScannerUpdateService.IsAllowedOverride("http://localhost/db.zip"));
+    }
+
+    [Fact]
+    public void OverridePolicy_ForeignHostsRefused()
+    {
+        Assert.False(ScannerUpdateService.IsAllowedOverride("https://evil.example/db.zip"));
+        Assert.False(ScannerUpdateService.IsAllowedOverride("https://github.com.evil.example/db.zip"));
+        Assert.False(ScannerUpdateService.IsAllowedOverride("ftp://github.com/db.zip"));
+        Assert.False(ScannerUpdateService.IsAllowedOverride("not a url"));
+        Assert.False(ScannerUpdateService.IsAllowedOverride(""));
+    }
+
     [Fact]
     public void RedirectPolicy_NoDowngradeNoCrossHost()
     {
@@ -160,6 +184,21 @@ public class ScannerUpdateServiceTests
         Assert.Contains("перенаправлен", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    // П. 11 аудита (partial download): обрыв соединения в середине тела ответа —
+    // это провал загрузки, а не «успешно скачанный» урезанный пакет.
+    [Fact]
+    public async Task DownloadPackage_TruncatedBody_IsRejected()
+    {
+        const string packageBytes = "PK-scu-truncated-package-that-ends-early";
+        var declaredLength = System.Text.Encoding.UTF8.GetByteCount(packageBytes) + 4096;
+        using var server = new TruncatingHttpServer(packageBytes, declaredLength);
+
+        var service = new ScannerUpdateService();
+        var result = await service.DownloadPackageAsync(server.Url);
+
+        Assert.False(result.IsSuccess);
+    }
+
     private static int GetFreeTestPort()
     {
         var socket = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
@@ -201,6 +240,60 @@ public class ScannerUpdateServiceTests
         }
 
         public string Url { get; }
+
+        public void Dispose()
+        {
+            _listener.Stop();
+            _listener.Close();
+        }
+    }
+
+    // Сервер, обещающий ContentLength64 больше, чем реально отдаёт, и рвущий
+    // соединение после тела — имитация оборванной загрузки пакета.
+    private sealed class TruncatingHttpServer : IDisposable
+    {
+        private readonly HttpListener _listener;
+
+        public TruncatingHttpServer(string content, long declaredLength)
+        {
+            Content = content;
+            DeclaredLength = declaredLength;
+            var port = GetFreeTestPort();
+            Url = $"http://127.0.0.1:{port}/package.zip";
+            _listener = new HttpListener();
+            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            _listener.Start();
+            _ = Task.Run(ServeLoop);
+        }
+
+        public string Url { get; }
+
+        private string Content { get; }
+
+        private long DeclaredLength { get; }
+
+        private async Task ServeLoop()
+        {
+            while (_listener.IsListening)
+            {
+                HttpListenerContext context;
+                try
+                {
+                    context = await _listener.GetContextAsync();
+                }
+                catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException)
+                {
+                    return;
+                }
+
+                context.Response.ContentLength64 = DeclaredLength;
+                var buffer = System.Text.Encoding.UTF8.GetBytes(Content);
+                await context.Response.OutputStream.WriteAsync(buffer);
+                // Content-Length обещал больше — соединение рвётся здесь; формат
+                // ответа нарушен, HttpClient обязан сообщить об ошибке.
+                context.Response.Abort();
+            }
+        }
 
         public void Dispose()
         {

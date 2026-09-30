@@ -4,7 +4,6 @@ using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models;
-using SCU.Services;
 
 namespace SCU.ViewModels.Sections;
 

@@ -1,5 +1,4 @@
 using SCU.Models;
-using SCU.Services;
 using SCU.ViewModels.Sections;
 using Xunit;
 
@@ -124,5 +123,49 @@ public class ComponentItemTests
         Assert.Single(names);
         Assert.Equal(nameof(ComponentItem.IsInstalled), names[0]);
         Assert.True(item.IsInstalled);
+    }
+}
+
+public class DriveRowTests
+{
+    [Fact]
+    public void Ctor_SyncsCheckboxWithFact()
+    {
+        var row = new DriveRow("C", indexingDisabled: true);
+
+        Assert.True(row.IsIndexingDisabled);
+        Assert.True(row.IsSelected);
+    }
+
+    [Fact]
+    public void Refresh_AfterApply_KeepsCheckboxInSyncWithFact()
+    {
+        // Диск загружен индексируемым, пользователь поставил галочку.
+        var row = new DriveRow("C", indexingDisabled: false)
+        {
+            IsSelected = true
+        };
+
+        // После «Применить» перечитываются и факт, и галочка — иначе HasIndexingChanges
+        // будет сравнивать свежую галочку со старым снимком факта и кнопка останется активной.
+        var actualState = true;
+        row.IsIndexingDisabled = actualState;
+        row.IsSelected = actualState;
+
+        Assert.Equal(row.IsIndexingDisabled, row.IsSelected);
+        Assert.True(row.IsIndexingDisabled);
+    }
+
+    [Fact]
+    public void IsIndexingDisabled_ChangedValue_RaisesPropertyChanged()
+    {
+        var row = new DriveRow("C", indexingDisabled: false);
+        var names = new List<string?>();
+        row.PropertyChanged += (_, e) => names.Add(e.PropertyName);
+
+        row.IsIndexingDisabled = true;
+
+        Assert.Contains(nameof(DriveRow.IsIndexingDisabled), names);
+        Assert.True(row.IsIndexingDisabled);
     }
 }

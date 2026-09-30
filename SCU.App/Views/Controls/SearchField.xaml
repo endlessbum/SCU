@@ -30,9 +30,12 @@
                    VerticalAlignment="Center"
                    IsHitTestVisible="False"
                    FontSize="16"
+                   Foreground="{DynamicResource TertiaryTextBrush}"
                    Text="{Binding Placeholder, ElementName=Root}">
             <TextBlock.Style>
-                <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                <!-- Плейсхолдер того же размера, что и вводимый текст (16):
+                     CaptionText (12) создавал диссонанс размера с текстом поля. -->
+                <Style TargetType="TextBlock">
                     <Setter Property="Visibility" Value="Collapsed" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding Text, ElementName=Field}" Value="">

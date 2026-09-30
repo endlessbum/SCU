@@ -3,7 +3,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Interop;
-using SCU.Services;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;
@@ -18,7 +17,7 @@ public partial class PrivacyViewModel : ObservableObject, IDisposable, ISectionO
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ToggleCategoryCommand))]
-    [NotifyCanExecuteChangedFor(nameof(QuietModeCommand))]
+    [NotifyCanExecuteChangedFor(nameof(EnableAllCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     [NotifyPropertyChangedFor(nameof(IsInteractive))]
@@ -38,7 +37,16 @@ public partial class PrivacyViewModel : ObservableObject, IDisposable, ISectionO
 
         foreach (var category in PrivacyService.Categories)
         {
-            Rows.Add(new PrivacyRow(category, false));
+            var row = new PrivacyRow(category, false);
+            // Переключение любого тумблера меняет доступность «Включить все».
+            row.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName is nameof(PrivacyRow.IsDisabled) or nameof(PrivacyRow.IsEnabled))
+                {
+                    EnableAllCommand.NotifyCanExecuteChanged();
+                }
+            };
+            Rows.Add(row);
         }
     }
 
@@ -112,10 +120,13 @@ public partial class PrivacyViewModel : ObservableObject, IDisposable, ISectionO
 
         var enable = row.IsEnabled;
 
-        if (!enable && !_dialogs.Ask(
+        if (!enable && !_dialogs.ConfirmChange(new DestructiveChange(
                 L.T("Отключение — {0}", row.Category.Title),
-                L.T("Отключить «{0}»?\n{1}\nТекущие значения реестра будут сохранены в резерв.", row.Category.Title, row.Category.Description),
-                L.T("Отключить")))
+                CurrentState: L.T("Категория «{0}» включена.", row.Category.Title),
+                NewState: L.T("Категория отключена соответствующими твиками реестра/планировщика."),
+                Consequences: row.Category.Description,
+                Rollback: L.T("Текущие значения реестра сохраняются в резерв; включение восстанавливает их."),
+                ConfirmText: L.T("Отключить"))))
         {
             row.ForceState(!enable);
             return;
@@ -189,68 +200,63 @@ public partial class PrivacyViewModel : ObservableObject, IDisposable, ISectionO
         }).ConfigureAwait(true);
     }
 
-    // Аналог «Тихого режима» из BAT: советы, фоновые UWP, задачи CEIP, DiagTrack, Copilot.
-    [RelayCommand(CanExecute = nameof(CanModify))]
-    private async Task QuietModeAsync()
+    // «Включить все»: отключает перечисленные ниже категории
+    // (выключение = снятие твиков). Кнопка активна, пока хотя бы один
+    // переключатель выключен; когда включены все — неактивна.
+    private bool CanEnableAll() => CanModify() && Rows.Any(row => row.IsDisabled);
+
+    [RelayCommand(CanExecute = nameof(CanEnableAll))]
+    private async Task EnableAllAsync()
     {
-        if (!_dialogs.Ask(
-                L.T("Тихий режим"),
-                L.T("Будут отключены: советы и предложения Windows, фоновые UWP,\nзадачи телеметрии / CEIP (через SCU.ps1), телеметрия DiagTrack, Copilot.\nПродолжить?"),
-                L.T("Отключить всё")))
+        var disabled = Rows.Where(row => row.IsDisabled).ToList();
+        if (disabled.Count == 0)
         {
             return;
         }
 
-        await RunExclusiveAsync("тихий режим", async ct =>
+        if (!_dialogs.ConfirmChange(new DestructiveChange(
+                L.T("Включение категорий приватности"),
+                CurrentState: L.T("{0} категорий отключены:", disabled.Count)
+                    + "\n" + string.Join(", ", disabled.Select(row => L.T(row.Category.Title))),
+                NewState: L.T("Все перечисленные категории вернутся в рабочее состояние."),
+                Consequences: L.T("Отключённые SCU функции телеметрии/слежения снова активируются штатными параметрами Windows."),
+                Rollback: L.T("Значения восстанавливаются из резерва, а при его отсутствии — к заводским."),
+                ConfirmText: L.T("Включить все"))))
+        {
+            return;
+        }
+
+        await RunExclusiveAsync("включение всех категорий", async ct =>
         {
             var failures = new List<string>();
-            foreach (var categoryId in new[] { "notifications", "uwp", "copilot" })
+            foreach (var row in disabled)
             {
-                var row = Rows.First(r => r.Category.Id == categoryId);
-                var result = await _privacyService.DisableAsync(categoryId, ct)
-                    .ConfigureAwait(true);
+                StatusText = L.T("Включение: ") + L.T(row.Category.Title) + "…";
+                var result = await _privacyService.EnableAsync(row.Category.Id, ct).ConfigureAwait(true);
+                // Фактическое состояние после операции — источник правды для тумблера.
+                var actual = await TaskRunner.RunBlocking(
+                    () => _privacyService.IsCategoryApplied(row.Category.Id),
+                    ct).ConfigureAwait(true);
+                row.ForceState(actual);
+
                 if (result.IsSuccess)
                 {
-                    row.IsDisabled = true;
+                    _logger.Info("PRIVACY | enable all | " + row.Category.Id + " ok");
                 }
                 else
                 {
                     failures.Add(L.T("{0}: {1}", L.T(row.Category.Title), L.S(result.Message)));
+                    _logger.Error("PRIVACY | enable all | " + row.Category.Id + " | rc=" + result.Code + " | " + result.Message);
                 }
             }
 
-            var telemetryRow = Rows.First(r => r.Category.Id == "telemetry");
-            var telemetryResult = await _privacyService.DisableAsync("telemetry", ct)
-                .ConfigureAwait(true);
-            if (telemetryResult.IsSuccess)
+            if (failures.Count == 0)
             {
-                telemetryRow.IsDisabled = true;
+                StatusText = L.T("Все категории включены.");
             }
             else
             {
-                failures.Add(L.T("Телеметрия: ") + telemetryResult.Message);
-            }
-
-            StatusText = L.T("Отключение задач телеметрии / CEIP…");
-            var tasksResult = await _privacyService.DisableCeipTasksAsync(_runner, ct).ConfigureAwait(true);
-            var ceipRow = Rows.First(r => r.Category.Id == "ceip");
-            ceipRow.IsDisabled = tasksResult.IsSuccess;
-
-            if (failures.Count == 0 && tasksResult.IsSuccess)
-            {
-                StatusText = L.T("Тихий режим применён: все категории отключены.");
-                _logger.Info("PRIVACY | quiet mode ok");
-            }
-            else
-            {
-                var allFailures = failures.ToList();
-                if (!tasksResult.IsSuccess)
-                {
-                    allFailures.Add(L.T("Задачи CEIP: ") + tasksResult.Message);
-                }
-
-                StatusText = L.T("Тихий режим: часть операций не удалась — {0}", string.Join("; ", allFailures.Select(L.S)));
-                _logger.Error("PRIVACY | quiet mode partial failure | " + string.Join("; ", allFailures));
+                StatusText = L.T("Включение категорий: часть операций не удалась — {0}", string.Join("; ", failures.Select(L.S)));
             }
         }).ConfigureAwait(true);
     }

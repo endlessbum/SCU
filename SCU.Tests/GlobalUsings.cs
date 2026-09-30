@@ -1,0 +1,21 @@
+// П. 13 аудита: слои Application/Infrastructure — глобальные using для всех тестов.
+global using SCU.AppCore;
+global using SCU.AppCore.Dashboard;
+global using SCU.Infrastructure.Browser;
+global using SCU.Infrastructure.Logging;
+global using SCU.Infrastructure.Networking;
+global using SCU.Infrastructure.Parsing;
+global using SCU.Infrastructure.Storage;
+global using SCU.Infrastructure.Updates;
+global using SCU.Infrastructure.Windows;
+global using SCU.Infrastructure.Windows.Apps;
+global using SCU.Infrastructure.Windows.Benchmark;
+global using SCU.Infrastructure.Windows.Maintenance;
+global using SCU.Infrastructure.Windows.Network;
+global using SCU.Infrastructure.Windows.Power;
+global using SCU.Infrastructure.Windows.RegistryAccess;
+global using SCU.Infrastructure.Windows.Services;
+global using SCU.Infrastructure.Windows.SystemState;
+global using SCU.Infrastructure.Windows.Tasks;
+global using SCU.Infrastructure.Windows.Tweaks;
+global using SCU.Infrastructure.Windows.Troubleshooting;

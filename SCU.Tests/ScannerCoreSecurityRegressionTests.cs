@@ -367,7 +367,7 @@ public partial class ScannerCoreIntegrationTests
 
     [Theory]
     [MemberData(nameof(MalformedHashesCases))]
-    public async Task ScannerCore_RejectsMalformedHashesFile(string caseName, string hashesContent)
+    public async Task ScannerCore_RejectsMalformedHashesFile(string _, string hashesContent)
     {
         var scannerPath = FindScannerCore();
         var keyPath = FindDatabaseSigningKey();
@@ -552,6 +552,254 @@ public partial class ScannerCoreIntegrationTests
             await File.WriteAllBytesAsync(databaseFile, backup);
             Directory.Delete(temp, recursive: true);
         }
+    }
+
+    // П. 11 аудита: несовпадение версии движка в заголовке кэша отбрасывает ВЕСЬ
+    // файл кэша — подсаженная «чистая» запись не переносится. Заголовок берётся
+    // реальный (после базового скана), подделывается только engine=.
+    [Fact]
+    public async Task ScannerCore_EngineVersionChange_InvalidatesCache()
+    {
+        var scannerPath = FindScannerCore();
+        if (scannerPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(temp, "clean.txt"), "clean content");
+
+            var baseline = await ScanDirectoryAsync(scannerPath, temp);
+            Assert.NotNull(baseline);
+
+            var lines = ReadCacheLines();
+            Assert.True(lines.Count > 0, "после скана дисковый кэш обязан существовать");
+            var forgedHeader = System.Text.RegularExpressions.Regex.Replace(
+                lines[0], @"engine=\S+", "engine=0.0.0-forged");
+            Assert.NotEqual(lines[0], forgedHeader);
+
+            var markerHash = Sha256Hex("scu-engine-marker-" + Guid.NewGuid().ToString("N"));
+            WriteCacheLines([forgedHeader, markerHash + "\tclean"]);
+
+            await ScanDirectoryAsync(scannerPath, temp);
+
+            var after = ReadCacheLines();
+            Assert.DoesNotContain(after, line => line.StartsWith(markerHash, StringComparison.Ordinal));
+            Assert.Contains(after, line => line.StartsWith("#scucache", StringComparison.Ordinal)
+                                            && !line.Contains("0.0.0-forged", StringComparison.Ordinal));
+        }
+        finally
+        {
+            TryDeleteCache();
+            Directory.Delete(temp, recursive: true);
+        }
+    }
+
+    // П. 11 аудита: вложенный архив (zip в zip) — «чистая» запись кэша внешнего
+    // контейнера не отменяет скан содержимого; malware из inner.zip детектируется
+    // при повторном скане, внешний контейнер не кэшируется.
+    [Fact]
+    public async Task ScannerCore_NestedArchive_CleanCacheOnContainer_DoesNotHideMalware()
+    {
+        var scannerPath = FindScannerCore();
+        if (scannerPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var outerPath = Path.Combine(temp, "outer.zip");
+            using (var outer = new System.IO.Compression.ZipArchive(
+                File.Create(outerPath), System.IO.Compression.ZipArchiveMode.Create))
+            {
+                var innerEntry = outer.CreateEntry("inner.zip");
+                using (var innerStream = innerEntry.Open())
+                using (var inner = new System.IO.Compression.ZipArchive(
+                    innerStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+                {
+                    var entry = inner.CreateEntry("eicar.com");
+                    using var writer = new StreamWriter(entry.Open());
+                    await writer.WriteAsync(Eicar);
+                }
+            }
+
+            var first = await ScanDirectoryAsync(scannerPath, temp);
+            Assert.NotNull(first);
+            Assert.Equal(1, first!.Summary.Detections);
+
+            var outerHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(outerPath)))
+                .ToLowerInvariant();
+            Assert.DoesNotContain(ReadCacheLines(),
+                line => line.StartsWith(outerHash + "\t", StringComparison.Ordinal));
+
+            // Подсаживаем «чистый» вердикт для внешнего контейнера — не помогает.
+            TamperCacheVerdictToClean(outerHash);
+            var second = await ScanDirectoryAsync(scannerPath, temp);
+            Assert.NotNull(second);
+            Assert.Equal(1, second!.Summary.Detections);
+        }
+        finally
+        {
+            TryDeleteCache();
+            Directory.Delete(temp, recursive: true);
+        }
+    }
+
+    // П. 11 аудита: payload пакета, изменённый ПОСЛЕ подписи, отклоняется —
+    // подпись обязана проверяться именно против того содержимого, что в пакете.
+    [Fact]
+    public async Task ScannerCore_RejectsModifiedPayloadWithValidSignature()
+    {
+        var scannerPath = FindScannerCore();
+        var keyPath = FindDatabaseSigningKey();
+        if (scannerPath is null || keyPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var hashesBytes = Encoding.UTF8.GetBytes(
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\tmalware\tOriginal\n");
+            var versionJson = Encoding.UTF8.GetBytes(
+                "{\n  \"version\": \"2099.07.01\",\n  \"date\": \"2099-01-01\",\n  \"entries\": 1\n}\n");
+            var package = BuildSignedPackage(hashesBytes, versionJson, keyPath);
+
+            // Payload заменён после подписи: подпись осталась от исходного содержимого.
+            var tamperedHashes = Encoding.UTF8.GetBytes(
+                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\tmalware\tModified\n");
+            var packagePath = Path.Combine(temp, "modified-payload.zip");
+            await File.WriteAllBytesAsync(packagePath, ReplaceZipEntry(package, "hashes.txt", tamperedHashes));
+
+            var (exitCode, events) = await RunScannerAsync(scannerPath, startInfo =>
+            {
+                startInfo.ArgumentList.Add("update");
+                startInfo.ArgumentList.Add("--package");
+                startInfo.ArgumentList.Add(packagePath);
+                startInfo.ArgumentList.Add("--dev-unsigned-ok");
+            });
+
+            Assert.NotEqual(0, exitCode);
+            var updateEvent = Assert.Single(events, e => e.Kind == ScanEventKind.Update);
+            Assert.Equal("failed", updateEvent.UpdateStatus);
+            Assert.Contains("signature", updateEvent.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(temp, recursive: true);
+        }
+    }
+
+    // П. 11 аудита: atomic replacement — НЕУДАВШЕЕСЯ обновление не портит
+    // установленную базу: IOC из предыдущего пакета продолжает детектироваться,
+    // версия базы не меняется.
+    [Fact]
+    public async Task ScannerCore_FailedUpdate_KeepsPreviousDatabase()
+    {
+        var scannerPath = FindScannerCore();
+        var keyPath = FindDatabaseSigningKey();
+        if (scannerPath is null || keyPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var databaseDirectory = Path.Combine(Path.GetDirectoryName(scannerPath)!, "security", "database");
+        var databaseFile = Path.Combine(databaseDirectory, "hashes.txt");
+        var versionFile = Path.Combine(databaseDirectory, "db-version.json");
+        if (!File.Exists(databaseFile))
+        {
+            Assert.Fail("security/database/hashes.txt не найден рядом со ScannerCore — установите пакет базы.");
+        }
+
+        var backupHashes = await File.ReadAllBytesAsync(databaseFile);
+        var backupVersion = File.Exists(versionFile) ? await File.ReadAllBytesAsync(versionFile) : null;
+        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var ioc = "scu-atomic-ioc-" + Guid.NewGuid().ToString("N");
+            await InstallSignedPackageAsync(scannerPath, keyPath, Sha256Hex(ioc), "Atomic-Ioc", "2099.08.01");
+
+            // Обновление с битым пакетом (подпись удалена из zip) обязано провалиться.
+            var brokenPath = Path.Combine(temp, "broken.zip");
+            using (var stream = File.Create(brokenPath))
+            using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                AddZipEntry(zip, "hashes.txt", Encoding.UTF8.GetBytes(
+                    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\tmalware\tBroken\n"));
+                AddZipEntry(zip, "db-version.json", Encoding.UTF8.GetBytes(
+                    "{\n  \"version\": \"2099.08.02\",\n  \"date\": \"2099-01-01\",\n  \"entries\": 1\n}\n"));
+            }
+
+            var (exitCode, events) = await RunScannerAsync(scannerPath, startInfo =>
+            {
+                startInfo.ArgumentList.Add("update");
+                startInfo.ArgumentList.Add("--package");
+                startInfo.ArgumentList.Add(brokenPath);
+                startInfo.ArgumentList.Add("--dev-unsigned-ok");
+            });
+            Assert.NotEqual(0, exitCode);
+
+            // База от предыдущего успешного обновления жива: IOC детектируется.
+            await File.WriteAllTextAsync(Path.Combine(temp, "ioc.bin"), ioc);
+            var scan = await ScanDirectoryAsync(scannerPath, temp);
+            Assert.NotNull(scan);
+            Assert.Contains(scan!.Detections, d => d.Verdict == "malware" && d.Sha256 == Sha256Hex(ioc));
+
+            var version = await File.ReadAllTextAsync(versionFile);
+            Assert.Contains("2099.08.01", version, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await File.WriteAllBytesAsync(databaseFile, backupHashes);
+            if (backupVersion is null)
+            {
+                File.Delete(versionFile);
+            }
+            else
+            {
+                await File.WriteAllBytesAsync(versionFile, backupVersion);
+            }
+            Directory.Delete(temp, recursive: true);
+        }
+    }
+
+    // Замена содержимого одной записи в уже собранном zip-пакете.
+    private static byte[] ReplaceZipEntry(byte[] package, string name, byte[] content)
+    {
+        using var source = new MemoryStream(package);
+        using var output = new MemoryStream();
+        using (var input = new System.IO.Compression.ZipArchive(source, System.IO.Compression.ZipArchiveMode.Read))
+        using (var zip = new System.IO.Compression.ZipArchive(output, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            foreach (var entry in input.Entries)
+            {
+                var target = zip.CreateEntry(entry.FullName);
+                using var entryStream = entry.Open();
+                using var targetStream = target.Open();
+                if (entry.FullName == name)
+                {
+                    targetStream.Write(content);
+                }
+                else
+                {
+                    entryStream.CopyTo(targetStream);
+                }
+            }
+        }
+        return output.ToArray();
     }
 }
 

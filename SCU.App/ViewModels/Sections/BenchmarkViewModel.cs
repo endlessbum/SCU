@@ -6,8 +6,6 @@ using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Models;
 using SCU.Models.Benchmark;
-using SCU.Services;
-using SCU.Services.Dashboard;
 
 namespace SCU.ViewModels.Sections;
 
@@ -237,6 +235,10 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
 
             Render(run, previous, runs);
 
+            // Данные перезаписаны свежим снимком — пометка «индекс устарел»
+            // больше не актуальна; при отмене/ошибке остаётся висеть.
+            IsStale = false;
+
             StatusText = L.T("Проверка завершена.");
             _logger.Info($"BENCH | run | index={result.Index} coverage={result.Coverage} potential={result.Potential}");
         }
@@ -266,7 +268,7 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
         var weightKnown = known.Sum(m => m.Weight);
         var weightAll = run.Metrics.Sum(m => m.Weight);
         CoverageText = L.T("Проверено: {0} из {1} · Покрытие: {2}%", known.Count, run.Metrics.Count, run.Coverage);
-        LastCheckText = L.T("Последняя проверка: {0}", run.Timestamp.ToString("g", CultureInfo.CurrentCulture));
+        LastCheckText = L.T("Последняя проверка: {0}", run.Timestamp.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture));
 
         // Потенциал: доступные баллы соответствия, не «проценты ускорения».
         var potential = known
@@ -285,6 +287,11 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
                 MetricHint(metric.Id)));
         }
 
+        // Сводная строка потенциала — из тех же округлённых строк, что в списке:
+        // цифра над карточкой и сумма строк всегда совпадают.
+        PotentialText = potential.Count > 0
+            ? L.T("Доступно +{0} баллов", potential.Sum(item => item.Gain))
+            : string.Empty;
         HasPotential = PotentialRows.Count > 0;
 
         // Сравнение До → После: до = предыдущий запуск той же версии алгоритма.
@@ -427,10 +434,17 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
 
         if (metric.State == BenchmarkMetricState.Ok && before.State == BenchmarkMetricState.Ok)
         {
-            var valueChanged = !string.Equals(FormatValue(metric), FormatValue(before), StringComparison.Ordinal);
-            if (metric.Conformity > before.Conformity || valueChanged)
+            // «Подтверждено» — только положительная динамика соответствия: значение
+            // могло измениться и в худшую сторону (например, меньше свободного места),
+            // зелёный статус вводил бы в заблуждение.
+            if (metric.Conformity > before.Conformity)
             {
                 return (L.T("Подтверждено"), "SuccessBrush");
+            }
+
+            if (metric.Conformity < before.Conformity)
+            {
+                return (L.T("Изменилось к худшему"), "WarnBrush");
             }
 
             return (L.T("Без изменений"), "TertiaryTextBrush");
@@ -460,8 +474,10 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
         "disk.free_system" => metric.NumericValue is { } gb
             ? gb.ToString("0.0", CultureInfo.CurrentCulture) + " " + L.T("ГБ")
             : metric.TextValue ?? string.Empty,
+        // Звёздочка: PrintNotify и Spooler не входят в знаменатель (см. сноску
+        // под таблицей метрик).
         "services.readable" => metric.NumericValue is { } ok && metric.TextValue is { } total
-            ? ok.ToString(CultureInfo.CurrentCulture) + " / " + total
+            ? ok.ToString(CultureInfo.CurrentCulture) + " / " + total + "*"
             : string.Empty,
         "privacy.enabled" => metric.NumericValue is { } enabled && metric.TextValue is { } total2
             ? enabled.ToString(CultureInfo.CurrentCulture) + " / " + total2
@@ -469,7 +485,8 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
         "security.uac_disabled" => metric.TextValue switch
         {
             "standard" => L.T("стандартный"),
-            "weakened" => L.T("отключён"),
+            // UacWeakened охватывает и «ослабленный, но не выключенный» — не называем это «отключён».
+            "weakened" => L.T("ослаблен"),
             _ => metric.TextValue ?? string.Empty
         },
         "power.readable" or "updates.readable" or "network.readable" or "tasks.readable" =>

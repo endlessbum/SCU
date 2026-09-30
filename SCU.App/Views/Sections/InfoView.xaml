@@ -46,6 +46,10 @@
                         <DataTrigger Binding="{Binding ErrorMessage}" Value="{x:Null}">
                             <Setter Property="Visibility" Value="Collapsed" />
                         </DataTrigger>
+                        <!-- Пустая строка — тоже «нет ошибки», не пустая карточка -->
+                        <DataTrigger Binding="{Binding ErrorMessage}" Value="">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </StackPanel.Style>

@@ -48,6 +48,10 @@ public sealed class SystemSnapshot
 
     public int? ServicesChanged { get; set; }
 
+    // Службы контрольного набора, отсутствующие в системе (NotFound): после
+    // деблоата это осознанное состояние — бэнчмарк не считает их нечитаемыми.
+    public int? ServicesMissing { get; set; }
+
     public int? ServicesTotal { get; set; }
 
     public int? TasksTotal { get; set; }

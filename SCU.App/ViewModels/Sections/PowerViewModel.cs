@@ -4,8 +4,6 @@ using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models;
-using SCU.Services;
-using SCU.Services.Dashboard;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;
@@ -762,12 +760,14 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
             }
         }
 
-        if (!_dialogs.Ask(
+        if (!_dialogs.ConfirmChange(new DestructiveChange(
                 L.T("Файл подкачки"),
-                L.T("Установить фиксированный размер {0} МБ?\nТома: {1}\nАвтоматическое управление Windows будет отключено.\nИзменения вступят в силу после перезагрузки.", size, volumesLine)
-                + multiNote
-                + crashNote,
-                L.T("Установить")))
+                CurrentState: L.T("Тома с файлом подкачки: {0}.", volumesLine),
+                NewState: L.T("Фиксированный размер {0} МБ на всех перечисленных томах.", size),
+                Consequences: L.T("Автоматическое управление Windows будет отключено. Изменения вступят в силу после перезагрузки.")
+                    + multiNote.Replace("\n\n", " ") + crashNote.Replace("\n\n", " "),
+                Rollback: L.T("Прежние настройки файла подкачки сохраняются в резерв автоматически."),
+                ConfirmText: L.T("Установить"))))
         {
             return;
         }
@@ -788,10 +788,13 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
     [RelayCommand(CanExecute = nameof(CanModify))]
     private async Task SetSystemManagedPageFileAsync()
     {
-        if (!_dialogs.Ask(
+        if (!_dialogs.ConfirmChange(new DestructiveChange(
                 L.T("Файл подкачки"),
-                L.T("Передать управление размером файла подкачки Windows (System Managed)?\nФиксированные размеры будут сняты. Изменение вступит в силу после перезагрузки."),
-                L.T("Управляется Windows")))
+                CurrentState: L.T("Размер файла подкачки задан вручную."),
+                NewState: L.T("Управление размером передаётся Windows (System Managed)."),
+                Consequences: L.T("Фиксированные размеры будут сняты. Изменение вступит в силу после перезагрузки."),
+                Rollback: L.T("Прежние настройки файла подкачки сохраняются в резерв автоматически."),
+                ConfirmText: L.T("Управляется Windows"))))
         {
             return;
         }
@@ -812,12 +815,13 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
     [RelayCommand(CanExecute = nameof(CanModify))]
     private async Task ClearCpuLimitsAsync()
     {
-        if (!_dialogs.Ask(
+        if (!_dialogs.ConfirmChange(new DestructiveChange(
                 "Ограничения CPU и ОЗУ",
-                "Удалить из BCD параметры numproc и truncatememory (если заданы)?\n"
-                + "После удаления Windows не будет ограничивать число CPU и объём ОЗУ через эти параметры.\n"
-                + "Применяется после перезагрузки; изменения проверяются повторным чтением BCD.",
-                L.T("Убрать ограничения")))
+                CurrentState: L.T("В BCD заданы параметры numproc/truncatememory (если они есть)."),
+                NewState: L.T("Параметры numproc и truncatememory удалены из BCD."),
+                Consequences: L.T("Windows больше не будет ограничивать число CPU и объём ОЗУ через эти параметры. Применяется после перезагрузки."),
+                Rollback: L.T("Резервная копия BCD создаётся автоматически перед изменением."),
+                ConfirmText: L.T("Убрать ограничения"))))
         {
             return;
         }

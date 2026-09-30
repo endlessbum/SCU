@@ -1,6 +1,5 @@
 using System.Windows;
 using SCU.Common;
-using SCU.Services;
 
 namespace SCU.Views;
 
@@ -29,7 +28,7 @@ public partial class ScriptEditorWindow : Window
         SaveButton.Visibility = isReadOnly ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void OnSaveApply(object sender, RoutedEventArgs e)
+    private async void OnSaveApply(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -42,10 +41,19 @@ public partial class ScriptEditorWindow : Window
         }
 
         // Сохранение = применение: повторная проверка работоспособности (без запуска).
-        var validation = _store.ValidateAsync(_store.ScriptPath(_data)).GetAwaiter().GetResult();
-        StatusText = validation.Ok
-            ? L.T("Скрипт сохранён и проверен — рабочий.")
-            : L.T("Скрипт сохранён, но проверка не пройдена: {0}", validation.Message);
+        // ValidateAsync запускает powershell.exe — async void-обработчик с await,
+        // иначе UI-поток замерзает на весь запуск и парсинг.
+        try
+        {
+            var validation = await _store.ValidateAsync(_store.ScriptPath(_data)).ConfigureAwait(true);
+            StatusText = validation.Ok
+                ? L.T("Скрипт сохранён и проверен — рабочий.")
+                : L.T("Скрипт сохранён, но проверка не пройдена: {0}", validation.Message);
+        }
+        catch (Exception exception)
+        {
+            StatusText = L.T("Скрипт сохранён, но проверка не удалась: {0}", exception.Message);
+        }
     }
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();

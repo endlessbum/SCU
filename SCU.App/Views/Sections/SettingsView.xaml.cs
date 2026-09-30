@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using SCU.Models;
 using SCU.ViewModels;
@@ -47,6 +48,16 @@ public partial class SettingsView : UserControl
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
+
+    // Панель палитры выдвигается влево от квадратика: правый край панели — в 8 px
+    // от кнопки (видимый зазор; Margin="8" панели уже входит в размер попапа),
+    // вертикаль — по центру кнопки независимо от высоты палитры.
+    private CustomPopupPlacement[] CenterPalettePopup(Size popupSize, Size targetSize, Point offset)
+    {
+        var x = -popupSize.Width;
+        var y = (targetSize.Height - popupSize.Height) / 2;
+        return [new CustomPopupPlacement(new Point(x, y), PopupPrimaryAxis.None)];
+    }
 
     // Квадратик-тумблер: popup закрывается по mousedown вне его (StaysOpen=False)
     // раньше Click — состояние ДО закрытия фиксируем в PreviewMouseDown, иначе

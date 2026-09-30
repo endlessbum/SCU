@@ -96,9 +96,8 @@
                         </Button>
                         <Popup x:Name="AccentPopup"
                                PlacementTarget="{Binding ElementName=AccentSwatch}"
-                               Placement="Left"
-                               VerticalOffset="-8"
-                               HorizontalOffset="-8"
+                               Placement="Custom"
+                               CustomPopupPlacementCallback="CenterPalettePopup"
                                StaysOpen="False"
                                AllowsTransparency="True">
                             <Border Style="{StaticResource SectionCard}" Margin="8" Padding="12">
@@ -111,14 +110,20 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <!-- Выбор применяется сразу; установленный цвет
-                                                 в палитре не показывается -->
+                                                 в палитре не показывается. Кнопка — компактный
+                                                 квадрат, как активный акцент слева -->
                                             <Button Margin="4,0,0,0"
                                                     Style="{StaticResource SmallButton}"
-                                                    Padding="4"
+                                                    MinWidth="0"
+                                                    Width="36"
+                                                    Height="36"
+                                                    Padding="0"
+                                                    HorizontalContentAlignment="Center"
+                                                    VerticalContentAlignment="Center"
                                                     Click="OnAccentChoiceClick">
-                                                <Border Width="28"
-                                                        Height="28"
-                                                        CornerRadius="8"
+                                                <Border Width="22"
+                                                        Height="22"
+                                                        CornerRadius="6"
                                                         Background="{Binding Brush}"
                                                         BorderBrush="{DynamicResource ControlStrokeBrush}"
                                                         BorderThickness="1" />
@@ -169,9 +174,8 @@
                         </Button>
                         <Popup x:Name="IconPopup"
                                PlacementTarget="{Binding ElementName=IconSwatch}"
-                               Placement="Left"
-                               VerticalOffset="-8"
-                               HorizontalOffset="-8"
+                               Placement="Custom"
+                               CustomPopupPlacementCallback="CenterPalettePopup"
                                StaysOpen="False"
                                AllowsTransparency="True">
                             <Border Style="{StaticResource SectionCard}" Margin="8" Padding="12">
@@ -183,13 +187,19 @@
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
+                                            <!-- Кнопка — компактный квадрат, как активный акцент слева -->
                                             <Button Margin="4,0,0,0"
                                                     Style="{StaticResource SmallButton}"
-                                                    Padding="4"
+                                                    MinWidth="0"
+                                                    Width="36"
+                                                    Height="36"
+                                                    Padding="0"
+                                                    HorizontalContentAlignment="Center"
+                                                    VerticalContentAlignment="Center"
                                                     Click="OnIconChoiceClick">
-                                                <Border Width="28"
-                                                        Height="28"
-                                                        CornerRadius="8"
+                                                <Border Width="22"
+                                                        Height="22"
+                                                        CornerRadius="6"
                                                         Background="{Binding Brush}"
                                                         BorderBrush="{DynamicResource ControlStrokeBrush}"
                                                         BorderThickness="1" />

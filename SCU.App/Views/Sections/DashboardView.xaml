@@ -169,14 +169,17 @@
             <StackPanel x:Name="ToggleBlock" Margin="0,24,0,48">
                 <StackPanel x:Name="ToggleCore">
                     <Grid HorizontalAlignment="Center">
-                        <!-- Индикатор выполнения: бегущая по периметру полоса -->
+                        <!-- Индикатор выполнения: бегущая по периметру полоса.
+                             DashArray считается в code-behind по фактическому
+                             периметру (OnBatchRingSizeChanged) — не ломается при
+                             изменении размеров выключателя. -->
                         <Rectangle Width="301"
                                    Height="154"
                                    RadiusX="77"
                                    RadiusY="77"
                                    StrokeThickness="2"
-                                   StrokeDashArray="46.7 342.2"
                                    StrokeDashCap="Round"
+                                   SizeChanged="OnBatchRingSizeChanged"
                                    Stroke="{DynamicResource AccentFillBrush}"
                                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
                             <Rectangle.Style>
@@ -265,13 +268,15 @@
             </StackPanel>
 
             <!-- ===================== Шестерёнка: список утилит ===================== -->
-            <!-- Сиблинг закреплённого блока: раскрывается вниз под ним,
-                 поэтому выключатель остаётся на месте -->
+            <!-- Сиблинг закреплённого блока: раскрывается вниз под ним.
+                 HorizontalContentAlignment="Center" центрирует всю строку
+                 (шеврон + шестерёнка + заголовок): центр панели-контейнера
+                 совпадает с центром выключателя при любой ширине списка, поэтому
+                 при раскрытии/свёртывании строка стоит ровно под выключателем. -->
             <Expander Margin="0,16,0,0"
-                      HorizontalAlignment="Stretch">
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Center">
                 <Expander.Header>
-                    <!-- Фиксированные колонки: заголовок не сдвигается по горизонтали
-                         при раскрытии/свёртывании списка -->
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="22" />

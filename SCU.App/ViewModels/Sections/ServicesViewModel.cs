@@ -4,26 +4,31 @@ using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models;
-using SCU.Services;
-using SCU.Services.Dashboard;
 
 namespace SCU.ViewModels.Sections;
 
 public partial class ServicesViewModel : ObservableObject, IDisposable, ISectionOperationCancellable
 {
     private readonly Logger _logger;
+    private readonly IConfirmDialogService _dialogs;
     private readonly SCURunner _runner;
     private readonly ServiceManager _serviceManager;
     private readonly HistoryStore _history;
     private CancellationTokenSource? _operationCts;
     private bool _backupDoneThisSession;
 
-    public ServicesViewModel(Logger logger, SCURunner runner, ServiceManager serviceManager, HistoryStore history)
+    public ServicesViewModel(
+        Logger logger,
+        SCURunner runner,
+        ServiceManager serviceManager,
+        HistoryStore history,
+        IConfirmDialogService dialogs)
     {
         _logger = logger;
         _runner = runner;
         _serviceManager = serviceManager;
         _history = history;
+        _dialogs = dialogs;
         IsAdmin = Elevation.IsAdmin();
         IsSCUAvailable = runner.IsAvailable;
         StatusText = L.T("Список служб ещё не загружен.");
@@ -47,6 +52,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
     [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     [NotifyCanExecuteChangedFor(nameof(ToggleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DisableAllCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     private bool isBusy;
 
@@ -195,6 +201,77 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
         }).ConfigureAwait(true);
     }
 
+    // «Отключить все»: активна, пока хотя бы одна служба списка работает
+    // (разрешён запуск); когда все отключены — неактивна.
+    private bool CanDisableAll() =>
+        !IsBusy && IsAdmin && IsSCUAvailable && Rows.Any(row => row.IsServiceEnabled);
+
+    [RelayCommand(CanExecute = nameof(CanDisableAll))]
+    private async Task DisableAllAsync()
+    {
+        var targets = Rows.Where(row => row.ShouldDisable).ToList();
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        if (!_dialogs.ConfirmChange(new DestructiveChange(
+                L.T("Отключение всех служб"),
+                CurrentState: L.T("{0} служб(ы) в списке работают штатно:", targets.Count)
+                    + "\n" + string.Join(", ", targets.Select(row => row.Name)),
+                NewState: L.T("Все перечисленные службы — состояние «Отключена»."),
+                Consequences: L.T("Отключённые службы перестают запускаться системой; зависящие от них программы могут потерять функциональность."),
+                Rollback: L.T("Резерв текущих состояний создаётся автоматически перед изменением; кнопка «Откатить» возвращает всё как было."),
+                ConfirmText: L.T("Отключить все"))))
+        {
+            return;
+        }
+
+        await RunExclusiveAsync("отключение всех служб", async ct =>
+        {
+            // Резерв — один раз перед массовыми изменениями (как перед одиночным тумблером).
+            if (!_backupDoneThisSession)
+            {
+                var backup = await BackupCoreAsync(ct).ConfigureAwait(true);
+                if (!backup)
+                {
+                    return;
+                }
+            }
+
+            var failures = new List<string>();
+            foreach (var row in targets)
+            {
+                ct.ThrowIfCancellationRequested();
+                StatusText = L.T("Отключение службы {0}…", row.Name);
+                _logger.Info("SERVICES | disable all | " + row.Name);
+                var result = await _serviceManager.SetDisabledAsync(row.Name, true, ct).ConfigureAwait(true);
+                if (result.IsSuccess)
+                {
+                    // Отсутствующая служба возвращается с «пропущена» — это не сбой массовой операции.
+                    _history.Enqueue(new HistoryEvent(
+                        DateTime.Now,
+                        L.T("Службы"),
+                        L.T("Служба: {0}", row.Name),
+                        HistoryEvent.StatusOk,
+                        L.T("отключена")));
+                }
+                else
+                {
+                    failures.Add(L.T("{0}: {1}", row.Name, L.S(result.Message)));
+                    _logger.Error($"SERVICES | disable all rc={result.Code} | {row.Name} | {result.Message}");
+                }
+            }
+
+            StatusText = failures.Count == 0
+                ? L.T("Все службы отключены.")
+                : L.T("Отключение служб: часть операций не удалась — {0}", string.Join("; ", failures.Select(L.S)));
+
+            // Фактические состояния после операции — источник правды для тумблеров.
+            await ReloadRowsAsync(ct).ConfigureAwait(true);
+        }).ConfigureAwait(true);
+    }
+
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
@@ -289,6 +366,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
 
         row.Apply(result.Value);
         ToggleCommand.NotifyCanExecuteChanged();
+        DisableAllCommand.NotifyCanExecuteChanged();
     }
 
     private void ApplyRows(IReadOnlyList<WindowsServiceInfo> services)
@@ -300,6 +378,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
         }
 
         ToggleCommand.NotifyCanExecuteChanged();
+        DisableAllCommand.NotifyCanExecuteChanged();
     }
 
     private async Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action)

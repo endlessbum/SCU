@@ -76,6 +76,11 @@ public static class SignatureVerifier
         }
     }
 
+    // Публичная обёртка WinVerifyTrust для pin-проверок собственных бинарей
+    // (ScannerCore): подтверждает Authenticode И совпадение хэша подписи с текущим
+    // содержимым PE — сертификат, скопированный в подменённый файл, не пройдёт.
+    public static Result VerifyAuthenticodeIntegrity(string path) => VerifyFileTrust(path);
+
     // Authenticode-проверка файла: 0 — подпись действительна и хэш совпадает.
     private static Result VerifyFileTrust(string path)
     {

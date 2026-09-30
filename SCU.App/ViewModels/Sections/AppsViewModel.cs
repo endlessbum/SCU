@@ -1,10 +1,20 @@
 ﻿using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
-using SCU.Services;
 
 namespace SCU.ViewModels.Sections;
+
+// Режим сортировки вкладки «Приложения»; порядок элементов SortOptions в VM
+// соответствует порядку значений (опции — локализованные строки).
+internal enum AppSortMode
+{
+    Name,
+    Size,
+    InstallDate,
+}
 
 // Раздел 19 «Приложения» — полный список установленных программ из Uninstall-
 // реестра (ARP). Удаление запускает родной деинсталлятор программы; список
@@ -14,7 +24,9 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
     private readonly Logger _logger;
     private readonly IConfirmDialogService _dialogs;
     private readonly InstalledAppsService _service;
+    private readonly Dispatcher _uiDispatcher = Dispatcher.CurrentDispatcher;
     private CancellationTokenSource? _operationCts;
+    private CancellationTokenSource? _sizesCts;
 
     [ObservableProperty]
     private ObservableCollection<InstalledApp> _apps = new();
@@ -31,6 +43,62 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
     public bool IsSearchActive => IsSearchFocused;
 
     partial void OnIsSearchFocusedChanged(bool value) => OnPropertyChanged(nameof(IsSearchActive));
+
+    // ===================== Сортировка =====================
+
+    private AppSortMode _sortMode = AppSortMode.Name;
+
+    // Опции сортировки — локализованные строки; порядок списка соответствует
+    // порядку AppSortMode. Пересобираются при смене языка (как в «Истории»).
+    public ObservableCollection<string> SortOptions { get; } = [];
+
+    [ObservableProperty]
+    private string? _selectedSort;
+
+    // Направление: по возрастанию (А→Я, малый→большой, старые→новые) — по умолчанию.
+    [ObservableProperty]
+    private bool _sortAscending = true;
+
+    public string SortDirectionGlyph => SortAscending ? "↑" : "↓";
+
+    public string SortDirectionTooltip => SortAscending
+        ? L.T("По возрастанию")
+        : L.T("По убыванию");
+
+    partial void OnSelectedSortChanged(string? value)
+    {
+        var index = SortOptions.IndexOf(value ?? string.Empty);
+        if (index >= 0)
+        {
+            _sortMode = (AppSortMode)index;
+        }
+
+        ApplyAppsFilter();
+    }
+
+    partial void OnSortAscendingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(SortDirectionGlyph));
+        OnPropertyChanged(nameof(SortDirectionTooltip));
+        ApplyAppsFilter();
+    }
+
+    [RelayCommand]
+    private void ToggleSortDirection() => SortAscending = !SortAscending;
+
+    private void RebuildSortOptions()
+    {
+        var selected = SelectedSort;
+        SortOptions.Clear();
+        SortOptions.Add(L.T("По имени"));
+        SortOptions.Add(L.T("По размеру"));
+        SortOptions.Add(L.T("По дате установки"));
+        SelectedSort = selected is not null && SortOptions.Contains(selected)
+            ? selected
+            : SortOptions[0];
+    }
+
+    // ===================== /Сортировка =====================
 
     // Подпись над списком: «Программ найдено: N» — по текущему (отфильтрованному)
     // списку, пересчитывается при каждом изменении фильтра и обновлении реестра.
@@ -54,6 +122,8 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
                 || (app.Publisher?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false));
         }
 
+        matched = SortApps(matched, _sortMode, SortAscending);
+
         foreach (var app in matched)
         {
             Apps.Add(app);
@@ -61,6 +131,28 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
 
         AppsFoundText = L.T("Программ найдено: {0}", Apps.Count);
     }
+
+    // Сортировка. Объём и дата: записи без значения (размер ещё считается,
+    // даты нет в реестре) всегда в конце, независимо от направления.
+    internal static IEnumerable<InstalledApp> SortApps(
+        IEnumerable<InstalledApp> apps, AppSortMode mode, bool ascending) =>
+        (mode, ascending) switch
+        {
+            (AppSortMode.Size, true) => apps
+                .OrderByDescending(app => app.SizeBytes.HasValue)
+                .ThenBy(app => app.SizeBytes ?? 0),
+            (AppSortMode.Size, false) => apps
+                .OrderByDescending(app => app.SizeBytes.HasValue)
+                .ThenByDescending(app => app.SizeBytes ?? 0),
+            (AppSortMode.InstallDate, true) => apps
+                .OrderByDescending(app => app.InstallDate.HasValue)
+                .ThenBy(app => app.InstallDate ?? DateTime.MinValue),
+            (AppSortMode.InstallDate, false) => apps
+                .OrderByDescending(app => app.InstallDate.HasValue)
+                .ThenByDescending(app => app.InstallDate ?? DateTime.MinValue),
+            (_, true) => apps.OrderBy(app => app.DisplayName, StringComparer.CurrentCultureIgnoreCase),
+            (_, false) => apps.OrderByDescending(app => app.DisplayName, StringComparer.CurrentCultureIgnoreCase),
+        };
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
@@ -76,6 +168,13 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
         _logger = logger;
         _dialogs = dialogs;
         _service = new InstalledAppsService(logger);
+        RebuildSortOptions();
+        L.LanguageChanged += OnLanguageChanged;
+    }
+
+    private void OnLanguageChanged()
+    {
+        _uiDispatcher.Invoke(RebuildSortOptions);
     }
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
@@ -87,10 +186,62 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
             // Чтение четырёх веток реестра — до нескольких тысяч разделов, уводим от UI.
             _allApps = await Task.Run(_service.GetInstalledApps, ct).ConfigureAwait(true);
             ApplyAppsFilter();
+            StartSizeComputation();
 
             StatusText = L.T("Программ найдено: {0}.", _allApps.Count);
             _logger.Info($"APPS | list loaded | count={Apps.Count}");
         }).ConfigureAwait(true);
+    }
+
+    // Фоновый расчёт размеров приложений: фактический — суммой файлов папки
+    // установки, без неё — заявленный установщиком EstimatedSize из реестра.
+    // Суммирование сотен папок может идти заметное время, поэтому карточки
+    // обновляются по мере готовности (INPC у InstalledApp), а повторное
+    // обновление списка отменяет предыдущий расчёт.
+    private void StartSizeComputation()
+    {
+        _sizesCts?.Cancel();
+        _sizesCts?.Dispose();
+        _sizesCts = new CancellationTokenSource();
+        var ct = _sizesCts.Token;
+        var apps = _allApps.ToList();
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                apps.AsParallel()
+                    .WithCancellation(ct)
+                    .WithDegreeOfParallelism(Math.Max(1, Environment.ProcessorCount / 2))
+                    .ForAll(app =>
+                    {
+                        var actual = _service.GetInstallSizeBytes(app);
+                        var bytes = actual ?? (app.EstimatedSizeKb is { } kb ? kb * 1024L : null);
+                        if (bytes is { } size)
+                        {
+                            app.SizeBytes = size;
+                            app.SizeText = InstalledAppsService.FormatSizeBytes(size);
+                        }
+                    });
+
+                _logger.Info($"APPS | sizes computed | count={apps.Count}");
+
+                // Сортировка по объёму должна отражать готовые размеры: список
+                // перестраивается один раз после окончания расчёта.
+                if (_sortMode == AppSortMode.Size)
+                {
+                    _uiDispatcher.Invoke(ApplyAppsFilter);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Список обновился — расчёт заменён новым.
+            }
+            catch (Exception exception)
+            {
+                _logger.Warn("APPS | size computation failed | " + exception.Message);
+            }
+        }, CancellationToken.None);
     }
 
     [RelayCommand(CanExecute = nameof(CanUninstallApp))]
@@ -101,10 +252,13 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
             return;
         }
 
-        if (!_dialogs.Ask(
+        if (!_dialogs.ConfirmChange(new DestructiveChange(
                 L.T("Удаление приложения"),
-                L.T("Удалить «{0}» полностью?\n\nБудет запущен штатный тихий деинсталлятор; если он не завершится за отведённое время, процессы приложения будут сняты принудительно. Папка установки и папки данных удаляются отдельно, с показом списка перед удалением.\nДействие необратимо. Продолжить?", app.DisplayName),
-                L.T("Удалить")))
+                CurrentState: L.T("«{0}» установлено и работает.", app.DisplayName),
+                NewState: L.T("Приложение полностью удалено с компьютера."),
+                Consequences: L.T("Будет запущен штатный тихий деинсталлятор; если он не завершится за отведённое время, процессы приложения будут сняты принудительно. Папка установки и папки данных удаляются отдельно, с показом списка перед удалением."),
+                Rollback: null,
+                ConfirmText: L.T("Удалить"))))
         {
             return;
         }
@@ -150,6 +304,8 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
     public void Dispose()
     {
         _operationCts?.Cancel();
+        _sizesCts?.Cancel();
+        L.LanguageChanged -= OnLanguageChanged;
     }
 
     private bool CanRefresh() => !IsBusy;

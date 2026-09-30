@@ -1,12 +1,11 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
-using SCU.Services;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;
 
-// Раздел 13 «Безопасность (UAC)»: один тумблер «стандартный уровень / ослаблен».
+// Раздел 13 «UAC»: один тумблер «стандартный уровень / ослаблен».
 // Ослабление — опасное направление, требует подтверждения (как ввод YES в BAT).
 public partial class SecurityViewModel : ObservableObject, IDisposable, ISectionOperationCancellable
 {

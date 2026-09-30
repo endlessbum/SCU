@@ -101,7 +101,8 @@
                                            VerticalAlignment="Center">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
-                                            <Setter Property="Text" Value="&#xE8B7;" />
+                                            <!-- Файл — «страница», каталог — «папка» -->
+                                            <Setter Property="Text" Value="&#xE7C3;" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsDirectory}" Value="True">
                                                     <Setter Property="Text" Value="&#xE8B7;" />
@@ -111,7 +112,7 @@
                                     </TextBlock.Style>
                                 </TextBlock>
                                 <TextBlock Text="{Binding Name}" MinWidth="320" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding SizeText}" Margin="16,0,0,0" Style="{StaticResource CaptionText}" Width="130" />
+                                <TextBlock Text="{Binding SizeText}" Margin="16,0,0,0" Style="{StaticResource CaptionText}" MinWidth="110" TextAlignment="Right" />
                                 <TextBlock Text="{Binding ModifiedText}" Margin="16,0,0,0" Style="{StaticResource CaptionText}" />
                             </StackPanel>
                         </DataTemplate>
@@ -122,11 +123,10 @@
 
         <!-- Режим файла: вкладки hex/текст/строки -->
         <TabControl Grid.Row="3"
-                    Background="Transparent"
                     BorderThickness="1"
                     BorderBrush="{DynamicResource ControlStrokeBrush}">
             <TabControl.Style>
-                <Style TargetType="TabControl">
+                <Style TargetType="TabControl" BasedOn="{StaticResource AppTabControl}">
                     <Setter Property="Visibility" Value="Collapsed" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding IsFolderMode}" Value="False">
@@ -135,10 +135,10 @@
                     </Style.Triggers>
                 </Style>
             </TabControl.Style>
-            <TabItem Header="{DynamicResource S_ScannerTabHex}">
+            <TabItem Header="{DynamicResource S_ScannerTabHex}" Style="{StaticResource AppTabItem}">
                 <TextBox Text="{Binding HexText, Mode=OneWay}"
                          IsReadOnly="True"
-                         FontFamily="Consolas"
+                         FontFamily="{DynamicResource MonoFontFamily}"
                          FontSize="12"
                          Background="Transparent"
                          BorderThickness="0"
@@ -146,10 +146,10 @@
                          HorizontalScrollBarVisibility="Auto"
                          TextWrapping="NoWrap" />
             </TabItem>
-            <TabItem Header="{DynamicResource S_ScannerTabText}" IsEnabled="{Binding HasText}">
+            <TabItem Header="{DynamicResource S_ScannerTabText}" Style="{StaticResource AppTabItem}" IsEnabled="{Binding HasText}">
                 <TextBox Text="{Binding TextContent, Mode=OneWay}"
                          IsReadOnly="True"
-                         FontFamily="Consolas"
+                         FontFamily="{DynamicResource MonoFontFamily}"
                          FontSize="12"
                          Background="Transparent"
                          BorderThickness="0"
@@ -157,10 +157,10 @@
                          HorizontalScrollBarVisibility="Auto"
                          TextWrapping="NoWrap" />
             </TabItem>
-            <TabItem Header="{DynamicResource S_ScannerTabStrings}" IsEnabled="{Binding !HasText}">
+            <TabItem Header="{DynamicResource S_ScannerTabStrings}" Style="{StaticResource AppTabItem}" IsEnabled="{Binding !HasText}">
                 <TextBox Text="{Binding StringsText, Mode=OneWay}"
                          IsReadOnly="True"
-                         FontFamily="Consolas"
+                         FontFamily="{DynamicResource MonoFontFamily}"
                          FontSize="12"
                          Background="Transparent"
                          BorderThickness="0"

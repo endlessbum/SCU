@@ -1,4 +1,5 @@
-# CI SCU (п. 18 аудита): secret-scan -> build -> tests -> artifacts.
+# CI SCU (п. 18 аудита): secret-scan -> build (+SBOM) -> тестовая матрица
+# (unit / integration) -> артефакты с SHA256.
 # Бесплатно на GitHub Actions для публичного репозитория.
 name: ci
 
@@ -20,7 +21,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build-and-test:
+  build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,10 +48,108 @@ jobs:
           cmake --build SecurityScanner/build --config Release
         shell: pwsh
 
-      # Приватный ключ базы не в git (.gitignore); в CI он восстанавливается
-      # из секрета DB_SIGNING_KEY (base64 от pem). Без секрета шаг падает:
-      # db-тесты без ключа всё равно упали бы, лучше сразу с понятной ошибкой.
+      # П. 18: SHA256 бинарника фиксируется сразу после сборки — тестовые и
+      # release-шаги работают с тем же артефактом.
+      - name: Hash ScannerCore
+        run: |
+          $hash = (Get-FileHash SecurityScanner/out/Release/ScannerCore.exe -Algorithm SHA256).Hash
+          "$hash  ScannerCore.exe" | Set-Content scanner-sha256.txt
+          Get-Content scanner-sha256.txt
+        shell: pwsh
+
+      # П. 18/фаза 7: SBOM основных C#-компонентов (CycloneDX).
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          dotnet tool install --global CycloneDX
+          dotnet-CycloneDX SCU.App/SCU.App.csproj -t -o sbom --filename bom.json --disable-github-licenses
+        shell: pwsh
+        continue-on-error: true # инструмент не должен блокировать CI при сбое сети
+
+      # continue-on-error выше не должен прятать пустой SBOM: без bom.json нога падает явно.
+      - name: Verify SBOM produced
+        run: |
+          if (-not (Test-Path sbom/bom.json)) {
+            Write-Host "::error::SBOM не сгенерирован (sbom/bom.json отсутствует)."
+            exit 1
+          }
+        shell: pwsh
+
+      # Сборка приложения в build-ноге: иначе ошибка компиляции SCU.App впервые
+      # всплывает только в tests (через ProjectReference), а exe-артефакт не собирается вовсе.
+      - name: Build SCU.App
+        run: dotnet build SCU.App/SCU.App.csproj -c Release --nologo
+        shell: pwsh
+
+      - name: Upload scanner artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-core
+          path: |
+            SecurityScanner/out/Release/ScannerCore.exe
+            scanner-sha256.txt
+          if-no-files-found: error
+
+      - name: Upload SCU.App artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scu-app
+          path: |
+            SCU.App/bin/Release/net10.0-windows/SCU.exe
+            SCU.App/bin/Release/net10.0-windows/ScannerCore.exe
+          if-no-files-found: error
+
+      - name: Upload SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom/
+          if-no-files-found: ignore
+
+  # П. 10/фаза 3: сюиты разделены и гоняются отдельными ногами матрицы.
+  # Integration-нога требует собранный ScannerCore и ключ подписи базы — их
+  # отсутствие это FAIL, а не тихий PASS (ReportSkip падает по умолчанию).
+  tests:
+    runs-on: windows-latest
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [unit, integration]
+    env:
+      SCU_DOTNET_FILTER: ${{ matrix.suite == 'unit' && 'Suite!=Integration' || 'Suite=Integration' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download ScannerCore artifact
+        if: matrix.suite == 'integration'
+        uses: actions/download-artifact@v4
+        with:
+          name: scanner-core
+          path: .
+
+      # ScannerCore.exe и scanner-sha256.txt оказываются в корне репозитория:
+      # FindScannerCore находит бинарник через binCandidate при обходе вверх от
+      # бин-каталога тестов.
+
+      # Сид базы рядом со ScannerCore (корень репозитория): corrupted-db тест
+      # требует наличия hashes.txt; update-пути пишут в каталог рядом с exe.
+      - name: Seed default database
+        if: matrix.suite == 'integration'
+        run: |
+          New-Item -ItemType Directory -Force -Path security/database | Out-Null
+          Copy-Item SecurityScanner/database/* security/database/
+        shell: pwsh
+
+      # Приватный ключ базы не в git; без секрета integration-нога падает с
+      # понятной ошибкой — db-тесты без ключа всё равно упали бы.
       - name: Restore database signing key
+        if: matrix.suite == 'integration'
         env:
           DB_SIGNING_KEY: ${{ secrets.DB_SIGNING_KEY }}
         run: |
@@ -63,37 +162,14 @@ jobs:
           Write-Host "db-signing-private.pem restored from secret"
         shell: pwsh
 
-      # Сид базы для интеграционных тестов (update-путь пишет в каталог рядом
-      # с exe; в свежей сборке его нет — создаём из исходной базы).
-      - name: Seed default database
-        run: |
-          New-Item -ItemType Directory -Force -Path SecurityScanner/out/Release/security/database | Out-Null
-          Copy-Item SecurityScanner/database/* SecurityScanner/out/Release/security/database/
-        shell: pwsh
-
-      - name: Run tests
-        run: dotnet test SCU.Tests/SCU.Tests.csproj -v n --nologo --logger trx
+      - name: Run ${{ matrix.suite }} tests
+        run: dotnet test SCU.Tests/SCU.Tests.csproj --filter "$env:SCU_DOTNET_FILTER" -v n --nologo --logger trx
         shell: pwsh
 
       - name: Upload test results (on any outcome)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ matrix.suite }}
           path: SCU.Tests/TestResults/
           if-no-files-found: ignore
-
-      - name: Collect artifacts
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Copy-Item SecurityScanner/out/Release/ScannerCore.exe artifacts/
-          $hash = (Get-FileHash artifacts/ScannerCore.exe -Algorithm SHA256).Hash
-          "$hash  ScannerCore.exe" | Set-Content artifacts/SHA256SUMS.txt
-          Get-Content artifacts/SHA256SUMS.txt
-        shell: pwsh
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: scanner-core
-          path: artifacts/

@@ -3,7 +3,6 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using SCU.Common;
 using SCU.Models;
-using SCU.Services.Dashboard;
 
 namespace SCU.ViewModels.Sections;
 
@@ -12,7 +11,7 @@ public sealed class HistoryDayGroup
 {
     public HistoryDayGroup(DateTime date)
     {
-        DateText = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        DateText = date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
     }
 
     public string DateText { get; }

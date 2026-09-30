@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using SCU.Common;
 using SCU.Models;
 
@@ -11,7 +11,7 @@ public sealed class HistoryEventRow
 {
     public HistoryEventRow(HistoryEvent @event)
     {
-        TimeText = @event.Timestamp.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        TimeText = @event.Timestamp.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture);
         Category = @event.Category;
         Operation = @event.Operation;
         IsFail = !string.Equals(@event.Status, HistoryEvent.StatusOk, StringComparison.Ordinal);

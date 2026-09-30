@@ -32,10 +32,12 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <Button Content="{DynamicResource S_MaintIndexingDisable}"
+                        <Button Content="{DynamicResource S_MaintIndexingApply}"
                                 Margin="0,8,0,0"
                                 HorizontalAlignment="Left"
-                                Command="{Binding DisableIndexingCommand}" />
+                                Command="{Binding ApplyIndexingCommand}"
+                                ToolTipService.ShowOnDisabled="True"
+                                ToolTip="{DynamicResource S_MaintIndexingApplyHint}" />
                     </StackPanel>
                 </Border>
 

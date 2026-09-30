@@ -25,11 +25,28 @@
                               SearchText="{Binding AppSearchText, Mode=TwoWay}" />
 
         <!-- Название вкладки — под поиском (поиск стоит на том же уровне,
-             что и поле «Общий поиск» на главной): счётчик найденных программ -->
-        <TextBlock Grid.Row="1"
-                   Margin="0,16,0,12"
-                   Style="{StaticResource SectionDescription}"
-                   Text="{Binding AppsFoundText}" />
+             что и поле «Общий поиск» на главной): слева счётчик найденных
+             программ, справа — сортировка (режим + направление). -->
+        <Grid Grid.Row="1" Margin="0,16,0,12">
+            <TextBlock Style="{StaticResource SectionDescription}"
+                       Text="{Binding AppsFoundText}" />
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center">
+                <ComboBox MinWidth="190"
+                          VerticalAlignment="Center"
+                          ItemsSource="{Binding SortOptions}"
+                          SelectedItem="{Binding SelectedSort}" />
+                <!-- Направление сортировки: ↑ — по возрастанию, ↓ — по убыванию -->
+                <Button Margin="8,0,0,0"
+                        VerticalAlignment="Center"
+                        MinWidth="40"
+                        Command="{Binding ToggleSortDirectionCommand}"
+                        ToolTip="{Binding SortDirectionTooltip}"
+                        ToolTipService.InitialShowDelay="300"
+                        Content="{Binding SortDirectionGlyph}" />
+            </StackPanel>
+        </Grid>
 
         <!-- Карточка приложения: название, издатель и версия, справа — «Удалить».
              У приложений без деинсталлятора кнопка неактивна (пояснение в подсказке). -->

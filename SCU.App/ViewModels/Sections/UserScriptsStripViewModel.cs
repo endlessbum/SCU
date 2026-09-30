@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using SCU.Common;
-using SCU.Services;
 
 namespace SCU.ViewModels.Sections;
 
@@ -45,13 +44,20 @@ public sealed partial class UserScriptCardViewModel : ObservableObject
 public sealed class UserScriptsStripViewModel : ObservableObject
 {
     private readonly MainViewModel _main;
+    private readonly Action _refreshHandler;
     private int _sectionNumber = -1;
 
     public UserScriptsStripViewModel(MainViewModel main)
     {
         _main = main;
-        main.UserScriptsChanged += () => Refresh(_sectionNumber);
+        _refreshHandler = () => Refresh(_sectionNumber);
     }
+
+    // Подписка живёт только пока контрол в дереве (Attach/Detach из UserScriptsStrip):
+    // view пересоздаётся при каждом применении меню, и постоянная подписка текла бы.
+    public void Attach() => _main.UserScriptsChanged += _refreshHandler;
+
+    public void Detach() => _main.UserScriptsChanged -= _refreshHandler;
 
     public ObservableCollection<UserScriptCardViewModel> Cards { get; } = [];
 
@@ -67,13 +73,27 @@ public sealed class UserScriptsStripViewModel : ObservableObject
 
     public async void Run(UserScriptCardViewModel card)
     {
-        if (_main.UserScripts.FirstOrDefault(item => item.Id == card.Id) is not { } liveCard)
+        // async void: исключение здесь уходит в DispatcherUnhandledException и роняет
+        // приложение, поэтому гасим его локально тостом.
+        try
         {
-            return;
-        }
+            if (_main.UserScripts.FirstOrDefault(item => item.Id == card.Id) is not { } liveCard)
+            {
+                return;
+            }
 
-        await _main.RunUserScriptAsync(liveCard).ConfigureAwait(true);
-        card.ResultText = liveCard.ResultText;
-        card.IsRunning = liveCard.IsRunning;
+            await _main.RunUserScriptAsync(liveCard).ConfigureAwait(true);
+            card.ResultText = liveCard.ResultText;
+            card.IsRunning = liveCard.IsRunning;
+        }
+        catch (Exception exception)
+        {
+            card.IsRunning = false;
+            card.ResultText = L.T("Ошибка: {0}", exception.Message);
+            AppNotificationCenter.Instance.Push(
+                L.T("Скрипт не запущен"),
+                L.T("Ошибка: {0}", exception.Message),
+                AppNotificationKind.Danger);
+        }
     }
 }

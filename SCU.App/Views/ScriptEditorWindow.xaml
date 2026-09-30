@@ -30,7 +30,7 @@
                  AcceptsReturn="True"
                  VerticalScrollBarVisibility="Auto"
                  HorizontalScrollBarVisibility="Auto"
-                 FontFamily="Consolas"
+                 FontFamily="{DynamicResource MonoFontFamily}"
                  IsReadOnly="{Binding IsReadOnly, RelativeSource={RelativeSource AncestorType=Window}}" />
 
         <Grid Grid.Row="2" Margin="0,12,0,0">

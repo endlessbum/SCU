@@ -4,37 +4,34 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Models;
-using SCU.Services;
 using SCU.ViewModels;
 using SCU.ViewModels.Sections;
 
 namespace SCU.Views;
 
 // Элемент дерева редактора меню: группа → раздел(ы).
-public sealed class MenuEditorSection : ObservableObject
+// Настройки карточки (название, группа, видимость) редактируются локально и
+// применяются только по кнопке «Применить»; без изменений кнопка неактивна.
+// Операции со списком утилит остаются мгновенными (у каждой своя кнопка).
+public sealed partial class MenuEditorSection : ObservableObject
 {
     public MenuEditorSection(MainViewModel main, SectionItem section)
     {
         _main = main;
         Section = section;
-        _title = section.Title;
-        _group = section.GroupTitle;
-        _isVisible = main.Menu.Hidden.All(number => number != section.Number);
         IsCustom = section.IsCustom;
         // Синхронизация при изменениях извне карточки (сброс меню, ApplyMenu).
         section.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName == nameof(SectionItem.Title))
+            if (args.PropertyName is nameof(SectionItem.Title) or nameof(SectionItem.GroupTitle))
             {
-                _title = section.Title;
+                RefreshSnapshot();
                 OnPropertyChanged(nameof(Title));
-            }
-            else if (args.PropertyName == nameof(SectionItem.GroupTitle))
-            {
-                _group = section.GroupTitle;
                 OnPropertyChanged(nameof(Group));
+                RefreshChangeState();
             }
         };
+        RefreshSnapshot();
     }
 
     private readonly MainViewModel _main;
@@ -45,39 +42,33 @@ public sealed class MenuEditorSection : ObservableObject
 
     public int Number => Section.Number;
 
-    private string _title;
+    // ===== Редактируемые значения (применяются кнопкой) =====
+
+    private string _title = string.Empty;
 
     public string Title
     {
         get => _title;
         set
         {
-            if (!SetProperty(ref _title, value))
+            if (SetProperty(ref _title, value ?? string.Empty))
             {
-                return;
+                RefreshChangeState();
             }
-
-            // Пустое значение снимает переименование (SetSectionTitle это умеет);
-            // поле синхронизируется с фактическим заголовком раздела.
-            _main.SetSectionTitle(Number, value ?? string.Empty);
-            SetProperty(ref _title, Section.Title, nameof(Title));
         }
     }
 
-    private string _group;
+    private string _group = string.Empty;
 
     public string Group
     {
         get => _group;
         set
         {
-            if (!SetProperty(ref _group, value))
+            if (SetProperty(ref _group, value ?? string.Empty))
             {
-                return;
+                RefreshChangeState();
             }
-
-            _main.SetSectionGroup(Number, value ?? string.Empty);
-            SetProperty(ref _group, Section.GroupTitle, nameof(Group));
         }
     }
 
@@ -90,9 +81,61 @@ public sealed class MenuEditorSection : ObservableObject
         {
             if (SetProperty(ref _isVisible, value))
             {
-                _main.SetSectionHidden(Number, !value);
+                RefreshChangeState();
             }
         }
+    }
+
+    // ===== Снимок применённого состояния =====
+
+    private string _originalTitle = string.Empty;
+    private string _originalGroup = string.Empty;
+    private bool _originalIsVisible;
+
+    public bool HasChanges =>
+        !string.Equals(_title, _originalTitle, StringComparison.Ordinal)
+        || !string.Equals(_group, _originalGroup, StringComparison.Ordinal)
+        || _isVisible != _originalIsVisible;
+
+    private void RefreshSnapshot()
+    {
+        _originalTitle = _title = Section.Title;
+        _originalGroup = _group = Section.GroupTitle;
+        _originalIsVisible = _isVisible = _main.Menu.Hidden.All(number => number != Section.Number);
+    }
+
+    private void RefreshChangeState()
+    {
+        OnPropertyChanged(nameof(HasChanges));
+        ApplyCommand.NotifyCanExecuteChanged();
+    }
+
+    // Применение настроек карточки: только изменённые поля уходят в MainViewModel
+    // (и сохраняются в menu.json), снимок обновляется по фактическому состоянию.
+    private bool CanApply() => HasChanges;
+
+    [RelayCommand(CanExecute = nameof(CanApply))]
+    private void Apply()
+    {
+        if (!string.Equals(_title, _originalTitle, StringComparison.Ordinal))
+        {
+            _main.SetSectionTitle(Number, _title);
+        }
+
+        if (!string.Equals(_group, _originalGroup, StringComparison.Ordinal))
+        {
+            _main.SetSectionGroup(Number, _group);
+        }
+
+        if (_isVisible != _originalIsVisible)
+        {
+            _main.SetSectionHidden(Number, !_isVisible);
+        }
+
+        RefreshSnapshot();
+        OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(Group));
+        RefreshChangeState();
     }
 
     // Утилиты раздела: встроенные (удаление) или назначенные (удаление из вкладки).
@@ -120,8 +163,9 @@ public sealed class MenuEditorUtility
     public bool CanDelete { get; }
 }
 
-// Редактор меню: построен на живой MainViewModel — операции сразу применяются
-// и сохраняются (menu.json), меню и поиск обновляются на ходу.
+// Редактор меню: построен на живой MainViewModel. Операции со списком утилит
+// применяются сразу; настройки карточки (название/группа/видимость) — по кнопке
+// «Применить» и сохраняются в menu.json. Меню и поиск обновляются на ходу.
 public partial class MenuEditorViewModel : ObservableObject
 {
     private readonly MainViewModel _main;
@@ -146,7 +190,7 @@ public partial class MenuEditorViewModel : ObservableObject
     private string _newSectionTitle = string.Empty;
 
     [ObservableProperty]
-    private string _newSectionGroup;
+    private string _newSectionGroup = string.Empty;
 
     private MenuEditorGroup? _selectedGroup;
 
@@ -167,7 +211,7 @@ public partial class MenuEditorViewModel : ObservableObject
     private MenuEditorUtility? _selectedAvailableUtility;
 
     public string ExistingGroupNames => string.Join(" · ",
-        Groups.Select(group => group.Title));
+        Groups.Select(group => group.Title).Where(title => title.Length > 0));
 
     private void RebuildTree()
     {
@@ -197,8 +241,12 @@ public partial class MenuEditorViewModel : ObservableObject
         NewSectionGroup = keepGroup;
     }
 
-    // Существующие группы для выпадающих списков ComboBox'ов.
-    public IReadOnlyList<string> GroupNames => Groups.Select(group => group.Title).ToList();
+    // Существующие группы для выпадающих списков ComboBox'ов
+    // (безгрупповые разделы — «Главная» — в подсказки не попадают).
+    public IReadOnlyList<string> GroupNames => Groups
+        .Select(group => group.Title)
+        .Where(title => title.Length > 0)
+        .ToList();
 
     private void RebuildUtilities()
     {

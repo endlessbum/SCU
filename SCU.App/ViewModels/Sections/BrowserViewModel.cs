@@ -7,7 +7,6 @@ using Microsoft.Web.WebView2.Core;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models.Browser;
-using SCU.Services.Browser;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;
@@ -33,6 +32,8 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
 
     private readonly Logger _logger;
     private readonly IConfirmDialogService _dialogs;
+    private readonly IShellOpenService _shell;
+    private readonly IFilePickerService _filePicker;
     private readonly IBrowserService _browserService;
     private readonly ScannerRunner _scanner;
     private readonly BrowserSettingsService _settingsService;
@@ -123,6 +124,15 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<BrowserDownloadItem> Downloads { get; } = [];
 
+    // Индикатор «Не защищено»: активная вкладка открыта по http:// — трафик не
+    // шифруется и может быть подменён по пути. Стартовая страница (virtual host)
+    // и https индикатора не показывают.
+    public bool IsInsecureConnection =>
+        ActiveTab is { } tab
+        && !NewTabUrlOf(tab)
+        && Uri.TryCreate(tab.Url, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttp;
+
     public string RuntimeVersionText =>
         IsRuntimeMissing ? L.T("WebView2 Runtime не найден") : L.T("WebView2 Runtime: {0}", _runtimeVersion);
 
@@ -138,9 +148,26 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         BrowserHistoryService historyService,
         BrowserBookmarkService bookmarkService,
         BrowserDownloadsService downloadsService)
+        : this(logger, dialogs, browserService, settingsService, historyService, bookmarkService,
+               downloadsService, new ShellOpenService(), new FilePickerService())
+    {
+    }
+
+    public BrowserViewModel(
+        Logger logger,
+        IConfirmDialogService dialogs,
+        IBrowserService browserService,
+        BrowserSettingsService settingsService,
+        BrowserHistoryService historyService,
+        BrowserBookmarkService bookmarkService,
+        BrowserDownloadsService downloadsService,
+        IShellOpenService shell,
+        IFilePickerService filePicker)
     {
         _logger = logger;
         _dialogs = dialogs;
+        _shell = shell;
+        _filePicker = filePicker;
         _browserService = browserService;
         _scanner = new ScannerRunner(logger);
         _settingsService = settingsService;
@@ -498,6 +525,10 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
     // вкладки и только пока пользователь не печатает в ней.
     internal void OnTabSourceChanged(BrowserTabModel tab)
     {
+        // Индикатор небезопасного соединения следует за URL независимо от
+        // редактирования адресной строки — он про страницу, а не про ввод.
+        OnPropertyChanged(nameof(IsInsecureConnection));
+
         if (!ReferenceEquals(tab, ActiveTab) || IsEditingAddress)
         {
             return;
@@ -507,6 +538,10 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
     }
 
     internal void OnActiveTabUrlChanged() => OnTabSourceChanged(ActiveTab!);
+
+    // Смена активной вкладки (включая закрытие → null) меняет индикатор.
+    partial void OnActiveTabChanged(BrowserTabModel? value) =>
+        OnPropertyChanged(nameof(IsInsecureConnection));
 
     // ===================== Адресная строка и навигация =====================
 
@@ -527,6 +562,16 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
     {
         if (url is null || ActiveTab is not { } tab || !_hosts.TryGetValue(tab.Id, out var host))
         {
+            return;
+        }
+
+        // Политика — обязательный фильтр ВСЕХ входов в Navigate, а не только
+        // событий движка: закладки и история хранятся в JSON, который можно
+        // отредактировать вне SCU, и не должны становиться обходом блокировок.
+        if (BrowserNavigationPolicy.Evaluate(url) != BrowserNavigationDecision.Allow)
+        {
+            _logger.Warn("BROWSER | navigate blocked | " + BrowserTabHost.ShortUrl(url));
+            StatusText = L.T("Адрес заблокирован политикой безопасности.");
             return;
         }
 
@@ -893,11 +938,11 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         {
             if (item is not null && File.Exists(item.FilePath))
             {
-                Process.Start("explorer.exe", $"/select,\"{item.FilePath}\"");
+                _shell.ShowInExplorer(item.FilePath);
             }
             else
             {
-                Process.Start("explorer.exe", folder);
+                _shell.OpenFolder(folder);
             }
         }
         catch (Exception exception)
@@ -932,7 +977,7 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
 
         try
         {
-            Process.Start(new ProcessStartInfo(item.FilePath) { UseShellExecute = true });
+            _shell.OpenPath(item.FilePath);
         }
         catch (Exception exception)
         {
@@ -1029,7 +1074,7 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
 
         try
         {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            _shell.OpenPath(url);
             _logger.Info("BROWSER | external launch | " + BrowserTabHost.ShortUrl(url));
         }
         catch (Exception exception)
@@ -1042,13 +1087,7 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
     // Диалог «куда сохранить» — на UI-потоке, из BrowserTabHost.
     internal string? PickDownloadPath(string suggestedPath)
     {
-        var dialog = new Microsoft.Win32.SaveFileDialog
-        {
-            FileName = Path.GetFileName(suggestedPath),
-            InitialDirectory = Path.GetDirectoryName(suggestedPath),
-            OverwritePrompt = true,
-        };
-        return dialog.ShowDialog() == true ? dialog.FileName : null;
+        return _filePicker.PickSaveFile(Path.GetFileName(suggestedPath), Path.GetDirectoryName(suggestedPath));
     }
 
     // ===================== Настройки =====================

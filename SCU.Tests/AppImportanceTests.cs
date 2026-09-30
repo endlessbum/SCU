@@ -1,4 +1,3 @@
-using SCU.Services;
 using Xunit;
 
 namespace SCU.Tests;
@@ -66,4 +65,36 @@ public sealed class AppImportanceTests
 
         Assert.Equal(AppImportance.User, InstalledAppsService.Classify(entry, systemComponent: false, noRemove: false, isPerUser: false));
     }
+
+    [Theory]
+    [InlineData("Battle.net", "Blizzard Entertainment")]
+    [InlineData("7-Zip 24.09 (x64)", "Igor Pavlov")]
+    public void Classify_SystemComponentFlagOnThirdPartyApp_IsUser(string name, string? publisher)
+    {
+        // Сторонние установщики ставят SystemComponent, чтобы скрыть запись из
+        // классического списка — на важность для системы это не указывает.
+        var entry = App(name, publisher, location: @"C:\Program Files\Battle.net");
+
+        Assert.Equal(AppImportance.User, InstalledAppsService.Classify(entry, systemComponent: true, noRemove: false, isPerUser: false));
+    }
+
+    [Fact]
+    public void Classify_MachineWideThirdPartyApp_IsUser() =>
+        Assert.Equal(AppImportance.User, InstalledAppsService.Classify(
+            App("Notepad++", "Notepad++ Team", location: @"C:\Program Files\Notepad++"),
+            systemComponent: false, noRemove: false, isPerUser: false));
+
+    [Theory]
+    [InlineData(@"C:\Users\User\AppData\Local\Programs\MyApp")]
+    [InlineData(@"%LocalAppData%\Programs\MyApp")]
+    public void Classify_InstallLocationInUserProfile_IsUser(string location) =>
+        Assert.Equal(AppImportance.User, InstalledAppsService.Classify(
+            App("Сторонняя программа", "Сторонний издатель", location: location),
+            systemComponent: false, noRemove: false, isPerUser: false));
+
+    [Fact]
+    public void Classify_SystemComponentFlagOnMicrosoftComponent_IsCritical() =>
+        Assert.Equal(AppImportance.Critical, InstalledAppsService.Classify(
+            App("Служебный пакет", "Microsoft Corporation", location: @"C:\Windows\System32"),
+            systemComponent: true, noRemove: false, isPerUser: false));
 }

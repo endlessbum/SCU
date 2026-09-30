@@ -51,7 +51,13 @@ public sealed class SCURunner
             return Result.Failure("Не удалось запустить SCU.ps1: " + exception.Message);
         }
 
-        using var registration = ct.Register(() =>
+        // Таймаут комбинируется с пользовательской отменой: сработавший таймаут
+        // тоже убивает дерево процессов через registration.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(RunnerGuard.PowerShellTimeout);
+        var effectiveCt = timeoutCts.Token;
+
+        using var registration = effectiveCt.Register(() =>
         {
             try
             {
@@ -74,7 +80,7 @@ public sealed class SCURunner
                 _logger.Raw(line);
                 progress?.Report(line);
             },
-            ct);
+            effectiveCt);
         var stderrTask = ConsoleOutputDecoder.ReadLinesAsync(
             process.StandardError.BaseStream,
             line =>
@@ -82,21 +88,31 @@ public sealed class SCURunner
                 _logger.Error(line);
                 progress?.Report(line);
             },
-            ct);
+            effectiveCt);
 
         try
         {
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            await process.WaitForExitAsync(effectiveCt).ConfigureAwait(false);
             await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _logger.Warn($"CANCEL | action={action}");
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
+            return Result.Failure("Отменено", -1);
         }
         catch (OperationCanceledException)
         {
-            _logger.Warn($"CANCEL | action={action}");
-            return Result.Failure("Отменено", -1);
+            // Таймаут, а не пользовательская отмена: процесс убит registration-ом.
+            _logger.Error($"TIMEOUT | action={action} | {RunnerGuard.PowerShellTimeout}");
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
+            return Result.Failure(
+                $"Превышено время ожидания операции ({RunnerGuard.PowerShellTimeout.TotalMinutes:F0} мин) — процесс принудительно завершён.", -2);
         }
         catch (InvalidOperationException exception) when (ct.IsCancellationRequested)
         {
             _logger.Warn($"CANCEL | action={action} | {exception.Message}");
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
             return Result.Failure("Отменено", -1);
         }
         catch (Exception exception)
@@ -130,6 +146,8 @@ public sealed class SCURunner
 
         psi.ArgumentList.Add("-NoProfile");
         psi.ArgumentList.Add("-NoLogo");
+        // Зависший в скрипте Read-Host держал бы процесс вечно без видимого окна.
+        psi.ArgumentList.Add("-NonInteractive");
         psi.ArgumentList.Add("-ExecutionPolicy");
         psi.ArgumentList.Add("Bypass");
         psi.ArgumentList.Add("-File");
@@ -160,7 +178,12 @@ public sealed class SCURunner
             "WindowsPowerShell",
             "v1.0",
             "powershell.exe");
-        return File.Exists(systemPath) ? systemPath : "powershell.exe";
+        // Fallback на голое имя убран: он включал в поиск CreateProcess каталог
+        // приложения — подменённый powershell.exe выполнился бы с правами SCU.
+        // Нет System32-файла — честный отказ запуска.
+        return File.Exists(systemPath)
+            ? systemPath
+            : throw new FileNotFoundException("powershell.exe не найден в System32 (WindowsPowerShell\\v1.0).");
     }
 
     private static Result MapExitCode(int code) => code switch

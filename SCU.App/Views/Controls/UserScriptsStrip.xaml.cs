@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using SCU.Common;
 using SCU.ViewModels;
 using SCU.ViewModels.Sections;
 
@@ -15,26 +14,55 @@ public partial class UserScriptsStrip : UserControl
         new PropertyMetadata(-1, OnSectionNumberChanged));
 
     private UserScriptsStripViewModel? _viewModel;
+    private MainViewModel? _main;
+    private bool _attached;
 
     public UserScriptsStrip()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        // Подписки на MainViewModel живут только пока контрол в дереве: при применении
+        // меню view выбрасывается из кэша разделов, и без Unloaded-отписки контрол
+        // оставался бы подписанным на UserScriptsChanged навсегда.
+        Loaded += (_, _) => Attach();
+        Unloaded += (_, _) => Detach();
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (e.OldValue is MainViewModel oldMain)
-        {
-            oldMain.UserScriptsChanged -= Refresh;
-        }
+        Detach();
 
         if (e.NewValue is MainViewModel newMain)
         {
+            _main = newMain;
             _viewModel = new UserScriptsStripViewModel(newMain);
             DataContext = _viewModel;
-            newMain.UserScriptsChanged += Refresh;
+            if (IsLoaded)
+            {
+                Attach();
+            }
+
             Refresh();
+        }
+    }
+
+    private void Attach()
+    {
+        if (_main is { } main && !_attached)
+        {
+            main.UserScriptsChanged += Refresh;
+            _viewModel?.Attach();
+            _attached = true;
+        }
+    }
+
+    private void Detach()
+    {
+        if (_main is { } main && _attached)
+        {
+            main.UserScriptsChanged -= Refresh;
+            _viewModel?.Detach();
+            _attached = false;
         }
     }
 
@@ -59,7 +87,7 @@ public partial class UserScriptsStrip : UserControl
     {
         if ((sender as FrameworkElement)?.DataContext is UserScriptCardViewModel card)
         {
-            _viewModel.Run(card);
+            _viewModel?.Run(card);
         }
     }
 }

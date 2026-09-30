@@ -277,6 +277,15 @@
             </StackPanel>
         </Border>
 
+        <!-- Сноска к метрике служб: PrintNotify и Spooler не входят в её знаменатель
+             (звёздочка у значения в таблице выше) -->
+        <TextBlock Margin="4,6,0,0"
+                   Style="{StaticResource CaptionText}"
+                   Foreground="{DynamicResource TertiaryTextBrush}"
+                   TextWrapping="Wrap"
+                   Text="{DynamicResource S_BenchServicesFootnote}"
+                   Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}" />
+
         <!-- ===================== Что может улучшить SCU ===================== -->
         <Border Style="{StaticResource SectionCard}"
                 Visibility="{Binding HasPotential, Converter={StaticResource BoolToVis}}">

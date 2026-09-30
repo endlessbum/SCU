@@ -4,6 +4,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:SCU.Views.Controls"
              mc:Ignorable="d"
              d:DesignHeight="640" d:DesignWidth="860">
     <Grid>
@@ -53,6 +54,10 @@
             <Button Content="{DynamicResource S_UiRestoreTaskbar}"
                     Margin="0,0,8,8"
                     Command="{Binding RestoreTaskbarCommand}" />
+            <!-- Объединённая подсказка ⓘ шапочных операций (текст собирается в code-behind) -->
+            <controls:InfoGlyph x:Name="HeaderInfoGlyph"
+                                Margin="0,0,0,8"
+                                VerticalAlignment="Center" />
         </WrapPanel>
             <StackPanel Grid.Row="1" Margin="0">
                 <TextBlock Style="{StaticResource BodyStrongText}"

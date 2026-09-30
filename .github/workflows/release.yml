@@ -1,0 +1,173 @@
+# Release pipeline (п. 18/фаза 7 аудита): clean build -> все сюиты тестов ->
+# sign (при наличии секрета) -> verify подписей -> SBOM -> installer ->
+# SHA256-манифест. Запуск по тегу v* или вручную.
+#
+# Сертификат подписи НЕ хранится в репозитории: если секреты
+# WINDOWS_CERT_PFX / WINDOWS_CERT_PASSWORD заданы — артефакты подписываются и
+# подпись проверяется signtool; если нет — job падает по шагу signing-missing
+# (release без подписи не собирается сознательно: п. 21 фаза 1, production
+# release до завершения security-фазы не делается). Для dev-проверки пайплайна
+# задайте ALLOW_UNSIGNED_RELEASE=1.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      allow_unsigned:
+        description: 'Разрешить неподписанный release (dev-прогон пайплайна)'
+        type: boolean
+        default: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      ALLOW_UNSIGNED: ${{ inputs.allow_unsigned == true && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # Production-сборка подписывается настоящим сертификатом; пин подписи
+      # ScannerCore остаётся на месте (thumbprint.txt в git не хранится —
+      # файл передаётся на машине издателя).
+      - name: Build ScannerCore (cmake)
+        run: |
+          cmake -S SecurityScanner -B SecurityScanner/build -A x64
+          cmake --build SecurityScanner/build --config Release
+        shell: pwsh
+
+      - name: Restore database signing key
+        env:
+          DB_SIGNING_KEY: ${{ secrets.DB_SIGNING_KEY }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:DB_SIGNING_KEY)) {
+            Write-Host "::error::Секрет DB_SIGNING_KEY не задан."
+            exit 1
+          }
+          $bytes = [Convert]::FromBase64String($env:DB_SIGNING_KEY)
+          [IO.File]::WriteAllBytes("SecurityScanner/tools/database-builder/db-signing-private.pem", $bytes)
+        shell: pwsh
+
+      - name: Seed default database
+        run: |
+          New-Item -ItemType Directory -Force -Path SecurityScanner/out/Release/security/database | Out-Null
+          Copy-Item SecurityScanner/database/* SecurityScanner/out/Release/security/database/
+        shell: pwsh
+
+      - name: Run tests (unit + integration)
+        run: dotnet test SCU.Tests/SCU.Tests.csproj -v n --nologo --logger trx
+        shell: pwsh
+
+      - name: Build app (publish)
+        run: dotnet publish SCU.App/SCU.App.csproj -c Release -o publish/app
+        shell: pwsh
+
+      # ---- Sign (Authenticode) ----
+      - name: Import signing certificate
+        if: ${{ secrets.WINDOWS_CERT_PFX != '' }}
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = [Convert]::FromBase64String($env:WINDOWS_CERT_PFX)
+          $path = Join-Path $env:RUNNER_TEMP "scu-signing.pfx"
+          [IO.File]::WriteAllBytes($path, $pfx)
+          $cert = Import-PfxCertificate -FilePath $path -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString $env:WINDOWS_CERT_PASSWORD -AsPlainText -Force)
+          Write-Host "Imported certificate: $($cert.Thumbprint)"
+          "SIGN_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: pwsh
+
+      - name: Sign artifacts
+        if: ${{ secrets.WINDOWS_CERT_PFX != '' }}
+        run: |
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
+          if (-not $signtool) { Write-Host "::error::signtool не найден"; exit 1 }
+          & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /n "SCU" SecurityScanner/out/Release/ScannerCore.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-ChildItem publish/app -Filter *.exe -Recurse | ForEach-Object {
+            & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /n "SCU" $_.FullName
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+        shell: pwsh
+
+      # Release без подписи не собирается: отсутствие секрета сертификата —
+      # ошибка, если явно не разрешён неподписанный dev-прогон.
+      - name: Verify signing (Authenticode)
+        if: ${{ secrets.WINDOWS_CERT_PFX != '' }}
+        run: |
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
+          & $signtool verify /pa /all SecurityScanner/out/Release/ScannerCore.exe
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::Подпись ScannerCore не прошла verify"; exit 1 }
+        shell: pwsh
+
+      - name: Enforce signing policy
+        if: ${{ secrets.WINDOWS_CERT_PFX == '' && inputs.allow_unsigned != true }}
+        run: |
+          Write-Host "::error::Release без подписи запрещён (п. 18/фаза 7). Задайте секрет WINDOWS_CERT_PFX или запустите с allow_unsigned=true для dev-прогона."
+          exit 1
+        shell: pwsh
+
+      # ---- Package ----
+      - name: Build installer (Inno Setup)
+        run: |
+          if (Test-Path setup.iss) {
+            choco install innosetup -y --no-progress
+            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+            if (Test-Path $iscc) { & $iscc setup.iss }
+            else { Write-Host "::warning::ISCC не найден, installer пропущен" }
+          } else {
+            Write-Host "::warning::setup.iss не найден, installer пропущен"
+          }
+        shell: pwsh
+        continue-on-error: true
+
+      # ---- Verify artifacts ----
+      - name: Verify package integrity and build manifest
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item SecurityScanner/out/Release/ScannerCore.exe release/
+          Copy-Item SecurityScanner/out/Release/security/database/hashes.txt release/ 2>$null
+          if (Test-Path "installer") { Copy-Item installer/*.exe release/ -ErrorAction SilentlyContinue }
+          $files = Get-ChildItem release -File
+          $hashes = $files | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+            "$hash  $($_.Name)"
+          }
+          $hashes | Set-Content release/SHA256SUMS.txt
+          Get-Content release/SHA256SUMS.txt
+          # SHA256-манифест обязан покрывать главный бинарник
+          if (-not ($hashes -match 'ScannerCore\.exe')) {
+            Write-Host "::error::ScannerCore.exe отсутствует в манифесте"; exit 1
+          }
+        shell: pwsh
+
+      # ---- SBOM ----
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          dotnet tool install --global CycloneDX
+          dotnet-CycloneDX SCU.App/SCU.App.csproj -t -o release/sbom --filename bom.json --disable-github-licenses
+        shell: pwsh
+        continue-on-error: true
+
+      - name: Upload test results (on any outcome)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-test-results
+          path: SCU.Tests/TestResults/
+          if-no-files-found: ignore
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error

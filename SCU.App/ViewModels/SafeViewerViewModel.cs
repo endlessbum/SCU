@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Security.Cryptography;
 using System.Windows;
@@ -161,7 +161,7 @@ public partial class SafeViewerViewModel : ObservableObject
                 FullPath = subDirectory.FullName,
                 IsDirectory = true,
                 SizeText = L.T("<папка>"),
-                ModifiedText = subDirectory.LastWriteTime.ToString("yyyy-MM-dd HH:mm"),
+                ModifiedText = subDirectory.LastWriteTime.ToString("dd.MM.yyyy HH:mm"),
             });
         }
 
@@ -173,7 +173,7 @@ public partial class SafeViewerViewModel : ObservableObject
                 FullPath = file.FullName,
                 IsDirectory = false,
                 SizeText = L.T("{0:N0} байт", file.Length),
-                ModifiedText = file.LastWriteTime.ToString("yyyy-MM-dd HH:mm"),
+                ModifiedText = file.LastWriteTime.ToString("dd.MM.yyyy HH:mm"),
             });
         }
     }

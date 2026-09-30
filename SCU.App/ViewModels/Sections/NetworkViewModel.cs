@@ -5,8 +5,6 @@ using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models;
-using SCU.Services;
-using SCU.Services.Dashboard;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;

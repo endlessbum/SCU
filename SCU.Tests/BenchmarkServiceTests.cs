@@ -1,6 +1,5 @@
 ﻿using SCU.Models;
 using SCU.Models.Benchmark;
-using SCU.Services;
 using Xunit;
 
 namespace SCU.Tests;
@@ -162,5 +161,59 @@ public class BenchmarkServiceTests
 
         Assert.True(result.Coverage == 0);
         Assert.Equal(0, result.Potential);
+    }
+
+    [Fact]
+    public void Evaluate_MissingServices_ExcludedFromConformity()
+    {
+        // Деблоат: Fax/TabletInputService удалены (NotFound) — они не «нечитаемые»,
+        // а неприменимые; соответствие = читается / существующих = 16/16.
+        var result = Service.Evaluate(Snapshot(s =>
+        {
+            s.ServicesTotal = 18;
+            s.ServicesOk = 0;
+            s.ServicesChanged = 16;
+            s.ServicesMissing = 2;
+        }));
+
+        var services = Assert.Single(result.Metrics, m => m.Id == "services.readable");
+        Assert.Equal(BenchmarkMetricState.Ok, services.State);
+        Assert.Equal(1.0, services.Conformity);
+        Assert.Equal(100, result.Index);
+        Assert.Contains("отсутствует", services.Note);
+    }
+
+    [Fact]
+    public void Evaluate_AllServicesMissing_NotApplicable()
+    {
+        // Все службы контрольного набора удалены — оценивать управляемость нечего.
+        var result = Service.Evaluate(Snapshot(s =>
+        {
+            s.ServicesTotal = 18;
+            s.ServicesOk = 0;
+            s.ServicesChanged = 0;
+            s.ServicesMissing = 18;
+        }));
+
+        var services = Assert.Single(result.Metrics, m => m.Id == "services.readable");
+        Assert.Equal(BenchmarkMetricState.NotApplicable, services.State);
+    }
+
+    [Fact]
+    public void Evaluate_UnreadableServices_StillPenalize()
+    {
+        // Отсутствующие не штрафуются, но нечитаемые (AccessDenied и т.п.) — да:
+        // 2 отсутствуют, 2 не читаются из 16 существующих → 14/16.
+        var result = Service.Evaluate(Snapshot(s =>
+        {
+            s.ServicesTotal = 18;
+            s.ServicesOk = 14;
+            s.ServicesChanged = 0;
+            s.ServicesMissing = 2;
+        }));
+
+        var services = Assert.Single(result.Metrics, m => m.Id == "services.readable");
+        Assert.Equal(BenchmarkMetricState.Ok, services.State);
+        Assert.Equal(14.0 / 16.0, services.Conformity, precision: 4);
     }
 }

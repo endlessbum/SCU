@@ -1,6 +1,5 @@
 using SCU.Common;
 using SCU.Models;
-using SCU.Services.Dashboard;
 using Xunit;
 
 namespace SCU.Tests;

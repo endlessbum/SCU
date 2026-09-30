@@ -1,0 +1,363 @@
+<Window x:Class="SCU.Views.ScuAiAssistantWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ai="clr-namespace:SCU.Models.AI"
+        mc:Ignorable="d"
+        Title="{DynamicResource S_ScuAiTitle}"
+        Width="760" Height="640"
+        MinWidth="560" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource SolidRootBrush}"
+        d:DesignHeight="640" d:DesignWidth="760">
+
+    <!-- Окно SCU AI Assistant (раздел 24): агентный чат с карточками.
+         Сообщения рендерятся по ScuAiMessageKind — кнопки и ссылки рисует
+         приложение, а не модель (п. 31/32 ТЗ). -->
+    <Window.Resources>
+        <!-- Карточка подтверждения: кнопка «Применить» связана с реальным PlanId
+             (CommandParameter), модель не может его подделать. -->
+        <Style x:Key="PlanButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinWidth" Value="104" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Заголовок: режим и его ограничения (п. 26 ТЗ) -->
+        <Border Grid.Row="0" Style="{StaticResource SectionCard}" Margin="0,0,0,8">
+            <StackPanel>
+                <TextBlock Style="{StaticResource RowHeaderText}"
+                           Text="{DynamicResource S_ScuAiTitle}" />
+                <TextBlock Margin="0,4,0,0"
+                           TextWrapping="Wrap"
+                           Style="{StaticResource RowActionText}"
+                           Text="{Binding ModeHint}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Переписка с карточками -->
+        <Border Grid.Row="1" Style="{StaticResource SectionCard}">
+            <ScrollViewer x:Name="MessagesScroll" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <!-- API не подключён: понятное состояние, а не fake UI (п. 19) -->
+                    <TextBlock Margin="8,24,8,8"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Text="{DynamicResource S_ScuAiNotConnected}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource RowActionText}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsApiConnected}" Value="False">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <ItemsControl x:Name="MessagesList"
+                                  ItemsSource="{Binding Messages}"
+                                  Padding="4,0,4,8">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type ai:ScuAiChatMessage}">
+                                <Grid Margin="0,4">
+                                    <!-- Пузырь сообщения: пользователь справа, ассистент слева,
+                                         ошибка — красный оттенок (как в окне обычного чата). -->
+                                    <Border MaxWidth="720"
+                                            Padding="12,8"
+                                            CornerRadius="12"
+                                            Background="{DynamicResource ControlFillBrush}"
+                                            BorderBrush="{DynamicResource ControlStrokeBrush}"
+                                            BorderThickness="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="HorizontalAlignment" Value="Left" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsUser}" Value="True">
+                                                        <Setter Property="HorizontalAlignment" Value="Right" />
+                                                        <Setter Property="Background" Value="{DynamicResource AccentTintBrush}" />
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentStrokeBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsError}" Value="True">
+                                                        <Setter Property="Background" Value="{DynamicResource DangerTintBrush}" />
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource DangerStrokeBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <!-- Текст сообщения -->
+                                            <TextBlock TextWrapping="Wrap"
+                                                       Style="{StaticResource BodyText}"
+                                                       Text="{Binding Content}" />
+
+                                            <!-- Ссылки на внутреннюю справку (п. 14/17): открываются
+                                                 командой VM — навигация по существующему механизму. -->
+                                            <ItemsControl ItemsSource="{Binding HelpReferences}"
+                                                          Margin="0,6,0,0">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Button Margin="0,2"
+                                                                Style="{StaticResource SmallButton}"
+                                                                Command="{Binding DataContext.OpenHelpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding}">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock FontFamily="{DynamicResource IconFontFamily}"
+                                                                           Text="&#xE946;" />
+                                                                <TextBlock Margin="6,0,0,0"
+                                                                           Text="{Binding Title}" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <!-- Карточка подтверждения изменения (п. 19):
+                                                 название, текущее → новое, риск, условия. -->
+                                            <Border Margin="0,8,0,0"
+                                                    Padding="10,8"
+                                                    CornerRadius="8"
+                                                    BorderBrush="{DynamicResource AccentStrokeBrush}"
+                                                    BorderThickness="1"
+                                                    Background="{DynamicResource AccentTintBrush}">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding ActionPlan}" Value="{x:Null}">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <StackPanel>
+                                                    <TextBlock Style="{StaticResource CaptionText}"
+                                                               FontWeight="SemiBold"
+                                                               Text="{Binding ActionPlan.UtilityTitle}" />
+                                                    <TextBlock Margin="0,4,0,0" TextWrapping="Wrap"
+                                                               Style="{StaticResource CaptionText}"
+                                                               Text="{Binding ActionPlan.Summary}" />
+                                                    <StackPanel Margin="0,6,0,0" Orientation="Horizontal">
+                                                        <TextBlock Style="{StaticResource CaptionText}"
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                                   Text="{DynamicResource S_ScuAiCurrent}" />
+                                                        <TextBlock Margin="6,0,0,0"
+                                                                   Style="{StaticResource CaptionText}"
+                                                                   Text="{Binding ActionPlan.CurrentState}" />
+                                                        <TextBlock Margin="10,0,0,0"
+                                                                   Style="{StaticResource CaptionText}"
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                                   Text="→" />
+                                                        <TextBlock Margin="10,0,0,0"
+                                                                   Style="{StaticResource CaptionText}"
+                                                                   FontWeight="SemiBold"
+                                                                   Text="{Binding ActionPlan.DesiredState}" />
+                                                    </StackPanel>
+                                                    <TextBlock Margin="0,4,0,0"
+                                                               Style="{StaticResource CaptionText}"
+                                                               Foreground="{DynamicResource SecondaryTextBrush}"
+                                                               Text="{Binding ActionPlan.Risk}" />
+                                                    <TextBlock Margin="0,2,0,0"
+                                                               Text="{DynamicResource S_ScuAiRestartHint}">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding ActionPlan.RequiresRestart}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+
+                                                    <!-- Кнопки показаны, пока план не применён и не отменён:
+                                                         план одноразовый (п. 9 ТЗ). -->
+                                                    <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
+                                                        <Button Content="{DynamicResource S_ScuAiApply}"
+                                                                Command="{Binding DataContext.ApplyPlanCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding ActionPlan.PlanId}">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button" BasedOn="{StaticResource PlanButton}">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsPlanApplied}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding IsPlanCancelled}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                        <Button Margin="8,0,0,0"
+                                                                Content="{DynamicResource S_ScuAiCancel}"
+                                                                Command="{Binding DataContext.CancelPlanCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding ActionPlan.PlanId}">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button" BasedOn="{StaticResource PlanButton}">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsPlanApplied}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding IsPlanCancelled}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                    </StackPanel>
+
+                                                    <!-- Исход карточки: видно, чем закончился план -->
+                                                    <TextBlock Margin="0,8,0,0"
+                                                               Text="{DynamicResource S_ScuAiApplied}">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsPlanApplied}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <TextBlock Margin="0,8,0,0"
+                                                               Text="{DynamicResource S_ScuAiCancelled}">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsPlanCancelled}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Результат операции: было → стало (п. 9.8) -->
+                                            <Border Margin="0,8,0,0"
+                                                    Padding="10,8"
+                                                    CornerRadius="8"
+                                                    BorderBrush="{DynamicResource SuccessStrokeBrush}"
+                                                    BorderThickness="1"
+                                                    Background="{DynamicResource SuccessTintBrush}">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Kind}"
+                                                                         Value="{x:Static ai:ScuAiMessageKind.ActionResult}">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <StackPanel>
+                                                    <TextBlock Style="{StaticResource CaptionText}"
+                                                               FontWeight="SemiBold"
+                                                               Text="{Binding Content}" />
+                                                    <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                                                        <TextBlock Style="{StaticResource CaptionText}"
+                                                                   Text="{Binding BeforeState}" />
+                                                        <TextBlock Margin="10,0,0,0"
+                                                                   Style="{StaticResource CaptionText}"
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                                   Text="→" />
+                                                        <TextBlock Margin="10,0,0,0"
+                                                                   Style="{StaticResource CaptionText}"
+                                                                   FontWeight="SemiBold"
+                                                                   Text="{Binding AfterState}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <TextBlock HorizontalAlignment="Right"
+                                                       Margin="0,4,0,0"
+                                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                                       Style="{StaticResource CaptionText}"
+                                                       Text="{Binding TimeText}" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Строка ввода: Enter — отправить, Shift+Enter — перенос строки;
+             «Стоп» прерывает текущий ход (п. 25 ТЗ). -->
+        <Grid Grid.Row="2" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox Grid.Column="0"
+                     x:Name="InputBox"
+                     VerticalContentAlignment="Center"
+                     AcceptsReturn="True"
+                     MaxHeight="120"
+                     VerticalScrollBarVisibility="Auto"
+                     PreviewKeyDown="OnInputPreviewKeyDown"
+                     ToolTip="{DynamicResource S_ScuAiInputHint}"
+                     Text="{Binding InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     IsEnabled="{Binding IsApiConnected}" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                <Control VerticalAlignment="Center" Margin="0,0,8,0">
+                    <Control.Style>
+                        <Style TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
+                            <Setter Property="Width" Value="14" />
+                            <Setter Property="Height" Value="14" />
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsWaiting}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Control.Style>
+                </Control>
+                <Button MinWidth="86"
+                        VerticalAlignment="Center"
+                        Content="{DynamicResource S_ScuAiSend}"
+                        Command="{Binding SendCommand}" />
+                <Button Margin="8,0,0,0"
+                        MinWidth="86"
+                        VerticalAlignment="Center"
+                        Content="{DynamicResource S_ScuAiStop}"
+                        Command="{Binding StopCommand}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsWaiting}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

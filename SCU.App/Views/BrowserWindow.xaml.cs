@@ -8,7 +8,6 @@ using Microsoft.Web.WebView2.Wpf;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models.Browser;
-using SCU.Services.Browser;
 using SCU.ViewModels.Sections;
 
 namespace SCU.Views;
@@ -43,7 +42,7 @@ public partial class BrowserWindow : Window, IBrowserHostBridge
 
     private bool _micaApplied;
 
-    private void OnSourceInitialized(object sender, EventArgs e)
+    private void OnSourceInitialized(object? sender, EventArgs e)
     {
         var isDark = ThemeManager.IsDarkTheme(ThemeManager.LoadThemeMode());
         _micaApplied = WindowEffects.TryApplyMica(this, isDark);

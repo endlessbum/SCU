@@ -23,6 +23,12 @@
             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,8,0">
                 <Button Content="{DynamicResource S_Restore}" Command="{Binding RestoreCommand}" />
             </StackPanel>
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,8,0">
+                <Button Content="{DynamicResource S_ServicesDisableAll}"
+                        Command="{Binding DisableAllCommand}"
+                        ToolTipService.ShowOnDisabled="True"
+                        ToolTip="{DynamicResource S_ServicesDisableAllHint}" />
+            </StackPanel>
             <!-- Объединённая подсказка ⓘ операций «Бэкап» и «Откатить» (текст собирается в code-behind) -->
             <controls:InfoGlyph x:Name="BackupInfoGlyph"
                                 DockPanel.Dock="Left"

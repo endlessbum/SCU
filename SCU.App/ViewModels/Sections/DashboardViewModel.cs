@@ -1,10 +1,10 @@
 ﻿using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Models;
-using SCU.Services.Dashboard;
 
 namespace SCU.ViewModels.Sections;
 
@@ -174,6 +174,11 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
     private List<BatchUtility> _allUtilities = [];
     private HashSet<string> _deletedUtilIds = [];
     private Dictionary<string, BatchUtility> _utilitiesById = new(StringComparer.Ordinal);
+
+    // Полный реестр утилит (единственная истина о функциях SCU) — наружу
+    // отдаётся read-only: его использует AI-слой (capabilities) вместо
+    // создания собственного реестра (п. 5 ТЗ: нет двух источников истины).
+    public IReadOnlyList<BatchUtility> Utilities => _allUtilities;
 
     // Утилиты главной страницы («Настройка списка») удалению не подлежат.
     public static bool IsProtectedUtility(BatchUtility utility) => utility.Section == 3;
@@ -655,7 +660,7 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
         var list = new List<BatchUtility>();
 
         // Категории приватности — тумблеры: цель = защита включена (категория отключена).
-        // «Все сразу» в список не входит: оно дублирует все категории разом.
+        // «Включить все» в список не входит: оно дублирует все категории разом.
         foreach (var row in _privacy.Rows)
         {
             var categoryRow = row;

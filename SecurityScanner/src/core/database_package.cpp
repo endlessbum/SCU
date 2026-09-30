@@ -27,8 +27,10 @@ constexpr const char* kDatabasePublicKeyXYHex =
     "acc96c01195827e2254b516ce8c171cd1c2984422e30c8bafa46f6e6f0b655698"
     "08d027d5a96143f3253b4cf89db9fca142036e9ad12443e1e5a4904743b406a";
 
-constexpr size_t kMaxPackageBytes = 10ull * 1024 * 1024;
-constexpr size_t kMaxHashesBytes = 4ull * 1024 * 1024;
+// Лимиты под внешние дампы (MalwareBazaar и агрегаторы, ~90 байт на запись):
+// 64 МБ вмещают ~700k хешей с запасом; in-memory map лимита не имеет.
+constexpr size_t kMaxPackageBytes = 64ull * 1024 * 1024;
+constexpr size_t kMaxHashesBytes = 64ull * 1024 * 1024;
 // Строгая схема hashes.txt (п. 7 аудита): одна строка =
 // 64 hex-символа TAB verdict TAB name LF. Любая malformed-строка отклоняет
 // ВСЮ базу — частично применённая база хуже отсутствующей.

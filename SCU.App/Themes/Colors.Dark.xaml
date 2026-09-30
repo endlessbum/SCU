@@ -51,12 +51,13 @@
          дополнительно подсвечивает акцентная «пилюля». -->
     <SolidColorBrush x:Key="NavSelectedFillBrush" Color="#FF383838" />
 
-    <!-- Текст: система iOS — белый primary, серые secondary/tertiary. П. 16 аудита:
-         secondary/tertiary непрозрачны и дают ≥4.5:1 на #202020 (tertiary ≈ 5.9:1);
-         вторичность передаётся оттенком, а не прозрачностью. -->
+    <!-- Текст: система iOS — белый primary, серые secondary/tertiary. П. 16 аудита,
+         WCAG-аудит по худшей поверхности (включая hover-заливку #414141):
+         secondary ≥8.2:1, tertiary ≥4.8:1; непрозрачны — вторичность передаётся
+         оттенком, а не прозрачностью. -->
     <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F2FFFFFF" />
     <SolidColorBrush x:Key="SecondaryTextBrush" Color="#DDFFFFFF" />
-    <SolidColorBrush x:Key="TertiaryTextBrush" Color="#FF9D9DA8" />
+    <SolidColorBrush x:Key="TertiaryTextBrush" Color="#FFB0B0BA" />
     <SolidColorBrush x:Key="TextDisabledBrush" Color="#5C8E8E99" />
     <!-- 35 % белого: при #4D контраст выделения с белым текстом заметно хуже светлой темы. -->
     <SolidColorBrush x:Key="TextSelectionBrush" Color="#59FFFFFF" />
@@ -74,16 +75,18 @@
     <SolidColorBrush x:Key="DangerStrokeBrush" Color="#4DFF453A" />
     <SolidColorBrush x:Key="DangerFillBrush" Color="#FFFF453A" />
     <SolidColorBrush x:Key="DangerPressedBrush" Color="#FFE63B31" />
-    <SolidColorBrush x:Key="DangerBrush" Color="#FFFF6961" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#FFFF918A" />
 
     <!-- Семантика состояний -->
     <SolidColorBrush x:Key="SuccessBrush" Color="#FF30D158" />
+    <SolidColorBrush x:Key="SuccessTintBrush" Color="#1A30D158" />
+    <SolidColorBrush x:Key="SuccessStrokeBrush" Color="#4D30D158" />
     <SolidColorBrush x:Key="WarnBrush" Color="#FFFFD60A" />
     <SolidColorBrush x:Key="WarnFillBrush" Color="#26FFD60A" />
     <SolidColorBrush x:Key="WarnTextBrush" Color="#F2FFFFFF" />
     <SolidColorBrush x:Key="StateRunningBrush" Color="#FF30D158" />
     <SolidColorBrush x:Key="StateDisabledBrush" Color="#C7EBEBF5" />
-    <SolidColorBrush x:Key="StateMissingBrush" Color="#8B9D9DA8" />
+    <SolidColorBrush x:Key="StateMissingBrush" Color="#FFAEADB8" />
 
     <!-- Кнопки строки заголовка -->
     <SolidColorBrush x:Key="CaptionCloseHoverBrush" Color="#FFFF453A" />

@@ -14,8 +14,11 @@ public partial class TasksView : UserControl
         L.LanguageChanged += RefreshInfoTexts;
     }
 
-    // Объединённая подсказка ⓘ операций «Бэкап» и «Откатить» возле кнопок:
-    // XAML не умеет конкатенировать DynamicResource, ключи читаются из текущего словаря строк.
+    // Объединённая подсказка ⓘ операций «Бэкап», «Откатить» и «Отключить все» возле кнопок:
+    // каждая строка помечена именем кнопки, к которой относится описание.
     private void RefreshInfoTexts() =>
-        BackupInfoGlyph.InfoText = InfoTexts.Join("I_TasksBackup", "I_TasksRestore");
+        BackupInfoGlyph.InfoText = InfoTexts.JoinAttributed(
+            new InfoTexts.Attributed(["S_Backup"], "I_TasksBackup"),
+            new InfoTexts.Attributed(["S_Rollback"], "I_TasksRestore"),
+            new InfoTexts.Attributed(["S_TasksDisableAll"], "I_TasksDisableAll"));
 }

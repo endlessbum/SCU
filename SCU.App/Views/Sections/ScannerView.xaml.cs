@@ -1,4 +1,5 @@
 using System.Windows;
+using SCU.Common;
 using SCU.ViewModels.Sections;
 
 namespace SCU.Views.Sections;
@@ -36,6 +37,8 @@ public partial class ScannerView
         Opacity = 1;
     }
 
+    // async void на пользовательском вводе: исключение уйдёт в глобальный обработчик
+    // и завершит приложение, поэтому гасим его тостом.
     private async void OnDrop(object sender, DragEventArgs e)
     {
         Opacity = 1;
@@ -45,9 +48,19 @@ public partial class ScannerView
         }
 
         e.Handled = true;
-        if (ViewModel is not null)
+        try
         {
-            await ViewModel.HandleDroppedPathsAsync(paths);
+            if (ViewModel is not null)
+            {
+                await ViewModel.HandleDroppedPathsAsync(paths);
+            }
+        }
+        catch (Exception exception)
+        {
+            AppNotificationCenter.Instance.Push(
+                L.T("Скан не запущен"),
+                L.T("Ошибка: {0}", exception.Message),
+                AppNotificationKind.Danger);
         }
     }
 }

@@ -24,7 +24,10 @@ public sealed class LongProcessRunner
     {
         var psi = new ProcessStartInfo
         {
-            FileName = fileName,
+            // Голое имя ("netsh", "powercfg") включает в поиск CreateProcess каталог
+            // приложения и текущий каталог — binary planting с правами SCU.
+            // Известная системная утилита всегда запускается абсолютным путём.
+            FileName = SystemTool.Path(fileName),
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -53,7 +56,13 @@ public sealed class LongProcessRunner
             return Result<string>.Failure($"Не удалось запустить {fileName}: {exception.Message}");
         }
 
-        using var registration = ct.Register(() =>
+        // Таймаут комбинируется с пользовательской отменой; зависший powercfg/DISM
+        // не должен блокировать вкладку навсегда.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(RunnerGuard.DefaultTimeout);
+        var effectiveCt = timeoutCts.Token;
+
+        using var registration = effectiveCt.Register(() =>
         {
             try
             {
@@ -80,7 +89,7 @@ public sealed class LongProcessRunner
 
             _logger.Raw(line);
             progress?.Report(line);
-        }, ct);
+        }, effectiveCt);
         var stderrTask = ConsoleOutputDecoder.ReadLinesAsync(process.StandardError.BaseStream, line =>
         {
             lock (stderrLines)
@@ -90,17 +99,25 @@ public sealed class LongProcessRunner
 
             _logger.Error(line);
             progress?.Report(line);
-        }, ct);
+        }, effectiveCt);
 
         try
         {
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            await process.WaitForExitAsync(effectiveCt).ConfigureAwait(false);
             await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _logger.Warn($"CANCEL | {fileName}");
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
+            return Result<string>.Failure("Отменено", -1);
         }
         catch (OperationCanceledException)
         {
-            _logger.Warn($"CANCEL | {fileName}");
-            return Result<string>.Failure("Отменено", -1);
+            _logger.Error($"TIMEOUT | {fileName} | {RunnerGuard.DefaultTimeout}");
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
+            return Result<string>.Failure(
+                $"Превышено время ожидания {fileName} ({RunnerGuard.DefaultTimeout.TotalMinutes:F0} мин) — процесс принудительно завершён.", -2);
         }
         catch (Exception exception)
         {

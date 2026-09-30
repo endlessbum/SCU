@@ -86,6 +86,6 @@ public class PowerEffectiveStateLogicTests
     }
 
     private static SystemSettingState PowerServiceMap(int raw) =>
-        SCU.Services.PowerService.MapShortNameEffective(
-            SCU.Services.PowerService.MapShortNameGlobalMode(raw));
+        SCU.Infrastructure.Windows.Power.PowerService.MapShortNameEffective(
+            SCU.Infrastructure.Windows.Power.PowerService.MapShortNameGlobalMode(raw));
 }

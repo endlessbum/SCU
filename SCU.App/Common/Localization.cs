@@ -109,6 +109,33 @@ public static class L
 
     public static event Action? LanguageChanged;
 
+    // ===== Единый формат дат интерфейса =====
+    // Все пользовательские даты — дд.мм.гггг (с временем — дд.мм.гггг чч:мм),
+    // независимо от культуры потока: раньше часть мест выводила ISO (yyyy-MM-dd),
+    // часть — культуру («g»), и вид даты расходился между разделами.
+    // InvariantCulture: формат фиксирован, разделители не зависят от локали ОС.
+    public const string DateFormat = "dd.MM.yyyy";
+    public const string DateTimeFormat = "dd.MM.yyyy HH:mm";
+    public const string DateTimeSecondsFormat = "dd.MM.yyyy HH:mm:ss";
+
+    public static string Date(System.DateTime value) => value.ToString(DateFormat, System.Globalization.CultureInfo.InvariantCulture);
+
+    // Имя метода совпадает с именем типа (как Color.Color): ссылки на тип внутри
+    // класса квалифицированы через System.
+    public static string DateTime(System.DateTime value) => value.ToString(DateTimeFormat, System.Globalization.CultureInfo.InvariantCulture);
+
+    // Даты из строк внешних источников (ScannerCore пишет ISO yyyy-MM-dd).
+    // Нераспознанная строка возвращается как есть — не подменяем её «01.01.0001».
+    public static string Date(string? isoValue) =>
+        System.DateTime.TryParseExact(
+            isoValue,
+            ["yyyy-MM-dd", "yyyy-MM-ddTHH:mm:ss", "yyyy.MM.dd"],
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None,
+            out var parsed)
+            ? Date(parsed)
+            : isoValue ?? string.Empty;
+
     public static string T(string key, params object?[] args)
     {
         var text = Current == AppLanguage.En && En.TryGetValue(key, out var english) ? english : key;

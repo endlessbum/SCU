@@ -1,5 +1,4 @@
 using SCU.Models.Scan;
-using SCU.Services;
 using SCU.Common;
 using Xunit;
 

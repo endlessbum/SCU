@@ -3,7 +3,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using SCU.Services.Dashboard;
 
 namespace SCU.Views.Controls;
 

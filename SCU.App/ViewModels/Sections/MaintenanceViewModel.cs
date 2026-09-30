@@ -7,21 +7,24 @@ using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models;
-using SCU.Services;
-using SCU.Services.Dashboard;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;
 
-// Диск в списке индексации.
+// Диск в списке индексации. IsIndexingDisabled — фактическое состояние
+// (атрибут «не индексировать» на корне), IsSelected — желаемое: галочка стоит,
+// пока индексация должна быть выключена. При загрузке списка и после «Применить»
+// оба синхронизируются с фактом, поэтому «Применить» активно только при изменениях.
 public sealed class DriveRow : INotifyPropertyChanged
 {
     private bool _isSelected;
+    private bool _isIndexingDisabled;
 
-    public DriveRow(string letter, bool isSelected = false)
+    public DriveRow(string letter, bool indexingDisabled)
     {
         Letter = letter;
-        _isSelected = isSelected;
+        _isIndexingDisabled = indexingDisabled;
+        _isSelected = indexingDisabled;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -29,6 +32,17 @@ public sealed class DriveRow : INotifyPropertyChanged
     public string Letter { get; }
 
     public string Display => Letter + "\\";
+
+    // Фактическое состояние на корне диска; обновляется после применения.
+    public bool IsIndexingDisabled
+    {
+        get => _isIndexingDisabled;
+        set
+        {
+            _isIndexingDisabled = value;
+            OnPropertyChanged(nameof(IsIndexingDisabled));
+        }
+    }
 
     public bool IsSelected
     {
@@ -57,7 +71,7 @@ public partial class MaintenanceViewModel : ObservableObject, IDisposable, ISect
     private CancellationTokenSource? _operationCts;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(DisableIndexingCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ApplyIndexingCommand))]
     [NotifyCanExecuteChangedFor(nameof(RunIntegrityCheckCommand))]
     [NotifyCanExecuteChangedFor(nameof(CreateRestorePointCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestoreRestorePointCommand))]
@@ -145,10 +159,14 @@ public partial class MaintenanceViewModel : ObservableObject, IDisposable, ISect
             StatusText = L.T("Чтение состояния (диски, CompactOS, точки восстановления)…");
 
             var drives = await _maintenanceService.GetDrivesAsync(ct).ConfigureAwait(true);
+            var indexingStates = await _maintenanceService.GetIndexingDisabledAsync(drives, ct).ConfigureAwait(true);
             Drives.Clear();
             foreach (var drive in drives)
             {
-                Drives.Add(new DriveRow(drive));
+                var row = new DriveRow(drive, indexingStates.GetValueOrDefault(drive));
+                // Переключение галочки меняет доступность «Применить».
+                row.PropertyChanged += OnDriveRowChanged;
+                Drives.Add(row);
             }
 
             var compact = await _maintenanceService.GetCompactOsEnabledAsync(ct).ConfigureAwait(true);
@@ -160,31 +178,81 @@ public partial class MaintenanceViewModel : ObservableObject, IDisposable, ISect
         }).ConfigureAwait(true);
     }
 
-    [RelayCommand(CanExecute = nameof(CanModify))]
-    private async Task DisableIndexingAsync()
+    // Есть ли изменения, которые ещё не применены: галочка расходится с фактом.
+    private bool HasIndexingChanges => Drives.Any(d => d.IsSelected != d.IsIndexingDisabled);
+
+    private bool CanApplyIndexing() => CanModify() && HasIndexingChanges;
+
+    private void OnDriveRowChanged(object? sender, PropertyChangedEventArgs e)
     {
-        var selected = Drives.Where(d => d.IsSelected).Select(d => d.Letter).ToList();
-        if (selected.Count == 0)
+        if (e.PropertyName == nameof(DriveRow.IsSelected))
         {
-            StatusText = L.T("Отметьте хотя бы один диск.");
+            ApplyIndexingCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanApplyIndexing))]
+    private async Task ApplyIndexingAsync()
+    {
+        var toDisable = Drives.Where(d => d.IsSelected && !d.IsIndexingDisabled).Select(d => d.Letter).ToList();
+        var toEnable = Drives.Where(d => !d.IsSelected && d.IsIndexingDisabled).Select(d => d.Letter).ToList();
+        if (toDisable.Count == 0 && toEnable.Count == 0)
+        {
             return;
         }
 
         if (!_dialogs.Ask(
-                L.T("Отключение индексации поиска"),
-                L.T("Пометить содержимое дисков как «не индексировать»:\n{0}\n\nПоиск станет чуть медленнее. Служба Windows Search полностью не отключается.",
-                    string.Join(", ", selected)),
-                L.T("Отключить индексацию")))
+                L.T("Изменение индексации поиска"),
+                BuildIndexingConfirmText(toDisable, toEnable),
+                L.T("Применить")))
         {
             return;
         }
 
-        await RunExclusiveAsync("отключение индексации", async ct =>
+        await RunExclusiveAsync("изменение индексации", async ct =>
         {
-            StatusText = L.T("attrib +I на выбранных дисках…");
-            var result = await _maintenanceService.DisableIndexingAsync(selected, ct).ConfigureAwait(true);
+            StatusText = L.T("Изменение атрибутов индексации на дисках…");
+            var result = Result.Success();
+            if (toDisable.Count > 0)
+            {
+                result = await _maintenanceService.SetIndexingAsync(toDisable, notIndexed: true, ct).ConfigureAwait(true);
+            }
+
+            if (result.IsSuccess && toEnable.Count > 0)
+            {
+                result = await _maintenanceService.SetIndexingAsync(toEnable, notIndexed: false, ct).ConfigureAwait(true);
+            }
+
             StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
+
+            // Галочки обязаны показать правду: перечитываем фактическое состояние
+            // и обновляем оба поля — иначе HasIndexingChanges будет сравнивать
+            // свежие галочки со старым снимком факта.
+            var drives = Drives.Select(d => d.Letter).ToList();
+            var states = await _maintenanceService.GetIndexingDisabledAsync(drives, ct).ConfigureAwait(true);
+            foreach (var row in Drives)
+            {
+                row.IsIndexingDisabled = states.GetValueOrDefault(row.Letter);
+                row.IsSelected = states.GetValueOrDefault(row.Letter);
+            }
         }).ConfigureAwait(true);
+    }
+
+    private string BuildIndexingConfirmText(List<string> toDisable, List<string> toEnable)
+    {
+        var parts = new List<string>();
+        if (toDisable.Count > 0)
+        {
+            parts.Add(L.T("Пометить как «не индексировать»: {0}", string.Join(", ", toDisable)));
+        }
+
+        if (toEnable.Count > 0)
+        {
+            parts.Add(L.T("Включить индексацию (снять пометку): {0}", string.Join(", ", toEnable)));
+        }
+
+        return string.Join("\n", parts) + "\n\n"
+            + L.T("Служба Windows Search полностью не отключается. Применить изменения?");
     }
 
     [RelayCommand(CanExecute = nameof(CanModify))]
@@ -266,7 +334,7 @@ public partial class MaintenanceViewModel : ObservableObject, IDisposable, ISect
         await RunExclusiveAsync("создание точки восстановления", async ct =>
         {
             StatusText = L.T("Создание точки восстановления… (до минуты)");
-            var description = "SCU " + DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture);
+            var description = "SCU " + DateTime.Now.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture);
             var result = await _restorePointService.CreateCheckpointWithIdAsync(description, ct).ConfigureAwait(true);
             StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
 
@@ -566,7 +634,7 @@ public sealed class RestorePointRow
     {
         SequenceNumber = info.SequenceNumber;
         // Дата создания — отдельным полем: в строке списка показывается своя колонка.
-        CreatedText = info.CreationTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture);
+        CreatedText = info.CreationTime.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture);
         Type = info.Type;
         Description = info.Description;
         // Собранная строка — для текста подтверждений (восстановление/удаление).

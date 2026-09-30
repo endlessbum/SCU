@@ -1,0 +1,323 @@
+<UserControl x:Class="SCU.Views.Sections.TroubleshootingView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:models="clr-namespace:SCU.Models">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Style="{StaticResource SectionDescription}"
+                   Text="{DynamicResource S_TS_Desc}" />
+
+        <!-- Кнопки запуска -->
+        <DockPanel Grid.Row="1" Margin="0,0,0,12" LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,8,0">
+                <Button Content="{DynamicResource S_TS_Run}"
+                        Command="{Binding RunCommand}"
+                        ToolTipService.ShowOnDisabled="True"
+                        ToolTip="{DynamicResource S_TS_RunHint}" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,8,0">
+                <Button Content="{DynamicResource S_TS_Cancel}" Command="{Binding CancelCommand}" />
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Сводка последнего запуска -->
+        <Border Grid.Row="2" Margin="0,0,0,12">
+            <Border.Style>
+                <Style TargetType="Border" BasedOn="{StaticResource SectionCard}">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasRun}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel Orientation="Horizontal">
+                <!-- Прочерк сводки: красный при проблемах, иначе жёлтый при
+                     предупреждениях, иначе серый при информации, зелёный — чисто.
+                     Выровнен по центру первой строки заголовка. -->
+                <TextBlock Margin="0,-3,12,0"
+                           VerticalAlignment="Top"
+                           FontSize="18"
+                           Text="—">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource StateRunningBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasProblems}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource DangerFillBrush}" />
+                                </DataTrigger>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding HasProblems}" Value="False" />
+                                        <Condition Binding="{Binding HasWarnings}" Value="True" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                </MultiDataTrigger>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding HasProblems}" Value="False" />
+                                        <Condition Binding="{Binding HasWarnings}" Value="False" />
+                                        <Condition Binding="{Binding HasInfos}" Value="True" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource RowHeaderText}" Text="{Binding SummaryTitle}" />
+                    <TextBlock Style="{StaticResource CaptionText}" Text="{Binding SummaryDetail}" />
+                    <TextBlock Style="{StaticResource CaptionText}">
+                        <Run Text="{DynamicResource S_TS_LastRun}" /><Run Text=" " /><Run Text="{Binding LastScanTimeText, Mode=OneWay}" />
+                    </TextBlock>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Прогресс отдельных проверок (виден только во время работы) -->
+        <ItemsControl Grid.Row="3" ItemsSource="{Binding ProbeRows}" Margin="0,0,0,12">
+            <ItemsControl.Style>
+                <Style TargetType="ItemsControl">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ItemsControl.Style>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource CaptionText}" Text="{Binding Title}" />
+                        <TextBlock Grid.Column="1"
+                                   FontSize="12"
+                                   Text="{Binding StateText}"
+                                   Foreground="{Binding StateBrush}" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Карточки проблем с группировкой по тяжести. Без собственного
+             ScrollViewer: страница прокручивается общим ContentScroll главного
+             окна, вложенный viewer не получал колесо мыши. -->
+        <ItemsControl Grid.Row="4" ItemsSource="{Binding FindingsView}">
+                <ItemsControl.GroupStyle>
+                    <GroupStyle>
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Margin="0,12,0,6"
+                                           FontSize="14"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TertiaryTextBrush}"
+                                           Text="{Binding Name}" />
+                            </DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                        <!-- Системный шаблон GroupItem ставит ItemsHost Margin="5,0,0,0" —
+                             карточки групп получались на 5px уже остальных карточек раздела.
+                             Явный шаблон без отступа выравнивает их по общей сетке. -->
+                        <GroupStyle.ContainerStyle>
+                            <Style TargetType="{x:Type GroupItem}">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="{x:Type GroupItem}">
+                                            <StackPanel>
+                                                <ContentPresenter x:Name="PART_Header" />
+                                                <ItemsPresenter x:Name="ItemsHost" />
+                                            </StackPanel>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </GroupStyle.ContainerStyle>
+                    </GroupStyle>
+                </ItemsControl.GroupStyle>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource SectionCard}" Margin="0,0,0,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <!-- Прочерк важности как в «Приложениях»: красный — проблема,
+                                     жёлтый — предупреждение, серый — информация. Выровнен по
+                                     центру первой строки заголовка. -->
+                                <TextBlock Grid.Column="0"
+                                           Margin="0,-3,12,0"
+                                           VerticalAlignment="Top"
+                                           FontSize="18"
+                                           Text="—">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource DangerFillBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Severity}" Value="{x:Static models:DiagnosticSeverity.Warning}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Severity}" Value="{x:Static models:DiagnosticSeverity.Info}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <StackPanel Grid.Column="1" Margin="0,0,16,0">
+                                    <TextBlock Style="{StaticResource RowHeaderText}"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding Title}" />
+                                    <TextBlock Style="{StaticResource CaptionText}"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding Description}" />
+
+                                    <TextBlock TextWrapping="Wrap"
+                                               Margin="0,6,0,0"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TertiaryTextBrush}"
+                                               Text="{Binding WhyItMatters}" />
+
+                                    <!-- Факты -->
+                                    <ItemsControl ItemsSource="{Binding Evidence}" Margin="0,8,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" Margin="0,1">
+                                                    <TextBlock FontSize="12"
+                                                               Foreground="{DynamicResource TertiaryTextBrush}"
+                                                               Text="{Binding Label}" />
+                                                    <TextBlock FontSize="12" Margin="6,0,0,0" Text="{Binding Value}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                                <!-- Все кнопки карточки — колонкой справа: действия
+                                     карточки и «Пропустить» под ними. Кнопки растягиваются
+                                     до ширины самой широкой — колонка читается единым блоком. -->
+                                <StackPanel Grid.Column="2" VerticalAlignment="Top">
+                                    <ItemsControl ItemsSource="{Binding Actions}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Margin="0,0,0,8"
+                                                        Content="{Binding Title}"
+                                                        Command="{Binding DataContext.RunActionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button Style="{StaticResource SmallButton}"
+                                            Content="{DynamicResource S_TS_Skip}"
+                                            ToolTipService.ShowOnDisabled="True"
+                                            ToolTip="{DynamicResource S_TS_SkipHint}"
+                                            Command="{Binding DataContext.SkipCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Пустое состояние: диагностика ещё не выполнялась -->
+        <StackPanel Grid.Row="4" HorizontalAlignment="Center" Margin="0,24,0,8">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding HasRun}" Value="False" />
+                                <Condition Binding="{Binding IsBusy}" Value="False" />
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Visibility" Value="Visible" />
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <TextBlock Style="{StaticResource EmptyStateIcon}" Text="&#xE7BA;" />
+            <TextBlock Style="{StaticResource EmptyStateText}"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       Text="{DynamicResource S_TS_EmptyState}" />
+        </StackPanel>
+
+        <!-- Пропущенные состояния: не считаются в сводке и не показываются
+             карточками, возвращаются кнопкой «Вернуть» -->
+        <Expander Grid.Row="5"
+                  Margin="0,4,0,0"
+                  Visibility="{Binding HasSkipped, Converter={StaticResource BoolToVis}}">
+            <Expander.Header>
+                <TextBlock Style="{StaticResource BodyStrongText}"
+                           Text="{Binding SkippedHeaderText}" />
+            </Expander.Header>
+            <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding SkippedView}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Style="{StaticResource ListRowGrid}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Margin="0,-3,10,0"
+                                       VerticalAlignment="Top"
+                                       FontSize="18"
+                                       Text="—">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource DangerFillBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Severity}" Value="{x:Static models:DiagnosticSeverity.Warning}">
+                                                <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Severity}" Value="{x:Static models:DiagnosticSeverity.Info}">
+                                                <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <StackPanel Grid.Column="1" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource BodyText}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding Title}" />
+                                <TextBlock Style="{StaticResource CaptionText}"
+                                           Text="{Binding GroupTitle}" />
+                            </StackPanel>
+                            <Button Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource SmallButton}"
+                                    Content="{DynamicResource S_TS_Restore}"
+                                    Command="{Binding DataContext.RestoreCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Expander>
+
+        <TextBlock Grid.Row="6"
+                   Style="{StaticResource SectionStatusText}" Text="{Binding StatusText}" />
+    </Grid>
+</UserControl>

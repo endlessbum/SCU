@@ -123,6 +123,9 @@
          автоматически растягивается под текст (MinWidth только не даёт
          кнопке стать уже стандарта), поэтому текст не обрезается. -->
     <Style TargetType="Button">
+        <!-- П. 15 аудита: HelpText для скринридеров берётся из всплывающей
+             подсказки; явные AutomationProperties.* на элементе имеют приоритет. -->
+        <Setter Property="AutomationProperties.HelpText" Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
         <Setter Property="Background" Value="{DynamicResource ControlFillBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
@@ -273,10 +276,51 @@
         <Setter Property="FontSize" Value="12" />
     </Style>
 
+    <!-- ===================== Табы (SafeViewer: hex/текст/строки) =====================
+         Без стиля WPF рисует классические серые табы, выбивающиеся из «Liquid Glass».
+         Селект — мягкая заливка поверхности + акцентный текст, как у Segmented-кнопок. -->
+    <Style x:Key="AppTabControl" TargetType="TabControl">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+    </Style>
+    <Style x:Key="AppTabItem" TargetType="TabItem">
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="Margin" Value="0,0,4,0" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="8,8,0,0"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter ContentSource="Header" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource SubtleFillSecondaryBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentFillBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource SubtleFillTertiaryBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===================== Кнопки строки заголовка =====================
          Hover/pressed — скруглённая вставка внутри ячейки: мягкие состояния
          вместо прямоугольной заливки на всю высоту строки заголовка. -->
     <Style x:Key="WindowButton" TargetType="Button">
+        <!-- П. 15 аудита: HelpText для скринридеров берётся из всплывающей
+             подсказки; явные AutomationProperties.* на элементе имеют приоритет. -->
+        <Setter Property="AutomationProperties.HelpText" Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
         <Setter Property="Width" Value="46" />
         <Setter Property="Height" Value="38" />
         <Setter Property="Background" Value="Transparent" />
@@ -336,6 +380,9 @@
          Единые пропорции всех полей ввода: высота 36, MinWidth 120 (ширина
          растягивается под содержимое), отступы 12,7. -->
     <Style TargetType="TextBox">
+        <!-- П. 15 аудита: HelpText для скринридеров берётся из всплывающей
+             подсказки; явные AutomationProperties.* на элементе имеют приоритет. -->
+        <Setter Property="AutomationProperties.HelpText" Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
         <Setter Property="Background" Value="{DynamicResource ControlFillBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
@@ -446,6 +493,9 @@
 
     <!-- ===================== ToggleSwitch: капсула iOS 44×26 ===================== -->
     <Style x:Key="SystemToggleSwitch" TargetType="ToggleButton">
+        <!-- П. 15 аудита: HelpText для скринридеров берётся из всплывающей
+             подсказки; явные AutomationProperties.* на элементе имеют приоритет. -->
+        <Setter Property="AutomationProperties.HelpText" Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
         <!-- Копия переключателя с сайта SCU («Примени настройки в один клик»):
              серая пилюля #444444, белый пилюльный ползунок с мягкой тенью,
              при включении трек становится акцентным, ползунок уезжает вправо
@@ -460,7 +510,7 @@
                     <Grid Background="Transparent">
                         <Border x:Name="Track"
                                 CornerRadius="13"
-                                Background="#FF444444" />
+                                Background="{DynamicResource SwitchTrackOffBrush}" />
                         <Border x:Name="Knob"
                                 Width="23"
                                 Height="20"
@@ -525,13 +575,13 @@
         </Style.Triggers>
     </Style>
 
-    <!-- Большой выключатель «Состояния ПК» — тот же SystemToggleSwitch, масштаб 5×
-         (220×130, ручка 110): пропорции и шаги затемнения один в один, как у
-         тумблера во вкладках; анимация ручки чуть дольше, чтобы двигалась заметно. -->
     <!-- Большой выключатель «Состояния ПК» — копия переключателя сайта
          (вытянутые пропорции 2.13:1: 277×130, ползунок 116×100): белый
          пилюльный ползунок, серый трек → акцент, сдвиг по той же кривой. -->
     <Style x:Key="BigToggleSwitch" TargetType="ToggleButton">
+        <!-- П. 15 аудита: HelpText для скринридеров берётся из всплывающей
+             подсказки; явные AutomationProperties.* на элементе имеют приоритет. -->
+        <Setter Property="AutomationProperties.HelpText" Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
         <Setter Property="Width" Value="277" />
         <Setter Property="Height" Value="130" />
         <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
@@ -542,7 +592,7 @@
                     <Grid Background="Transparent">
                         <Border x:Name="Track"
                                 CornerRadius="65"
-                                Background="#FF444444" />
+                                Background="{DynamicResource SwitchTrackOffBrush}" />
                         <Border x:Name="Knob"
                                 Width="116"
                                 Height="100"
@@ -612,6 +662,9 @@
          как системный чекбокс iOS. Галочка — фиксированный белый: цвет акцента
          меняется в «Настройках», белая галочка читается на любом акценте. -->
     <Style TargetType="CheckBox">
+        <!-- П. 15 аудита: HelpText для скринридеров берётся из всплывающей
+             подсказки; явные AutomationProperties.* на элементе имеют приоритет. -->
+        <Setter Property="AutomationProperties.HelpText" Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
         <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
         <Setter Property="Template">
@@ -673,6 +726,9 @@
 
     <!-- ===================== ComboBox (высота 36) ===================== -->
     <Style TargetType="ComboBox">
+        <!-- П. 15 аудита: HelpText для скринридеров берётся из всплывающей
+             подсказки; явные AutomationProperties.* на элементе имеют приоритет. -->
+        <Setter Property="AutomationProperties.HelpText" Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
         <Setter Property="Background" Value="{DynamicResource ControlFillBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
@@ -1328,6 +1384,10 @@
          без рамки/заливки вокруг него. -->
     <Style TargetType="Expander">
         <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <!-- Stretch по умолчанию: строка-заголовок тянется на всю ширину (как раньше).
+             Шаблон транслирует это свойство в выравнивание всей строки целиком,
+             поэтому раздел может центрировать её (Главная: ровно под выключателем). -->
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Expander">
@@ -1335,6 +1395,7 @@
                         <ToggleButton x:Name="HeaderSite"
                                       ClickMode="Press"
                                       Cursor="Hand"
+                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                       HorizontalContentAlignment="Stretch"
                                       IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
                             <ToggleButton.Template>
@@ -1439,7 +1500,9 @@
                                           IsEnabled="{Binding DataContext.IsInteractive, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                           Command="{Binding DataContext.ToggleSwitchCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                           CommandParameter="{Binding}"
-                                          ToolTipService.ShowOnDisabled="True" />
+                                          ToolTipService.ShowOnDisabled="True"
+                                          AutomationProperties.Name="{Binding LocalizedTitle}"
+                                          AutomationProperties.HelpText="{Binding ActionDescription}" />
                         </Grid>
                     </Border>
                 </ControlTemplate>
@@ -1454,16 +1517,21 @@
     <DataTemplate DataType="{x:Type vm:HistoryEventRow}">
         <Grid Style="{StaticResource ListRowGrid}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="118" />
-                <ColumnDefinition Width="150" />
+                <!-- Время — фиксированная ширина, категория — гибкая с обрезкой:
+                     EN-локализованные категории не влезали в фиксированные 150. -->
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0"
+                       MinWidth="118"
+                       Margin="0,0,8,0"
                        FontSize="12"
                        Foreground="{DynamicResource TertiaryTextBrush}"
                        Text="{Binding TimeText}" />
             <TextBlock Grid.Column="1"
+                       MinWidth="150"
                        FontSize="12"
                        Foreground="{DynamicResource SecondaryTextBrush}"
                        TextTrimming="CharacterEllipsis"

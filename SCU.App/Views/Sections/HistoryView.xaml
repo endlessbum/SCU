@@ -20,62 +20,61 @@
 
     <StackPanel>
         <!-- ===================== Фильтр по категории ===================== -->
-        <Border Style="{StaticResource SectionCard}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0"
-                           VerticalAlignment="Center"
-                           Margin="0,0,12,0"
-                           Foreground="{DynamicResource SecondaryTextBrush}"
-                           Text="{DynamicResource D_HistoryFilterLabel}" />
-                <!-- Окно категории: по центру карточки; длинные названия не
-                     выезжают за границы — лишнее заменяется «...», полное
-                     название доступно в подсказке -->
-                <ComboBox Grid.Column="1"
-                          HorizontalAlignment="Center"
-                          MinWidth="220"
-                          MaxWidth="480"
-                          ItemsSource="{Binding CategoryFilterOptions}"
-                          SelectedItem="{Binding CategoryFilter}"
-                          ToolTip="{Binding SelectedItem, RelativeSource={RelativeSource Self}}"
-                          ToolTipService.InitialShowDelay="300">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding}"
-                                       TextTrimming="CharacterEllipsis"
-                                       ToolTip="{Binding}"
-                                       ToolTipService.InitialShowDelay="300" />
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-            </Grid>
-        </Border>
+        <!-- Без карточки, по центру раздела — как пустое состояние; длинные
+             названия не выезжают за границы — лишнее заменяется «...»,
+             полное название доступно в подсказке -->
+        <ComboBox HorizontalAlignment="Center"
+                  Margin="0,4,0,12"
+                  MinWidth="220"
+                  MaxWidth="480"
+                  ItemsSource="{Binding CategoryFilterOptions}"
+                  SelectedItem="{Binding CategoryFilter}"
+                  ToolTip="{Binding SelectedItem, RelativeSource={RelativeSource Self}}"
+                  ToolTipService.InitialShowDelay="300">
+            <ComboBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding}"
+                               ToolTipService.InitialShowDelay="300" />
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
 
         <!-- ===================== Список событий по дням ===================== -->
-        <Border Style="{StaticResource SectionCard}">
-            <StackPanel>
-                <ItemsControl ItemsSource="{Binding Rows}" />
-                <StackPanel HorizontalAlignment="Center" Margin="0,16,0,8">
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
+                <!-- Карточка списка: при пустом списке скрывается целиком; пустое состояние
+             не заворачивается в карточку и рисуется прямо на фоне, как в «Автозагрузке» -->
+        <Border>
+            <Border.Style>
+                <Style TargetType="Border" BasedOn="{StaticResource SectionCard}">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Rows.Count}" Value="0">
                             <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Rows.Count}" Value="0">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
-                    <TextBlock Style="{StaticResource EmptyStateIcon}" Text="&#xE946;" />
-                    <TextBlock Style="{StaticResource EmptyStateText}"
-                               HorizontalAlignment="Center"
-                               TextAlignment="Center"
-                               Text="{DynamicResource D_HistoryEmpty}" />
-                </StackPanel>
-            </StackPanel>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <ItemsControl ItemsSource="{Binding Rows}" />
         </Border>
+
+        <!-- Пустое состояние: без карточки, на фоне раздела -->
+        <StackPanel HorizontalAlignment="Center" Margin="0,24,0,8">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Rows.Count}" Value="0">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <TextBlock Style="{StaticResource EmptyStateIcon}" Text="&#xE946;" />
+            <TextBlock Style="{StaticResource EmptyStateText}"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       Text="{DynamicResource D_HistoryEmpty}" />
+        </StackPanel>
     </StackPanel>
 </UserControl>

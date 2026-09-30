@@ -15,13 +15,13 @@ public partial class PowerView : UserControl
     }
 
     // Объединённая подсказка ⓘ шапочных операций (схемы электропитания):
-    // XAML не умеет конкатенировать DynamicResource, ключи читаются из текущего
-    // словаря строк.
+    // каждая строка помечена именем кнопки плана — при открытии видно,
+    // какой комментарий к какой схеме относится.
     private void RefreshInfoTexts() =>
-        HeaderInfoGlyph.InfoText = InfoTexts.Join(
-            "I_PlanHigh",
-            "I_PlanUltimate",
-            "I_PlanBalanced",
-            "I_PlanPowerSaver",
-            "I_PlanBitsum");
+        HeaderInfoGlyph.InfoText = InfoTexts.JoinAttributed(
+            new InfoTexts.Attributed(["S_PlanHigh"], "I_PlanHigh"),
+            new InfoTexts.Attributed(["S_PlanUltimate"], "I_PlanUltimate"),
+            new InfoTexts.Attributed(["S_PlanBalanced"], "I_PlanBalanced"),
+            new InfoTexts.Attributed(["S_PlanPowerSaver"], "I_PlanPowerSaver"),
+            new InfoTexts.Attributed(["S_PlanBitsum"], "I_PlanBitsum"));
 }

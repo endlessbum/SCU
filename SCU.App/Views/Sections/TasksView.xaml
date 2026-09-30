@@ -19,10 +19,19 @@
             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,8,0">
                 <Button Content="{DynamicResource S_Backup}" Command="{Binding BackupCommand}" />
             </StackPanel>
+
             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,8,0">
                 <Button Content="{DynamicResource S_Rollback}" Command="{Binding RestoreCommand}" />
             </StackPanel>
-            <!-- Объединённая подсказка ⓘ операций «Бэкап» и «Откатить» (текст собирается в code-behind) -->
+
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,8,0">
+                <Button Content="{DynamicResource S_TasksDisableAll}"
+                        Command="{Binding DisableAllCommand}"
+                        ToolTip="{DynamicResource S_TasksToggleTip}"
+                        ToolTipService.ShowOnDisabled="True" />
+            </StackPanel>
+
+            <!-- Объединённая подсказка ⓘ операций «Бэкап», «Откатить» и «Отключить все» (текст собирается в code-behind) -->
             <controls:InfoGlyph x:Name="BackupInfoGlyph"
                                 DockPanel.Dock="Left"
                                 Margin="8,0,0,0"

@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -137,5 +137,28 @@ public partial class DashboardView : UserControl
     {
         ScrollSuggestionsBy(e.Delta);
         e.Handled = true;
+    }
+
+    // Бегущая по периметру полоса большого выключателя: доли штрихов считаются
+    // от фактического периметра скруглённого прямоугольника — штрих занимает
+    // 12% периметра, зазор — остальное. Раньше значения (46.7 342.2) были
+    // посчитаны вручную под конкретный размер 301×154 и ломались при его изменении.
+    private void OnBatchRingSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is not System.Windows.Shapes.Rectangle ring || ring.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        var radius = Math.Min(ring.RadiusX, ring.ActualHeight / 2);
+        var straight = 2 * (ring.ActualWidth - 2 * radius) + 2 * (ring.ActualHeight - 2 * radius);
+        var perimeter = straight + 2 * Math.PI * radius;
+        var units = perimeter / ring.StrokeThickness;
+        const double dashFraction = 0.12;
+        ring.StrokeDashArray = new DoubleCollection
+        {
+            dashFraction * units,
+            (1.0 - dashFraction) * units,
+        };
     }
 }

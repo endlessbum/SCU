@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="SCU Browser"
+        Title="{DynamicResource S_BrowserTitle}"
         MinWidth="1040" MinHeight="700"
         WindowState="Maximized"
         Background="{DynamicResource SolidRootBrush}"
@@ -19,6 +19,8 @@
             <Setter Property="MinWidth" Value="34" />
             <Setter Property="FontFamily" Value="{DynamicResource IconFontFamily}" />
             <Setter Property="FontSize" Value="15" />
+            <!-- П. 15 аудита: icon-only кнопки озвучиваются по всплывающей подсказке -->
+            <Setter Property="AutomationProperties.Name" Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
         </Style>
         <!-- Спиннер загрузки страницы в статус-баре -->
         <Style x:Key="PageSpinner" TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
@@ -76,19 +78,40 @@
                     Content="&#xE711;" Command="{Binding StopCommand}"
                     ToolTip="{DynamicResource S_BrowserStop}" ToolTipService.InitialShowDelay="300" />
 
-            <!-- Адресная строка: URL или поиск в Google -->
-            <TextBox Grid.Column="5"
-                     x:Name="AddressBox"
-                     Margin="8,0"
-                     VerticalContentAlignment="Center"
-                     GotKeyboardFocus="OnAddressGotKeyboardFocus"
-                     LostKeyboardFocus="OnAddressLostKeyboardFocus"
-                     KeyDown="OnAddressKeyDown"
-                     ToolTip="{DynamicResource S_BrowserAddress}">
-                <TextBox.Text>
-                    <Binding Path="AddressText" UpdateSourceTrigger="PropertyChanged" Mode="TwoWay" />
-                </TextBox.Text>
-            </TextBox>
+            <!-- Адресная строка: URL или поиск в Google. Для небезопасного http://
+                 слева внутри поля появляется бейдж «Не защищено», текст сдвигается
+                 Padding'ом (см. Style.Triggers). -->
+            <Grid Grid.Column="5" Margin="8,0">
+                <TextBox x:Name="AddressBox"
+                         VerticalContentAlignment="Center"
+                         GotKeyboardFocus="OnAddressGotKeyboardFocus"
+                         LostKeyboardFocus="OnAddressLostKeyboardFocus"
+                         KeyDown="OnAddressKeyDown"
+                         ToolTip="{DynamicResource S_BrowserAddress}">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsInsecureConnection}" Value="True">
+                                    <Setter Property="Padding" Value="96,7" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                    <TextBox.Text>
+                        <Binding Path="AddressText" UpdateSourceTrigger="PropertyChanged" Mode="TwoWay" />
+                    </TextBox.Text>
+                </TextBox>
+                <TextBlock Margin="12,0,0,0"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Left"
+                           IsHitTestVisible="False"
+                           FontSize="12"
+                           Foreground="{DynamicResource DangerBrush}"
+                           Text="{DynamicResource S_BrowserNotSecure}"
+                           ToolTip="{DynamicResource S_BrowserNotSecure}"
+                           ToolTipService.InitialShowDelay="300"
+                           Visibility="{Binding IsInsecureConnection, Converter={StaticResource BoolToVis}}" />
+            </Grid>
 
             <Button Grid.Column="6" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE734;" Command="{Binding ToggleBookmarkCommand}"
@@ -173,6 +196,7 @@
                                            FontFamily="{DynamicResource IconFontFamily}"
                                            FontSize="11"
                                            ToolTip="{DynamicResource S_BrowserCloseTab}"
+                                           AutomationProperties.Name="{DynamicResource S_BrowserCloseTab}"
                                            ToolTipService.InitialShowDelay="300"
                                            Text="&#xE711;">
                                     <TextBlock.InputBindings>

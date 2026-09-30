@@ -389,6 +389,9 @@ public partial class MainWindow : Window
             20 => new Views.Sections.BenchmarkView { DataContext = viewModel.Benchmark },
             21 => new Views.Sections.ScannerView { DataContext = viewModel.Scanner },
             22 => new Views.Sections.BrowserView { DataContext = viewModel.Browser },
+            25 => new Views.Sections.DriversView { DataContext = viewModel.Drivers },
+            24 => new Views.Sections.DeepSeekView { DataContext = viewModel.DeepSeek },
+            23 => new Views.Sections.TroubleshootingView { DataContext = viewModel.Troubleshooting },
             >= 100 => new Views.Sections.CustomUtilitiesView
             {
                 DataContext = viewModel.GetCustomSectionViewModel(number),
@@ -405,12 +408,21 @@ public partial class MainWindow : Window
         Loaded -= OnLoaded;
         _viewModel.MenuApplied -= OnMenuApplied;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        if (_sectionHighlight is { } highlight)
+        {
+            _viewModel.SectionHighlightRequested -= highlight.OnSectionHighlightRequested;
+        }
+
+        _viewModel.CurrentSectionChanged -= ShowSectionView;
         if (_globalHotkeyRegistered && _hwndSource is not null)
         {
             Interop.GlobalHotkeys.Unregister(_hwndSource.Handle);
         }
         ThemeManager.ThemeApplied -= OnThemeApplied;
         ThemeManager.IconAccentChanged -= OnIconAccentChanged;
+        // Flush истории стартует параллельно с закрытием окна: App.OnExit дождётся
+        // его с тем же бюджетом 2 с, но окно к этому моменту уже исчезло с экрана.
+        _ = Task.Run(() => SCU.Infrastructure.Storage.HistoryStore.FlushPendingAsync(TimeSpan.FromSeconds(2)));
         _viewModel.Dispose();
         base.OnClosing(e);
     }

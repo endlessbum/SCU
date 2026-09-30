@@ -1,0 +1,241 @@
+<Window x:Class="SCU.Views.DeepSeekChatWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="{DynamicResource S_DeepSeekChatTitle}"
+        Width="1000" Height="680"
+        MinWidth="760" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource SolidRootBrush}"
+        d:DesignHeight="680" d:DesignWidth="1000">
+
+    <!-- Окно чата DeepSeek (раздел 24): слева история чатов, справа переписка.
+         Оформление — те же темы/кисти/стили, что у основного окна SCU. -->
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <!-- Кнопка-глиф панели (плюс, удаление) -->
+        <Style x:Key="ChatToolButton" TargetType="Button" BasedOn="{StaticResource SmallButton}">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="MinWidth" Value="30" />
+            <Setter Property="FontFamily" Value="{DynamicResource IconFontFamily}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250" />
+            <ColumnDefinition Width="12" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ===================== История чатов ===================== -->
+        <Border Grid.Column="0" Style="{StaticResource SectionCard}" Margin="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock VerticalAlignment="Center"
+                               Style="{StaticResource RowHeaderText}"
+                               Text="{DynamicResource S_DeepSeekHistory}" />
+                    <Button Grid.Column="1" Style="{StaticResource ChatToolButton}"
+                            Content="&#xE710;"
+                            Command="{Binding NewChatCommand}"
+                            ToolTip="{DynamicResource S_DeepSeekNewChat}"
+                            ToolTipService.InitialShowDelay="300" />
+                </Grid>
+                <ListBox Grid.Row="1"
+                         x:Name="SessionsList"
+                         ItemsSource="{Binding Sessions}"
+                         SelectedItem="{Binding ActiveSession, Mode=TwoWay}"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Padding="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <!-- Одна строка: название (с обрезкой), дата, кнопка удаления -->
+                        <Grid Margin="2" MinHeight="30">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       Style="{StaticResource CaptionText}"
+                                       Text="{Binding Title}" />
+                            <TextBlock Grid.Column="1"
+                                       Margin="8,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                       Style="{StaticResource CaptionText}"
+                                       Text="{Binding CreatedText}" />
+                            <Button Grid.Column="2" VerticalAlignment="Center"
+                                    Style="{StaticResource ChatToolButton}"
+                                    Content="&#xE74D;"
+                                    Command="{Binding DataContext.DeleteSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}"
+                                    ToolTip="{DynamicResource S_DeepSeekDeleteChat}"
+                                    ToolTipService.InitialShowDelay="300" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <!-- ===================== Переписка ===================== -->
+        <Border Grid.Column="2" Style="{StaticResource SectionCard}" Margin="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <ScrollViewer Grid.Row="0" x:Name="MessagesScroll" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <!-- Пустой чат: подсказка вместо переписки -->
+                        <TextBlock Margin="8,24,8,8"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Text="{DynamicResource S_DeepSeekEmptyHint}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource RowActionText}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveSession.Messages.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ActiveSession}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <ItemsControl x:Name="MessagesList"
+                                      ItemsSource="{Binding ActiveSession.Messages}"
+                                      Padding="4,0,4,8">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,4">
+                                        <!-- Пузырь: пользователь — справа (акцент), ассистент — слева,
+                                             ошибка — красный оттенок. Выравнивание только через стиль:
+                                             локальный атрибут перебил бы триггеры IsUser/IsError. -->
+                                        <Border MaxWidth="720"
+                                                Padding="12,8"
+                                                CornerRadius="12"
+                                                Background="{DynamicResource ControlFillBrush}"
+                                                BorderBrush="{DynamicResource ControlStrokeBrush}"
+                                                BorderThickness="1">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="HorizontalAlignment" Value="Left" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsUser}" Value="True">
+                                                            <Setter Property="HorizontalAlignment" Value="Right" />
+                                                            <Setter Property="Background" Value="{DynamicResource AccentTintBrush}" />
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentStrokeBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsError}" Value="True">
+                                                            <Setter Property="Background" Value="{DynamicResource DangerTintBrush}" />
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource DangerStrokeBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <TextBlock TextWrapping="Wrap"
+                                                           Style="{StaticResource BodyText}"
+                                                           Text="{Binding Content}" />
+                                                <TextBlock HorizontalAlignment="Right"
+                                                           Margin="0,4,0,0"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                                           Style="{StaticResource CaptionText}"
+                                                           Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Строка ввода: Enter — отправить, Shift+Enter — перенос строки -->
+                <Grid Grid.Row="1" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             x:Name="InputBox"
+                             VerticalContentAlignment="Center"
+                             AcceptsReturn="True"
+                             MaxHeight="120"
+                             VerticalScrollBarVisibility="Auto"
+                             PreviewKeyDown="OnInputPreviewKeyDown"
+                             ToolTip="{DynamicResource S_DeepSeekInputHint}"
+                             Text="{Binding InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox">
+                                <Style.Triggers>
+                                    <!-- Ввод блокируется на время генерации — как в SCU AI -->
+                                    <DataTrigger Binding="{Binding IsWaiting}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                        <Control VerticalAlignment="Center" Margin="0,0,8,0">
+                            <Control.Style>
+                                <Style TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
+                                    <Setter Property="Width" Value="14" />
+                                    <Setter Property="Height" Value="14" />
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsWaiting}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Control.Style>
+                        </Control>
+                        <Button MinWidth="96"
+                                Command="{Binding SendCommand}"
+                                Content="{DynamicResource S_DeepSeekSend}" />
+                        <Button Margin="8,0,0,0"
+                                MinWidth="86"
+                                Content="{DynamicResource S_DeepSeekStop}"
+                                Command="{Binding StopCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsWaiting}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

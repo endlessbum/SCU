@@ -2,7 +2,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
-using SCU.Services;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;

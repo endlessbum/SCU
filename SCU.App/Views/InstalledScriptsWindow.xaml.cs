@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using SCU.Common;
-using SCU.Services;
 using SCU.ViewModels;
 
 namespace SCU.Views;

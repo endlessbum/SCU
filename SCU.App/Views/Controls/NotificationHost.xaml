@@ -11,16 +11,17 @@
     </UserControl.Resources>
     <StackPanel>
         <!-- Информер: подсказка про отключение UAC-уведомлений в настройках;
-             видна, только когда есть уведомления -->
+             видна, только когда есть уведомления (раньше триггеры противоречили
+             друг другу и подсказка никогда не появлялась) -->
         <TextBlock Margin="0,0,0,6"
                    HorizontalAlignment="Right"
-                   TextTrimming="CharacterEllipsis"
+                   TextWrapping="Wrap"
                    MaxWidth="420"
                    Text="{DynamicResource S_NotificationsHint}">
             <TextBlock.Style>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
                     <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
-                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Setter Property="Visibility" Value="Visible" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding Items.Count, FallbackValue=0}" Value="0">
                             <Setter Property="Visibility" Value="Collapsed" />
@@ -60,7 +61,7 @@
                                    Text="{Binding KindGlyph}" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Style="{StaticResource RowHeaderText}"
-                                       TextTrimming="CharacterEllipsis"
+                                       TextWrapping="Wrap"
                                        Text="{Binding Title}" />
                             <TextBlock Margin="0,2,0,0"
                                        Style="{StaticResource CaptionText}"
@@ -79,6 +80,8 @@
                                 Style="{StaticResource SmallButton}"
                                 FontFamily="{DynamicResource IconFontFamily}"
                                 Content="&#xE711;"
+                                ToolTip="{DynamicResource S_NotificationDismiss}"
+                                AutomationProperties.Name="{DynamicResource S_NotificationDismiss}"
                                 Click="OnDismissClick" />
                     </Grid>
                 </Border>

@@ -5,7 +5,10 @@ publish/
 artifacts/
 build/
 out/
-build/
+
+# Приложения
+.zcode/
+.kiro/
 
 # C++ промежуточные артефакты
 *.obj
@@ -23,15 +26,15 @@ installer/
 *.suo
 .vs/
 
+# Windows shell metadata
+desktop.ini
+
 # Logs
 logs/
 *.log
 
 # Test results
-%TEMP%/
 TestResults/
-.zcode/
-installer/
 
 SecurityScanner/signing/*.pfx
 SecurityScanner/signing/*.pvk

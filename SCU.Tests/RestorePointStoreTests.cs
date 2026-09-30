@@ -1,4 +1,4 @@
-﻿using SCU.Services;
+﻿using SCU.Infrastructure.Storage;
 using Xunit;
 
 namespace SCU.Tests;

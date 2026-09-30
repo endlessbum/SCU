@@ -1,5 +1,4 @@
 using SCU.Common;
-using SCU.Services;
 using SCU.ViewModels.Sections;
 using Xunit;
 

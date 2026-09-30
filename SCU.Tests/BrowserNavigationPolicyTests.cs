@@ -1,4 +1,3 @@
-using SCU.Services.Browser;
 using Xunit;
 
 namespace SCU.Tests;

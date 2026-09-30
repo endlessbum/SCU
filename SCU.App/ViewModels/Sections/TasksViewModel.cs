@@ -4,8 +4,6 @@ using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models;
-using SCU.Services;
-using SCU.Services.Dashboard;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;
@@ -51,6 +49,7 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
     [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
     [NotifyCanExecuteChangedFor(nameof(DisableCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DisableAllCommand))]
     private bool isBusy;
 
     [ObservableProperty]
@@ -68,6 +67,9 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
         : LastBackupPath;
 
     public bool HasBackup => !string.IsNullOrWhiteSpace(LastBackupPath) && File.Exists(LastBackupPath);
+
+    // Есть ли хотя бы одна задача, доступная для отключения (кнопка «Отключить все»).
+    public bool HasEnabledRows => Rows.Any(r => r.CanDisable);
 
     public string ReadOnlyHint
     {
@@ -214,6 +216,69 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
         }).ConfigureAwait(true);
     }
 
+    [RelayCommand(CanExecute = nameof(CanDisableAll))]
+    private async Task DisableAllAsync()
+    {
+        // Снимок включённых задач: BackupCoreAsync ниже перечитывает список Rows.
+        var targets = Rows.Where(r => r.CanDisable).ToList();
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        var confirmed = _dialogs.Ask(
+            L.T("Отключение задач"),
+            L.T("Отключить все перечисленные задачи ({0})?\nВернуть прежние состояния можно через «Откатить».", targets.Count),
+            L.T("Отключить"));
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await RunExclusiveAsync("отключение всех задач", async ct =>
+        {
+            if (!_backupDoneThisSession)
+            {
+                var backup = await BackupCoreAsync(ct).ConfigureAwait(true);
+                if (!backup)
+                {
+                    return;
+                }
+            }
+
+            StatusText = L.T("Отключение всех задач…");
+            _logger.Info("TASKS | disable-all | count=" + targets.Count);
+
+            var result = await _runner.RunAsync(
+                "TasksDisable",
+                new Dictionary<string, string?>
+                {
+                    ["Tasks"] = string.Join(";", targets.Select(t => t.FullPath))
+                },
+                progress: null,
+                ct).ConfigureAwait(true);
+
+            if (result.IsSuccess)
+            {
+                StatusText = L.T("Задачи отключены. {0}", result.Message);
+                _logger.Info("TASKS | disable-all ok");
+                _history.Enqueue(new HistoryEvent(
+                    DateTime.Now,
+                    L.T("Задачи"),
+                    L.T("Отключение всех задач ({0})", targets.Count),
+                    HistoryEvent.StatusOk,
+                    string.Join("; ", targets.Select(t => t.Name))));
+            }
+            else
+            {
+                StatusText = L.T("Не удалось отключить задачи (код {0}): {1}", result.Code, result.Message);
+                _logger.Error($"TASKS | disable-all rc={result.Code} | {result.Message}");
+            }
+
+            await LoadRowsAsync(ct).ConfigureAwait(true);
+        }).ConfigureAwait(true);
+    }
+
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
@@ -240,6 +305,8 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
 
     private bool CanDisable(ScheduledTaskInfo? row) =>
         !IsBusy && IsAdmin && IsSCUAvailable && row is not null && row.CanDisable;
+
+    private bool CanDisableAll() => !IsBusy && IsAdmin && IsSCUAvailable && HasEnabledRows;
 
     private bool CanCancel() => IsBusy;
 
@@ -294,6 +361,7 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
         }
 
         DisableCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(HasEnabledRows));
     }
 
     private async Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action)

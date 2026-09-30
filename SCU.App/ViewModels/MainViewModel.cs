@@ -5,24 +5,30 @@ using System.Windows;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SCU.AppCore.AI;
+using SCU.AppCore.Help;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models;
-using SCU.Services;
-using SCU.Services.Browser;
-using SCU.Services.Dashboard;
+using SCU.Models.AI;
 using SCU.ViewModels.Sections;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels;
 
-public partial class MainViewModel : ObservableObject, IDisposable
+public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnvironment
 {
     private readonly Logger _logger;
+
+    // AI-помощник: один экземпляр на приложение (п. 29 ТЗ), навигация — через
+    // этот же MainViewModel (IScuAiEnvironment, п. 30 ТЗ).
+    private ScuAiAssistant? _aiAssistant;
 
     // Доступ для окон-редакторов (MenuEditorWindow) и VM пользовательских вкладок.
     internal Logger Log => _logger;
     private readonly IConfirmDialogService _dialogs;
+    private readonly IFilePickerService _filePicker = new FilePickerService();
+    private readonly IShellOpenService _shell = new ShellOpenService();
 
     public MainViewModel(Logger logger, SCURunner scuRunner)
     {
@@ -31,13 +37,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         Sections =
         [
-            new SectionItem(0, "S_Section00_Title", "S_Section00_Desc", "\uE9D9", "S_Group_Overview"),
+            // «Главная» — без группы: в сайдбаре стоит над заголовком «Обзор».
+            new SectionItem(0, "S_Section00_Title", "S_Section00_Desc", "\uE9D9"),
             new SectionItem(20, "S_Section20_Title", "S_Section20_Desc", "\uE9D2", "S_Group_Overview"),
             new SectionItem(1, "S_Section01_Title", "S_Section01_Desc", "\uE946", "S_Group_Overview"),
             new SectionItem(3, "S_Section03_Title", "S_Section03_Desc", "\uE74D", "S_Group_Cleanup"),
             new SectionItem(4, "S_Section04_Title", "S_Section04_Desc", "\uE711", "S_Group_Cleanup"),
             new SectionItem(12, "S_Section12_Title", "S_Section12_Desc", "\uE721", "S_Group_Cleanup"),
             new SectionItem(2, "S_Section02_Title", "S_Section02_Desc", "\uE719", "S_Group_Cleanup"),
+            // Раздел 23 «Устранение неполадок»: read-only диагностика + подтверждаемые исправления.
+            // Технический номер — 23; предыдущие разделы не перенумеровываются.
+            new SectionItem(23, "S_Section23_Title", "S_Section23_Desc", "\uE7BA", "S_Group_Cleanup"),
             new SectionItem(5, "S_Section05_Title", "S_Section05_Desc", "\uE72E", "S_Group_Privacy"),
             new SectionItem(13, "S_Section13_Title", "S_Section13_Desc", "\uE72E", "S_Group_Privacy"),
             new SectionItem(21, "S_Section21_Title", "S_Section21_Desc", "\uEA18", "S_Group_Privacy"),
@@ -46,11 +56,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             new SectionItem(7, "S_Section07_Title", "S_Section07_Desc", "\uE768", "S_Group_System"),
             new SectionItem(15, "S_Section15_Title", "S_Section15_Desc", "\uE823", "S_Group_System"),
             new SectionItem(16, "S_Section16_Title", "S_Section16_Desc", "\uE895", "S_Group_System"),
+            // Раздел 25 «Драйверы»: инвентарь + обновления через Windows Update API
+            // (25 — следующий свободный технический номер).
+            new SectionItem(25, "S_Section25_Title", "S_Section25_Desc", "\uE965", "S_Group_System"),
             new SectionItem(8, "S_Section08_Title", "S_Section08_Desc", "\uE7E8", "S_Group_Tuning"),
             new SectionItem(9, "S_Section09_Title", "S_Section09_Desc", "\uE701", "S_Group_Tuning"),
             new SectionItem(10, "S_Section10_Title", "S_Section10_Desc", "\uE8B7", "S_Group_Tuning"),
             new SectionItem(11, "S_Section11_Title", "S_Section11_Desc", "\uE7FC", "S_Group_Tuning"),
             new SectionItem(22, "S_Section22_Title", "S_Section22_Desc", "\uE774", "S_Group_App"),
+            // Раздел 24 «DeepSeek»: чат с ассистентом по API (24 — следующий
+            // свободный технический номер; в меню стоит сразу после «Браузера»).
+            new SectionItem(24, "S_Section24_Title", "S_Section24_Desc", "\uE99A", "S_Group_App"),
             new SectionItem(18, "S_Section18_Title", "S_Section18_Desc", "\uE81C", "S_Group_App"),
             new SectionItem(17, "S_Section17_Title", "S_Section17_Desc", "\uE713", "S_Group_App"),
         ];
@@ -109,7 +125,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             history);
         Startup = new StartupViewModel(_logger, scuRunner, dialogs, history);
         Tasks = new TasksViewModel(_logger, scuRunner, new TaskManager(scuRunner), dialogs, history);
-        Services = new ServicesViewModel(_logger, scuRunner, new ServiceManager(), history);
+        Services = new ServicesViewModel(_logger, scuRunner, new ServiceManager(), history, dialogs);
         Privacy = new PrivacyViewModel(_logger, scuRunner, dialogs);
         var longRunner = new LongProcessRunner(_logger);
         Power = new PowerViewModel(_logger, longRunner, dialogs, history);
@@ -120,6 +136,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Maintenance = new MaintenanceViewModel(_logger, longRunner, dialogs, history);
         Security = new SecurityViewModel(_logger, dialogs);
         Update = new UpdateViewModel(_logger, scuRunner, dialogs, history);
+        // Раздел 25 «Драйверы»: инвентарь WMI + Windows Update API (COM),
+        // история — тот же HistoryStore.
+        Drivers = new DriversViewModel(_logger, history);
+        // Раздел 23 «Устранение неполадок»: движок создаётся внутри VM вместе
+        // с probes; исправления идут через тот же LongProcessRunner и HistoryStore.
+        Troubleshooting = new TroubleshootingViewModel(_logger, dialogs, history, longRunner);
         // Раздел 21 «Сканер»: ScannerRunner по образцу SCURunner, история
         // сканов пишется в тот же HistoryStore, что и операции других разделов.
         Scanner = new ScannerViewModel(_logger, new ScannerRunner(_logger), history);
@@ -179,6 +201,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             SectionHighlightRequested?.Invoke(number, null);
         };
 
+        // Раздел 23 «Устранение неполадок»: кнопки «Открыть …» ведут в существующие
+        // разделы (очистка, обновления, сеть, службы и т.д.) — без дублирования.
+        Troubleshooting.NavigateToSectionRequested += number => SelectSectionByNumber(number);
+
         // Раздел 19 «Приложения»: чтение Uninstall-реестра и запуск деинсталляторов.
         Apps = new AppsViewModel(_logger, dialogs);
 
@@ -194,6 +220,57 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Dashboard.SectionTitleResolver = number =>
             Sections.FirstOrDefault(section => section.Number == number)?.Title ?? string.Empty;
         ApplyMenu();
+
+        // Раздел 24 «DeepSeek»: ключ API и история чатов — в %AppData%\SCU\deepseek.
+        // Создаётся до AI-слоя: контекст ассистента читает активное подключение
+        // (провайдер/модель — без ключа) в момент хода, а не при сборке графа.
+        var deepSeekClient = new DeepSeekClient(_logger);
+        DeepSeek = new DeepSeekViewModel(
+            _logger,
+            dialogs,
+            deepSeekClient,
+            new DeepSeekSettingsService(_logger),
+            new DeepSeekChatsService(_logger));
+
+        // ===================== AI-слой (п. 29 ТЗ) =====================
+        // Один экземпляр каждого сервиса на приложение: tools получают их через
+        // ScuAiToolDeps, вторых экземпляров нет. Источник знаний — внутренняя
+        // справка, построенная из тех же разделов/утилит/переключателей, что
+        // видит пользователь; реестр capabilities — над Dashboard.Utilities.
+        var helpService = new ScuHelpService(BuildHelpIndex);
+        var plans = new ScuAiActionPlanStore(_logger);
+        var capabilities = new ScuAiCapabilityRegistry(_logger, Dashboard, Ui, Input, Privacy);
+        var toolDeps = new ScuAiToolDeps
+        {
+            Logger = _logger,
+            Help = helpService,
+            Plans = plans,
+            Capabilities = capabilities,
+            Environment = this,
+            // Опасные AI-операции — через существующий диалог подтверждения
+            // SCU (DestructiveChange), отдельный от карточки в чате.
+            Dialogs = dialogs,
+            State = new ScuAiStateSources
+            {
+                Info = Info,
+                Power = Power,
+                Network = Network,
+                Privacy = Privacy,
+                Ui = Ui,
+                Input = Input,
+                Services = Services,
+                Startup = Startup,
+                Update = Update,
+                Maintenance = Maintenance,
+                Troubleshooting = Troubleshooting,
+            },
+        };
+        var planExecutor = new ScuAiPlanExecutor(toolDeps);
+        var toolRegistry = new ScuAiToolRegistry(_logger, CreateAiTools(toolDeps, planExecutor));
+        var contextBuilder = new ScuAiContextBuilder(this, DeepSeek);
+        _aiAssistant = new ScuAiAssistant(
+            _logger, deepSeekClient, toolRegistry, contextBuilder, planExecutor, this, helpService);
+        DeepSeek.AttachAssistant(_aiAssistant);
 
         foreach (var line in _logger.Snapshot())
         {
@@ -217,445 +294,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event Action<int, string?>? SectionHighlightRequested;
 
     // Пересчёт статусов из конструктора: логика та же, что была при однократном вычислении.
-    // ===================== Пользовательские скрипты =====================
-
-    private readonly UserScriptStore _userScriptStore;
-
-    public ObservableCollection<UserScriptCard> UserScripts { get; } = [];
-
-    // «Установленные» активны, пока есть хотя бы один добавленный скрипт.
-    [ObservableProperty]
-    private bool _hasInstalledScripts;
-
-    // Поднимается при любом изменении набора скриптов (слушает полосы карточек).
-    public event Action? UserScriptsChanged;
-
-    [ObservableProperty]
-    private string _selectedScriptPath = string.Empty;
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(AddScriptCommand))]
-    private bool _isValidatingScript;
-
-    // Карточка скрипта в полосе раздела.
-    public sealed partial class UserScriptCard : ObservableObject
-    {
-        public UserScriptCard(UserScriptData data)
-        {
-            Id = data.Id;
-            Title = data.Title;
-            Comment = data.Comment;
-            Tooltip = data.Tooltip;
-            SectionNumber = data.SectionNumber;
-            Data = data;
-        }
-
-        public string Id { get; }
-
-        public string Title { get; }
-
-        public string Comment { get; }
-
-        public string Tooltip { get; }
-
-        public bool HasTooltip => !string.IsNullOrEmpty(Tooltip);
-
-        public int SectionNumber { get; }
-
-        public UserScriptData Data { get; }
-
-        [ObservableProperty]
-        private bool _isRunning;
-
-        [ObservableProperty]
-        private string? _resultText;
-    }
-
-    private void ReloadUserScripts()
-    {
-        UserScripts.Clear();
-        foreach (var data in _userScriptStore.Load())
-        {
-            UserScripts.Add(new UserScriptCard(data));
-        }
-
-        HasInstalledScripts = UserScripts.Count > 0;
-        UserScriptsChanged?.Invoke();
-    }
-
-    public bool AddUserScript(string sourcePath, int sectionNumber, string title,
-        string comment, string tooltip)
-    {
-        try
-        {
-            var id = "us_" + Guid.NewGuid().ToString("N")[..12];
-            var data = _userScriptStore.Import(sourcePath, sectionNumber, title, comment, tooltip, id);
-            ReloadUserScripts();
-            var sectionTitle = Sections.FirstOrDefault(section => section.Number == sectionNumber)?.Title ?? "";
-            AppNotificationCenter.Instance.Push(
-                L.T("Скрипт добавлен"),
-                L.T("«{0}» размещён в разделе «{1}».", data.Title, sectionTitle),
-                AppNotificationKind.Success);
-            _logger.Info($"USCRIPT | added | {data.Id} | section={sectionNumber}");
-            return true;
-        }
-        catch (Exception exception)
-        {
-            _logger.Error("USCRIPT | add failed | " + exception);
-            AppNotificationCenter.Instance.Push(
-                L.T("Скрипт не добавлен"),
-                L.T("Ошибка: {0}", exception.Message),
-                AppNotificationKind.Danger);
-            return false;
-        }
-    }
-
-    public void RemoveUserScript(string id)
-    {
-        var data = _userScriptStore.Load().FirstOrDefault(script => script.Id == id);
-        if (data is null)
-        {
-            return;
-        }
-
-        _userScriptStore.Delete(data);
-        var scripts = _userScriptStore.Load();
-        _userScriptStore.Save(scripts.Where(script => script.Id != id).ToList());
-        ReloadUserScripts();
-        _logger.Info("USCRIPT | removed | " + id);
-    }
-
-    public async Task<string?> RunUserScriptAsync(UserScriptCard card)
-    {
-        card.IsRunning = true;
-        card.ResultText = null;
-        try
-        {
-            var (exitCode, output) = await _userScriptStore.RunAsync(card.Data).ConfigureAwait(true);
-            card.ResultText = exitCode == 0
-                ? (output.Length > 0 ? output : L.T("Готово."))
-                : L.T("Код {0}: {1}", exitCode, output.Length > 0 ? output : L.T("без вывода"));
-            _logger.Info($"USCRIPT | run | {card.Id} | rc={exitCode}");
-            return card.ResultText;
-        }
-        catch (Exception exception)
-        {
-            card.ResultText = L.T("Ошибка: {0}", exception.Message);
-            _logger.Error("USCRIPT | run failed | " + card.Id + " | " + exception);
-            return card.ResultText;
-        }
-        finally
-        {
-            card.IsRunning = false;
-        }
-    }
-
-    // ===================== Редактирование меню =====================
-
-    private readonly MenuCustomizationStore _menuStore;
-    private MenuCustomization _menu = MenuCustomization.Empty;
-
-    public MenuCustomization Menu => _menu;
-
-    private const int CustomSectionFirstNumber = 100;
-
-    private readonly Dictionary<int, CustomUtilitiesViewModel> _customSectionViewModels = [];
-
-    public CustomUtilitiesViewModel GetCustomSectionViewModel(int sectionNumber) =>
-        _customSectionViewModels.TryGetValue(sectionNumber, out var viewModel)
-            ? viewModel
-            : throw new InvalidOperationException("Неизвестная пользовательская вкладка " + sectionNumber);
-
-    // Применение модели меню к Sections, поиску и пользовательским вкладкам.
-    public void ApplyMenu()
-    {
-        _menu.Hidden = _menu.Hidden.Where(number => number < CustomSectionFirstNumber).Distinct().ToList();
-
-        // 1. Встроенные разделы: переименования, группы.
-        foreach (var section in Sections.Where(section => section.Number < CustomSectionFirstNumber))
-        {
-            section.TitleOverride = _menu.Titles.GetValueOrDefault(section.Number.ToString());
-            section.GroupOverride = _menu.Groups.GetValueOrDefault(section.Number.ToString());
-        }
-
-        // 2. Пользовательские вкладки: пересоздаются с нуля (порядок = порядок в модели).
-        foreach (var section in Sections.Where(section => section.Number >= CustomSectionFirstNumber).ToList())
-        {
-            Sections.Remove(section);
-        }
-
-        foreach (var custom in _menu.CustomSections)
-        {
-            Sections.Add(SectionItem.CreateCustom(custom.Id, custom.Title, custom.Group));
-            var viewModel = _customSectionViewModels.TryGetValue(custom.Id, out var existing)
-                ? existing
-                : new CustomUtilitiesViewModel(custom.Id, _logger);
-            viewModel.Rebuild(custom.Utils, id => Dashboard.GetUtility(id));
-            _customSectionViewModels[custom.Id] = viewModel;
-        }
-
-        // 3. Скрытие встроенных разделов.
-        foreach (var section in Sections
-                     .Where(section => section.Number < CustomSectionFirstNumber
-                         && _menu.Hidden.Contains(section.Number))
-                     .ToList())
-        {
-            Sections.Remove(section);
-        }
-
-        // 4. Поиск: пользовательские вкладки для утилит (только не удалённые).
-        foreach (var custom in _menu.CustomSections)
-        {
-            foreach (var utilityId in custom.Utils)
-            {
-                if (Dashboard.GetUtility(utilityId) is { } utility && utility.Section != custom.Id)
-                {
-                    Dashboard.SetUtilitySection(utilityId, custom.Id);
-                }
-            }
-        }
-
-        // 5. Выбор должен оставаться валидным (скрытая вкладка закрывается;
-        //    сайдбар мог обнулить выделение при удалении элементов).
-        if (CurrentSection is null || !Sections.Contains(CurrentSection))
-        {
-            CurrentSection = Sections.FirstOrDefault();
-        }
-    }
-
-    // Поднимается после каждого применения меню: MainWindow сбрасывает кэш
-    // view пользовательских вкладок (переиспользование id показывало старое).
-    public event Action? MenuApplied;
-
-    private void SaveMenu()
-    {
-        _menuStore.Save(_menu);
-        ApplyMenu();
-        MenuApplied?.Invoke();
-    }
-
-    public void SetSectionHidden(int number, bool hidden)
-    {
-        if (number >= CustomSectionFirstNumber)
-        {
-            return;
-        }
-
-        _menu.Hidden.Remove(number);
-        if (hidden)
-        {
-            _menu.Hidden.Add(number);
-        }
-
-        SaveMenu();
-    }
-
-    public void SetSectionTitle(int number, string title)
-    {
-        var trimmed = title.Trim();
-        if (number >= CustomSectionFirstNumber)
-        {
-            var custom = _menu.CustomSections.FirstOrDefault(section => section.Id == number);
-            if (custom is not null)
-            {
-                custom.Title = trimmed;
-                SaveMenu();
-            }
-
-            return;
-        }
-
-        if (trimmed.Length == 0)
-        {
-            _menu.Titles.Remove(number.ToString());
-        }
-        else
-        {
-            _menu.Titles[number.ToString()] = trimmed;
-        }
-
-        SaveMenu();
-    }
-
-    public void SetSectionGroup(int number, string group)
-    {
-        var raw = group.Trim();
-        if (number >= CustomSectionFirstNumber)
-        {
-            var custom = _menu.CustomSections.FirstOrDefault(section => section.Id == number);
-            if (custom is not null)
-            {
-                custom.Group = raw;
-                SaveMenu();
-            }
-
-            return;
-        }
-
-        if (raw.Length == 0)
-        {
-            _menu.Groups.Remove(number.ToString());
-        }
-        else
-        {
-            _menu.Groups[number.ToString()] = raw;
-        }
-
-        SaveMenu();
-    }
-
-    public int AddCustomSection(string title, string group)
-    {
-        var id = _menu.CustomSections.Count == 0
-            ? CustomSectionFirstNumber
-            : Math.Max(CustomSectionFirstNumber, _menu.CustomSections.Max(section => section.Id)) + 1;
-        _menu.CustomSections.Add(new CustomSectionData
-        {
-            Id = id,
-            Title = title.Trim(),
-            Group = group.Trim(),
-            Utils = [],
-        });
-        SaveMenu();
-        return id;
-    }
-
-    public void DeleteCustomSection(int number)
-    {
-        var custom = _menu.CustomSections.FirstOrDefault(section => section.Id == number);
-        if (custom is null)
-        {
-            return;
-        }
-
-        // Утилиты возвращаются в родные разделы (OriginalSection в реестре).
-        foreach (var utilityId in custom.Utils)
-        {
-            Dashboard.ResetUtilitySection(utilityId);
-        }
-
-        _menu.CustomSections.Remove(custom);
-        _customSectionViewModels.Remove(number);
-        SaveMenu();
-    }
-
-    public bool AddUtilityToCustomSection(int number, string utilityId)
-    {
-        var custom = _menu.CustomSections.FirstOrDefault(section => section.Id == number);
-        if (custom is null || Dashboard.GetUtility(utilityId) is null
-            || custom.Utils.Contains(utilityId))
-        {
-            return false;
-        }
-
-        custom.Utils.Add(utilityId);
-        SaveMenu();
-        return true;
-    }
-
-    public void RemoveUtilityFromCustomSection(int number, string utilityId)
-    {
-        var custom = _menu.CustomSections.FirstOrDefault(section => section.Id == number);
-        if (custom is null)
-        {
-            return;
-        }
-
-        custom.Utils.Remove(utilityId);
-        // Утилита возвращается в родной раздел, если не назначена в другую вкладку.
-        if (!_menu.CustomSections.Any(section => section.Utils.Contains(utilityId)))
-        {
-            Dashboard.ResetUtilitySection(utilityId);
-        }
-
-        SaveMenu();
-    }
-
-    // Удаление встроенной утилиты (кроме списка главной страницы).
-    public bool DeleteUtility(string utilityId)
-    {
-        if (_menu.DeletedUtils.Contains(utilityId))
-        {
-            return false;
-        }
-
-        _menu.DeletedUtils.Add(utilityId);
-        Dashboard.DeleteUtility(utilityId);
-        _menuStore.Save(_menu);
-        ApplyMenu();
-        return true;
-    }
-
-    // Полный сброс меню к заводскому виду: реестр утилит тоже возвращается
-    // (удалённые восстанавливаются, перемещённые — в родные разделы) без перезапуска.
-    public void ResetMenu()
-    {
-        _menu = new MenuCustomization();
-        _menuStore.Save(_menu);
-        _customSectionViewModels.Clear();
-        Dashboard.ResetRegistry();
-        ApplyMenu();
-        MenuApplied?.Invoke();
-        _logger.Info("MENU | reset to defaults");
-    }
-
-    // ===================== Добавление своего скрипта =====================
-
-    public event Action? InstalledScriptsRequested;
-
-    [RelayCommand]
-    private void PickScript()
-    {
-        var dialog = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = L.T("Выбор скрипта"),
-            Filter = L.T("Скрипты (*.ps1;*.bat)|*.ps1;*.bat|Все файлы (*.*)|*.*"),
-        };
-        if (dialog.ShowDialog() == true)
-        {
-            SelectedScriptPath = dialog.FileName;
-        }
-    }
-
-    private bool CanAddScript() =>
-        !IsValidatingScript
-        && SelectedScriptPath.Length > 0
-        && File.Exists(SelectedScriptPath)
-        && UserScriptStore.IsSupportedExtension(SelectedScriptPath);
-
-    [RelayCommand(CanExecute = nameof(CanAddScript))]
-    private async Task AddScriptAsync()
-    {
-        // Кнопка «Добавить» на время проверки сменяется спиннером.
-        IsValidatingScript = true;
-        try
-        {
-            var validation = await _userScriptStore.ValidateAsync(SelectedScriptPath).ConfigureAwait(true);
-            if (!validation.Ok)
-            {
-                AppNotificationCenter.Instance.Push(
-                    L.T("Скрипт не рабочий"),
-                    validation.Message,
-                    AppNotificationKind.Danger);
-                _logger.Warn("USCRIPT | validation failed | " + SelectedScriptPath + " | " + validation.Message);
-                return;
-            }
-
-            // Скрипт рабочий: мастер размещения (раздел → имя → комментарий/информер).
-            ScriptPlacementRequested?.Invoke(SelectedScriptPath);
-        }
-        finally
-        {
-            IsValidatingScript = false;
-        }
-    }
-
-    // Обрабатывается SettingsView: открывает мастер размещения карточки.
-    public event Action<string>? ScriptPlacementRequested;
-
-    [RelayCommand]
-    private void ShowInstalledScripts() => InstalledScriptsRequested?.Invoke();
-
     private void RefreshHotkeyTexts()
     {
         OnPropertyChanged(nameof(GlobalHotkeysLabel));
@@ -691,6 +329,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Тот же ленивый init (InitializeAsync + refresh), помечается как загруженный.
         EnsureSectionInitialized(7);
 
+        // Бэнчмарк запускается сразу после InitializeAsync (App.RunStartupAsync →
+        // TriggerInitialBenchmark): дожидаемся инициализации автозагрузки, иначе
+        // метрика «Элементов автозагрузки» считает состояние до загрузки списка.
+        if (_startupInitTask is { } startupInit)
+        {
+            await startupInit.ConfigureAwait(true);
+        }
+
         // Тихое автообновление базы сканера с GitHub Releases при старте.
         TaskRunner.RunAndForget(Scanner.AutoUpdateDatabaseAsync(), _logger, "scanner db auto-update");
 
@@ -703,114 +349,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         TaskRunner.RunAndForget(CheckForUpdatesQuietAsync(), _logger, "update check");
     }
 
-    // ===================== Проверка обновлений =====================
-
-    private readonly UpdateCheckService _updateCheckService = new();
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(CheckForUpdatesCommand))]
-    private bool _isCheckingUpdates;
-
-    [ObservableProperty]
-    private string _updateStatusText = string.Empty;
-
-    private bool CanCheckForUpdates() => !IsCheckingUpdates;
-
-    // Единовременность проверок: тихая и ручная не выполняются параллельно
-    // (иначе при доступном обновлении приходят два одинаковых уведомления).
-    private bool _updateCheckRunning;
-
-    // Уведомление о новой версии показывается один раз за сеанс.
-    private bool _updateNotified;
-
-    [RelayCommand(CanExecute = nameof(CanCheckForUpdates))]
-    private async Task CheckForUpdatesAsync()
-    {
-        if (_updateCheckRunning)
-        {
-            return;
-        }
-
-        IsCheckingUpdates = true;
-        UpdateStatusText = L.T("Проверка наличия обновлений…");
-        try
-        {
-            await ApplyUpdateCheckAsync(quiet: false).ConfigureAwait(true);
-        }
-        finally
-        {
-            IsCheckingUpdates = false;
-        }
-    }
-
-    // Тихая автопроверка: без статусных строк, уведомление только при новой версии.
-    private async Task CheckForUpdatesQuietAsync()
-    {
-        // Дать окну и фоновым инициализациям завершиться — проверка не важнее UI.
-        await Task.Delay(TimeSpan.FromSeconds(20)).ConfigureAwait(true);
-        if (_updateCheckRunning)
-        {
-            return;
-        }
-
-        await ApplyUpdateCheckAsync(quiet: true).ConfigureAwait(true);
-    }
-
-    private async Task ApplyUpdateCheckAsync(bool quiet)
-    {
-        _updateCheckRunning = true;
-        try
-        {
-            await ApplyUpdateCheckCoreAsync(quiet).ConfigureAwait(true);
-        }
-        finally
-        {
-            _updateCheckRunning = false;
-        }
-    }
-
-    private async Task ApplyUpdateCheckCoreAsync(bool quiet)
-    {
-        var result = await _updateCheckService.CheckAsync().ConfigureAwait(true);
-        if (!result.Success)
-        {
-            _logger.Warn("UPDATE | check failed | " + result.Error);
-            if (!quiet)
-            {
-                UpdateStatusText = L.T("Не удалось проверить обновления: {0}", result.Error);
-            }
-
-            return;
-        }
-
-        if (result.HasUpdate)
-        {
-            UpdateStatusText = L.T("Доступна новая версия: SCU {0} (установлена {1}).",
-                result.LatestVersion, result.CurrentVersion);
-            if (!_updateNotified)
-            {
-                _updateNotified = true;
-                AppNotificationCenter.Instance.Push(
-                    L.T("Доступна новая версия SCU"),
-                    L.T("Установлена {0}, доступна {1}. Откройте страницу релизов, чтобы обновиться.",
-                        result.CurrentVersion, result.LatestVersion),
-                    AppNotificationKind.Info,
-                    result.ReleaseUrl);
-            }
-
-            _logger.Info($"UPDATE | available | {result.LatestVersion} > {result.CurrentVersion}");
-            return;
-        }
-
-        _logger.Info("UPDATE | up to date | " + result.CurrentVersion);
-        if (!quiet)
-        {
-            UpdateStatusText = L.T("Обновление не требуется: у вас актуальная версия ({0}).", result.CurrentVersion);
-        }
-    }
-
     private Dictionary<int, Func<Task>>? _sectionInits;
     private readonly HashSet<int> _initializedSections = [];
+
+    // Задача ленивой инициализации автозагрузки (раздел 7) — InitializeAsync
+    // дожидается её перед автозапуском бэнчмарка.
+    private Task? _startupInitTask;
 
     // Ленивая инициализация раздела при первом открытии: тот же код, что раньше
     // выполнялся целиком на заставке. Повторное открытие — без повторного refresh.
@@ -825,22 +369,37 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             [1] = () => ExecuteRefreshAsync(Info.RefreshCommand),
             [2] = () => ExecuteRefreshAsync(Components.RefreshCommand),
-            [4] = () => Bloat.InitializeAsync()
-                .ContinueWith(_ => ExecuteRefreshAsync(Bloat.RefreshCommand), TaskScheduler.FromCurrentSynchronizationContext()),
+            // await вместо ContinueWith: ContinueWith запускает continuation даже после
+            // сбоя InitializeAsync и сам завершается успешно — ошибка терялась молча.
+            [4] = async () =>
+            {
+                await Bloat.InitializeAsync().ConfigureAwait(true);
+                await ExecuteRefreshAsync(Bloat.RefreshCommand).ConfigureAwait(true);
+            },
             [5] = () => ExecuteRefreshAsync(Privacy.RefreshCommand),
-            [6] = () => Services.InitializeAsync()
-                .ContinueWith(_ => ExecuteRefreshAsync(Services.RefreshCommand), TaskScheduler.FromCurrentSynchronizationContext()),
-            [7] = () => Startup.InitializeAsync()
-                .ContinueWith(_ => ExecuteRefreshAsync(Startup.RefreshCommand), TaskScheduler.FromCurrentSynchronizationContext()),
+            [6] = async () =>
+            {
+                await Services.InitializeAsync().ConfigureAwait(true);
+                await ExecuteRefreshAsync(Services.RefreshCommand).ConfigureAwait(true);
+            },
+            [7] = async () =>
+            {
+                await Startup.InitializeAsync().ConfigureAwait(true);
+                await ExecuteRefreshAsync(Startup.RefreshCommand).ConfigureAwait(true);
+            },
             [8] = () => ExecuteRefreshAsync(Power.RefreshCommand),
             [9] = () => ExecuteRefreshAsync(Network.RefreshCommand),
             [10] = () => ExecuteRefreshAsync(Ui.RefreshCommand),
             [11] = () => ExecuteRefreshAsync(Input.RefreshCommand),
             [12] = () => ExecuteRefreshAsync(Maintenance.RefreshCommand),
             [13] = () => ExecuteRefreshAsync(Security.RefreshCommand),
-            [15] = () => Tasks.InitializeAsync()
-                .ContinueWith(_ => ExecuteRefreshAsync(Tasks.RefreshCommand), TaskScheduler.FromCurrentSynchronizationContext()),
+            [15] = async () =>
+            {
+                await Tasks.InitializeAsync().ConfigureAwait(true);
+                await ExecuteRefreshAsync(Tasks.RefreshCommand).ConfigureAwait(true);
+            },
             [16] = () => ExecuteRefreshAsync(Update.RefreshCommand),
+            [25] = () => ExecuteRefreshAsync(Drivers.RefreshCommand),
             [19] = () => ExecuteRefreshAsync(Apps.RefreshCommand),
         };
 
@@ -849,7 +408,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        RunSectionInitAsync("lazy-" + number.Value, init);
+        // Fire-and-forget: ошибки внутри RunSectionInitAsync логируются.
+        var initTask = RunSectionInitAsync("lazy-" + number.Value, init);
+        if (number.Value == 7)
+        {
+            _startupInitTask = initTask;
+        }
     }
 
     // Инициализация/refresh одного раздела: ошибка логируется, остальные продолжают работу.
@@ -908,9 +472,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public UpdateViewModel Update { get; }
 
+    public DriversViewModel Drivers { get; }
+
     public ScannerViewModel Scanner { get; }
 
     public BrowserViewModel Browser { get; }
+
+    public DeepSeekViewModel DeepSeek { get; }
+
+    public TroubleshootingViewModel Troubleshooting { get; }
 
     [ObservableProperty]
     private SectionItem? currentSection;
@@ -1060,6 +630,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         [1] = Info, [2] = Components, [4] = Bloat, [5] = Privacy, [6] = Services,
         [7] = Startup, [8] = Power, [9] = Network, [10] = Ui, [11] = Input,
         [12] = Maintenance, [13] = Security, [15] = Tasks, [16] = Update, [19] = Apps,
+        [23] = Troubleshooting, [25] = Drivers,
     };
 
     private static bool GetIsBusy(ObservableObject viewModel) =>
@@ -1145,7 +716,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public string AboutSettingsPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SCU", "settings.json");
 
-    public string AboutStatePath => SCU.Services.Dashboard.DashboardStatePaths.Directory;
+    public string AboutStatePath => SCU.Infrastructure.Storage.DashboardStatePaths.Directory;
 
     public string AboutBackupPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SCU", "backup");
@@ -1172,6 +743,111 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // П. 13 аудита: окно подписывается и подменяет содержимое navigation host.
     public event Action<int?>? CurrentSectionChanged;
+
+    // ===================== IScuAiEnvironment (п. 30 ТЗ) =====================
+    // Навигация AI использует тот же механизм, что клик по сайдбару:
+    // SelectSectionByNumber + SectionHighlightRequested. Нового navigation
+    // host нет (п. 38 тз — не дублировать).
+
+    int? IScuAiEnvironment.CurrentSectionNumber => CurrentSection?.Number;
+
+    string IScuAiEnvironment.CurrentSectionTitle => CurrentSection?.Title ?? string.Empty;
+
+    // Последняя подсвеченная утилита: SectionHighlightRequested несёт заголовок
+    // строки; id нет — он разрезается по заголовку из реестра Dashboard.
+    string? IScuAiEnvironment.CurrentUtilityId => _currentUtilityTitle is null
+        ? null
+        : Dashboard.Utilities.FirstOrDefault(utility =>
+            string.Equals(utility.ResolveTitle(), _currentUtilityTitle, StringComparison.Ordinal))?.Id;
+
+    string? IScuAiEnvironment.CurrentUtilityTitle => _currentUtilityTitle;
+
+    bool IScuAiEnvironment.IsAdmin => IsAdmin;
+
+    IReadOnlyList<int> IScuAiEnvironment.AvailableSections =>
+        Sections.Where(section => section.Number >= 0).Select(section => section.Number).ToList();
+
+    bool IScuAiEnvironment.NavigateToSection(int sectionNumber)
+    {
+        SelectSectionByNumber(sectionNumber);
+        return true;
+    }
+
+    void IScuAiEnvironment.HighlightUtility(int sectionNumber, string? utilityTitle)
+    {
+        _currentUtilityTitle = utilityTitle;
+        SectionHighlightRequested?.Invoke(sectionNumber, utilityTitle);
+    }
+
+    private string? _currentUtilityTitle;
+
+    // ===================== Сборка индекса справки AI (п. 4 ТЗ) =====================
+    // Разделы — из того же меню, что видит пользователь; утилиты — из реестра
+    // Dashboard; переключатели — из тех же строк разделов UI/Input; ⓘ-тексты —
+    // из каталога I_*. Пересобирается при смене языка (ScuHelpService слушает
+    // L.LanguageChanged), сам обход идёт только в момент сборки.
+    private IReadOnlyList<ScuHelpEntry> BuildHelpIndex()
+    {
+        var builder = new ScuHelpIndexBuilder(key =>
+            Application.Current?.TryFindResource(key) as string);
+
+        foreach (var section in Sections)
+        {
+            builder.AddSection(section.Number);
+        }
+
+        foreach (var utility in Dashboard.Utilities)
+        {
+            builder.AddUtility(utility);
+        }
+
+        foreach (var row in Ui.ExplorerRows.Concat(Ui.VisualFxRows).Append(Ui.RecommendedRow))
+        {
+            builder.AddSwitch(row.Id, 10, row);
+        }
+
+        foreach (var row in Input.Rows)
+        {
+            builder.AddSwitch(row.Id, 11, row);
+        }
+
+        foreach (var (infoKey, sectionNumber, utilityId) in ScuHelpInfoCatalog.Entries)
+        {
+            builder.AddInfo(infoKey, sectionNumber, utilityId);
+        }
+
+        return builder.Build();
+    }
+
+    // ===================== Реестр AI tools (п. 6/8 ТЗ) =====================
+    // Набор фиксирован: только эти typed tools и существуют. Любой другой
+    // «инструмент» отвергается registry (allowlist).
+    private static IReadOnlyList<IScuAiTool> CreateAiTools(
+        ScuAiToolDeps deps,
+        ScuAiPlanExecutor executor) =>
+    [
+        new ScuSearchHelpTool(deps),
+        new ScuGetHelpTool(deps),
+        new ScuGetContextTool(),
+        new ScuOpenSectionTool(deps),
+        new ScuFocusUtilityTool(deps),
+        new ScuGetSystemSummaryTool(deps),
+        new ScuGetNetworkStateTool(deps),
+        new ScuGetPowerStateTool(deps),
+        new ScuGetPrivacyStateTool(deps),
+        new ScuGetUiStateTool(deps),
+        new ScuGetInputStateTool(deps),
+        new ScuGetServicesStateTool(deps),
+        new ScuGetStartupStateTool(deps),
+        new ScuGetUpdateStateTool(deps),
+        new ScuGetMaintenanceStateTool(deps),
+        new ScuGetTroubleshootingStateTool(deps),
+        new ScuPrepareChangeTool(deps),
+        new ScuApplyChangeTool(executor),
+        new ScuRunDiagnosticsTool(deps),
+        new ScuListAppFilesTool(),
+        new ScuReadAppFileTool(),
+    ];
 
     partial void OnCurrentSectionChanged(SectionItem? value)
     {
@@ -1228,11 +904,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         _logger.Error($"ELEVATION | rc={result.Code} | {result.Message}");
-        MessageBox.Show(
-            result.Message,
-            L.T("Права администратора"),
-            MessageBoxButton.OK,
-            MessageBoxImage.Warning);
+        // Вместо системного MessageBox — карточка центра уведомлений в стиле приложения.
+        SystemNotificationInterceptor.ReportWarning(L.T("Права администратора"), result.Message);
     }
 
     private const int MaxLogLines = 5000;
@@ -1301,6 +974,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Apps.Dispose();
         Scanner.Dispose();
         Browser.Dispose();
+        Troubleshooting.Dispose();
     }
 }
 

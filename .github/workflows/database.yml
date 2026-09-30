@@ -1,0 +1,103 @@
+# Ежедневная пересборка и публикация базы сигнатур сканера: fetch (внешние
+# дампы SHA256 — MalwareBazaar recent + GitHub-агрегаторы) -> подписанный
+# пакет (ECDSA P-256, секрет DB_SIGNING_KEY) -> GitHub Release с датным тегом.
+# Дефолтный URL обновления в приложении — releases/latest/download/database-latest.zip:
+# свежий релиз с флагом --latest сам становится целью автообновления при старте.
+#
+# Источники переопределяются репо-переменной DATABASE_SOURCES (строка из
+# токенов вида «имя|url», разделённых пробелами); пусто — встроенный дефолт.
+# Секрет DB_SIGNING_KEY — тот же, что в ci.yml/release.yml (base64 PEM).
+name: database
+
+on:
+  schedule:
+    - cron: '30 3 * * *' # ежедневно 03:30 UTC; GitHub может сдвигать расписание
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: database-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore database signing key
+        env:
+          DB_SIGNING_KEY: ${{ secrets.DB_SIGNING_KEY }}
+        run: |
+          if [ -z "$DB_SIGNING_KEY" ]; then
+            echo "::error::Секрет DB_SIGNING_KEY не задан. Settings -> Secrets and variables -> Actions -> New repository secret (base64 от db-signing-private.pem)."
+            exit 1
+          fi
+          echo "$DB_SIGNING_KEY" | base64 -d > SecurityScanner/tools/database-builder/db-signing-private.pem
+
+      - name: Fetch hashes from external dumps
+        working-directory: SecurityScanner/tools/database-builder
+        env:
+          DATABASE_SOURCES: ${{ vars.DATABASE_SOURCES }}
+        run: |
+          ARGS=()
+          if [ -n "$DATABASE_SOURCES" ]; then
+            for token in $DATABASE_SOURCES; do
+              ARGS+=(--source "$token")
+            done
+          fi
+          mkdir -p ../../build
+          dotnet run DatabaseBuilder.cs -- fetch --out ../../build/hashes.txt "${ARGS[@]}"
+          wc -c ../../build/hashes.txt
+
+      - name: Build signed package
+        working-directory: SecurityScanner/tools/database-builder
+        run: |
+          VERSION=$(date -u +%Y.%m.%d)
+          dotnet run DatabaseBuilder.cs -- build \
+            --key db-signing-private.pem \
+            --hashes ../../build/hashes.txt \
+            --version "$VERSION" \
+            --out ../../build/database-latest.zip
+          echo "DB_VERSION=$VERSION" >> "$GITHUB_ENV"
+          sha256sum ../../build/database-latest.zip
+
+      # Контроль, что пакет не «пустой» и подписан: размеры членов ZIP и
+      # количество записей выводятся DatabaseBuilder (package written: N entries).
+      - name: Sanity check package
+        run: |
+          test -s build/database-latest.zip || { echo "::error::пакет не создан"; exit 1; }
+          unzip -l build/database-latest.zip
+          unzip -p build/database-latest.zip db-version.json
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: db-${{ env.DB_VERSION }}
+        run: |
+          # Перезапуск воркфлоу за тот же день: старый релиз сносятся и создаётся заново.
+          gh release delete "$TAG" --cleanup-tag -y 2>/dev/null || true
+          gh release create "$TAG" build/database-latest.zip \
+            --latest \
+            --title "Scanner database $DB_VERSION" \
+            --notes "Автосборка базы сигнатур из внешних дампатов за $DB_VERSION."
+
+      # Датные релизы копятся; старше 30 дней чистим, чтобы не раздувать список.
+      - name: Cleanup old database releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUTOFF=$(date -u -d '30 days ago' +%s)
+          gh release list --json tagName,createdAt --limit 100 \
+            | jq -r --argjson cutoff "$CUTOFF" \
+              '.[] | select(.tagName | startswith("db-")) | select((.createdAt | fromdate) < $cutoff) | .tagName' \
+            | while read -r tag; do
+                gh release delete "$tag" --cleanup-tag -y || true
+              done

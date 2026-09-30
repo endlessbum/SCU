@@ -9,12 +9,14 @@
             <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
         </Style>
         <!-- Журнал — только чтение: без подсветки при наведении (у общего стиля
-             TextBox есть hover-триггер и курсор «рука»); курсор — текстовый. -->
-        <Style x:Key="LogTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+             TextBox есть hover-триггер и курсор «рука»); курсор — текстовый.
+             RichTextBox: цветные уровни строк (ошибка/предупреждение) вешаются
+             на отдельные Run — обычный TextBox красит только весь текст целиком. -->
+        <Style x:Key="LogTextBoxStyle" TargetType="RichTextBox" BasedOn="{StaticResource {x:Type RichTextBox}}">
             <Setter Property="Cursor" Value="IBeam" />
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="TextBox">
+                    <ControlTemplate TargetType="RichTextBox">
                         <ScrollViewer x:Name="PART_ContentHost"
                                       Margin="{TemplateBinding Padding}"
                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
@@ -34,20 +36,23 @@
                    Style="{StaticResource LogHeaderText}"
                    Text="{DynamicResource S_LogHeader}" />
 
-        <!-- ReadOnly TextBox: нативное выделение и копирование, в отличие от списка -->
-        <TextBox x:Name="LogTextBox"
-                 Grid.Row="1"
-                 IsReadOnly="True"
-                 Style="{StaticResource LogTextBoxStyle}"
-                 Background="Transparent"
-                 BorderThickness="0"
-                 Padding="0"
-                 VerticalContentAlignment="Top"
-                 Foreground="{DynamicResource SecondaryTextBrush}"
-                 FontFamily="{DynamicResource MonoFontFamily}"
-                 FontSize="12"
-                 TextWrapping="NoWrap"
-                 VerticalScrollBarVisibility="Auto"
-                 HorizontalScrollBarVisibility="Auto" />
+        <!-- ReadOnly RichTextBox: нативное выделение и копирование, в отличие от списка;
+             цвет строки задаёт уровень из Logger (ERROR/WARN/INFO/вывод процессов). -->
+        <RichTextBox x:Name="LogTextBox"
+                     Grid.Row="1"
+                     IsReadOnly="True"
+                     IsUndoEnabled="False"
+                     AcceptsReturn="False"
+                     AcceptsTab="False"
+                     Style="{StaticResource LogTextBoxStyle}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="0"
+                     VerticalContentAlignment="Top"
+                     Foreground="{DynamicResource SecondaryTextBrush}"
+                     FontFamily="{DynamicResource MonoFontFamily}"
+                     FontSize="12"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto" />
     </Grid>
 </UserControl>

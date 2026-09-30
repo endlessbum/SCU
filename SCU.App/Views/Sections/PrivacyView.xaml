@@ -15,10 +15,12 @@
 
         <!-- Шапка раздела: операция и объединённая подсказка ⓘ (описания раздела во view нет) -->
         <WrapPanel Grid.Row="0" Margin="0,0,0,12">
-            <Button Content="{DynamicResource S_PrivacyQuietMode}"
+            <Button Content="{DynamicResource S_PrivacyEnableAll}"
                     Margin="0,0,8,8"
-                    Command="{Binding QuietModeCommand}" />
-            <controls:InfoGlyph Margin="6,0,0,8" VerticalAlignment="Center" InfoText="{DynamicResource I_PrivacyQuietMode}" />
+                    Command="{Binding EnableAllCommand}"
+                    ToolTipService.ShowOnDisabled="True"
+                    ToolTip="{DynamicResource S_PrivacyEnableAllHint}" />
+            <controls:InfoGlyph Margin="6,0,0,8" VerticalAlignment="Center" InfoText="{DynamicResource I_PrivacyEnableAll}" />
         </WrapPanel>
             <ItemsControl Grid.Row="1" Margin="0" ItemsSource="{Binding Rows}">
                 <ItemsControl.ItemTemplate>

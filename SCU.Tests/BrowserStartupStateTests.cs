@@ -1,7 +1,6 @@
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Models.Browser;
-using SCU.Services.Browser;
 using SCU.ViewModels.Sections;
 using Xunit;
 

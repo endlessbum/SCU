@@ -1,4 +1,3 @@
-using SCU.Services;
 using Xunit;
 
 namespace SCU.Tests;

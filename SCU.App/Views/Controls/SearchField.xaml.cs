@@ -18,6 +18,8 @@ public partial class SearchField : UserControl
     public SearchField()
     {
         InitializeComponent();
+        // Курсор рисуется на пиксель раньше текста (нативный наезжает на глиф).
+        Loaded += (_, _) => SearchCaretAdorner.Attach(Field);
     }
 
     public string SearchText

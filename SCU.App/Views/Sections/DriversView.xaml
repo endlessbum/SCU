@@ -1,0 +1,274 @@
+﻿<UserControl
+             x:Class="SCU.Views.Sections.DriversView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="720" d:DesignWidth="860">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Состояние драйверов -->
+        <Border Grid.Row="0" Style="{StaticResource SectionCard}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvStateTitle}" />
+                <TextBlock Style="{StaticResource CardIntroText}"
+                           Text="{DynamicResource S_DrvStateDesc}" />
+                <Button Content="{DynamicResource S_DrvRescan}"
+                        HorizontalAlignment="Left"
+                        Margin="0,8,0,0"
+                        Command="{Binding RefreshCommand}" />
+                <TextBlock Text="{Binding SummaryText}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource SectionStatusText}">
+                            <Style.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <!-- Обновления драйверов (Windows Update) -->
+        <Border Grid.Row="1" Style="{StaticResource SectionCard}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvUpdatesTitle}" />
+                <TextBlock Style="{StaticResource CardIntroText}"
+                           Text="{DynamicResource S_DrvUpdatesDesc}" />
+                <Button Content="{DynamicResource S_DrvSearch}"
+                        HorizontalAlignment="Left"
+                        Margin="0,8,0,0"
+                        Command="{Binding SearchUpdatesCommand}" />
+                <TextBlock Text="{Binding UpdatesHeaderText}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource SectionStatusText}">
+                            <Style.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding AvailableUpdates}">
+                    <ItemsControl.Style>
+                        <Style TargetType="ItemsControl">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding AvailableUpdates.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ItemsControl.Style>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Style="{StaticResource ListRowGrid}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0">
+                                    <TextBlock Style="{StaticResource BodyText}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Text="{Binding Title}" />
+                                    <TextBlock Style="{StaticResource CaptionText}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Text="{Binding Details}" />
+                                </StackPanel>
+                                <Control Grid.Column="1"
+                                         VerticalAlignment="Center"
+                                         Margin="0,0,8,0">
+                                    <Control.Style>
+                                        <Style TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
+                                            <Setter Property="Width" Value="14" />
+                                            <Setter Property="Height" Value="14" />
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsInstalling}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Control.Style>
+                                </Control>
+                                <Button Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource SmallButton}"
+                                        Content="{DynamicResource S_DrvInstall}"
+                                        Command="{Binding DataContext.InstallUpdateCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Style="{StaticResource AccentButton}"
+                        Content="{DynamicResource S_DrvInstallAll}"
+                        HorizontalAlignment="Left"
+                        Margin="0,12,0,0"
+                        Command="{Binding InstallAllCommand}"
+                        Visibility="{Binding HasUpdates, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Style="{StaticResource SectionStatusText}"
+                           Text="{Binding WuHintText}"
+                           Visibility="{Binding HasWuHint, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Устройства и драйверы -->
+        <Border Grid.Row="2" Style="{StaticResource SectionCard}"
+                Visibility="{Binding HasDevices, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource BodyStrongText}"
+                           Margin="0,0,0,8"
+                           Text="{DynamicResource S_DrvDevicesTitle}" />
+                <ItemsControl ItemsSource="{Binding Devices}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Style="{StaticResource ListRowGrid}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                    <TextBlock Style="{StaticResource BodyText}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Text="{Binding Name}" />
+                                    <TextBlock Style="{StaticResource CaptionText}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Text="{Binding DetailsText}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1"
+                                           VerticalAlignment="Center"
+                                           FontFamily="{DynamicResource IconFontFamily}"
+                                           Foreground="{DynamicResource WarnBrush}"
+                                           Visibility="{Binding HasProblem, Converter={StaticResource BoolToVis}}"
+                                           Text="&#xE7BA;" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- Проблемные устройства -->
+        <Border Grid.Row="3" Style="{StaticResource SectionCard}"
+                Visibility="{Binding HasProblems, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Style="{StaticResource BodyStrongText}"
+                               Text="{DynamicResource S_DrvProblemsTitle}" />
+                    <Button Grid.Column="1"
+                            Style="{StaticResource SmallButton}"
+                            Content="{DynamicResource S_DrvDevManager}"
+                            Command="{Binding OpenDeviceManagerCommand}" />
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Problems}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Style="{StaticResource ListRowGrid}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Margin="0,1,10,0"
+                                           VerticalAlignment="Top"
+                                           FontFamily="{DynamicResource IconFontFamily}"
+                                           Foreground="{DynamicResource WarnBrush}"
+                                           Text="&#xE7BA;" />
+                                <TextBlock Grid.Column="1"
+                                           Style="{StaticResource RowActionText}"
+                                           TextWrapping="Wrap"
+                                           Text="{Binding ProblemText}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- Безопасность: точка восстановления + драйверы через WU -->
+        <Border Grid.Row="4" Style="{StaticResource SectionCard}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvSafetyTitle}" />
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}" Text="{DynamicResource S_DrvRestorePoint}" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_DrvRestorePointDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="1"
+                                  VerticalAlignment="Center"
+                                  Style="{StaticResource SystemToggleSwitch}"
+                                  AutomationProperties.Name="{DynamicResource S_DrvRestorePoint}"
+                                  IsChecked="{Binding CreateRestorePoint, Mode=TwoWay}" />
+                </Grid>
+                <Border Margin="0,12,0,0"
+                        Height="1"
+                        Background="{DynamicResource SeparatorBrush}" />
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}" Text="{DynamicResource S_DrvWuAllowed}" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_DrvWuAllowedDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="1"
+                                  VerticalAlignment="Center"
+                                  Style="{StaticResource SystemToggleSwitch}"
+                                  AutomationProperties.Name="{DynamicResource S_DrvWuAllowed}"
+                                  IsChecked="{Binding DriverUpdatesAllowed, Mode=TwoWay}"
+                                  IsEnabled="{Binding IsInteractive}"
+                                  Command="{Binding ToggleDriverUpdatesCommand}"
+                                  ToolTipService.ShowOnDisabled="True" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Резервная копия драйверов -->
+        <Border Grid.Row="5" Style="{StaticResource SectionCard}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvExportTitle}" />
+                <TextBlock Style="{StaticResource CardIntroText}"
+                           Text="{DynamicResource S_DrvExportDesc}" />
+                <Button Content="{DynamicResource S_DrvExport}"
+                        HorizontalAlignment="Left"
+                        Margin="0,8,0,0"
+                        Command="{Binding ExportCommand}" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="6" Margin="0,4,0,8">
+            <TextBlock Style="{StaticResource SectionStatusText}"
+                       Text="{Binding StatusText}" />
+            <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

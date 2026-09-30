@@ -8,6 +8,10 @@ namespace SCU.Tests;
 // EICAR smoke, включая обычный файл). Отсутствие бинарника — FAIL (п. 10
 // аудита: тихий PASS недопустим); локальный осознанный skip — только через
 // SCU_ALLOW_INTEGRATION_SKIP=1 с явной пометкой SKIPPED в выводе теста.
+// Suite=Integration — реальный подпроцесс ScannerCore; Suite=Security —
+// обязательные security-регрессии п. 11 аудита (фильтры CI-матрицы).
+[Trait("Suite", "Integration")]
+[Trait("Suite", "Security")]
 public partial class ScannerCoreIntegrationTests
 {
     private static string? FindScannerCore()

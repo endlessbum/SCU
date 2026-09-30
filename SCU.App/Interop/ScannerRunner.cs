@@ -30,7 +30,9 @@ public sealed class ScannerRunner
     public bool IsAvailable => File.Exists(_scannerPath);
 
     // Пин-проверка ScannerCore перед запуском (п. 48: предотвращение подмены).
-    // Работает без доверенных корней: точное совпадение отпечатка сертификата.
+    // 1) WinVerifyTrust: хэш подписи соответствует содержимому — файл со
+    //    скопированным сертификатом не проходит (CreateFromSignedFile его бы пропустил).
+    // 2) Точное совпадение отпечатка сертификата подписанта с пином.
     // В dev-сборках (без пина) пропускается.
     private Result VerifyScannerPin()
     {
@@ -41,7 +43,19 @@ public sealed class ScannerRunner
 
         try
         {
+            var trust = SignatureVerifier.VerifyAuthenticodeIntegrity(_scannerPath);
+            if (!trust.IsSuccess)
+            {
+                _logger.Error("SCAN | pin check | ScannerCore failed WinVerifyTrust | " + trust.Message);
+                return Result.Failure("ScannerCore.exe: проверка подписи не пройдена — запуск запрещён.", 98);
+            }
+
+            // SYSLIB0057: замены нет — X509CertificateLoader не умеет извлекать
+            // сертификат подписанта из PE-файла, а пин-проверка опирается именно
+            // на это (Authenticode-подпись ScannerCore.exe).
+#pragma warning disable SYSLIB0057
             using var certificate = X509Certificate.CreateFromSignedFile(_scannerPath);
+#pragma warning restore SYSLIB0057
             if (string.Equals(certificate.GetCertHashString(), SigningPin, StringComparison.OrdinalIgnoreCase))
             {
                 return Result.Success();
@@ -209,7 +223,13 @@ public sealed class ScannerRunner
             return ("Не удалось запустить ScannerCore: " + exception.Message, 1);
         }
 
-        using var registration = ct.Register(() =>
+        // Таймаут комбинируется с пользовательской отменой; зависший сканер
+        // (сломанный WMI, огромная директория на HDD) не висит вечно.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(RunnerGuard.DefaultTimeout);
+        var effectiveCt = timeoutCts.Token;
+
+        using var registration = effectiveCt.Register(() =>
         {
             try
             {
@@ -234,25 +254,33 @@ public sealed class ScannerRunner
                 HandleEventLine(scanEvent, context);
                 onEvent?.Invoke(scanEvent);
             },
-            ct);
+            effectiveCt);
         var stderrTask = ConsoleOutputDecoder.ReadLinesAsync(
             process.StandardError.BaseStream,
             line => _logger.Error(line),
-            ct);
+            effectiveCt);
 
         try
         {
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            await process.WaitForExitAsync(effectiveCt).ConfigureAwait(false);
             await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _logger.Warn("CANCEL | scan");
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
+            return ("Отменено", -1);
         }
         catch (OperationCanceledException)
         {
-            _logger.Warn("CANCEL | scan");
-            return ("Отменено", -1);
+            _logger.Error($"TIMEOUT | scan | {RunnerGuard.DefaultTimeout}");
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
+            return ($"Превышено время ожидания сканирования ({RunnerGuard.DefaultTimeout.TotalMinutes:F0} мин) — процесс принудительно завершён.", -2);
         }
         catch (InvalidOperationException exception) when (ct.IsCancellationRequested)
         {
             _logger.Warn("CANCEL | scan | " + exception.Message);
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
             return ("Отменено", -1);
         }
         catch (Exception exception)

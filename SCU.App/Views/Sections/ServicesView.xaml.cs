@@ -15,7 +15,9 @@ public partial class ServicesView : UserControl
     }
 
     // Объединённая подсказка ⓘ операций «Бэкап» и «Откатить» возле кнопок:
-    // XAML не умеет конкатенировать DynamicResource, ключи читаются из текущего словаря строк.
+    // каждая строка помечена именем кнопки, к которой относится описание.
     private void RefreshInfoTexts() =>
-        BackupInfoGlyph.InfoText = InfoTexts.Join("I_SvcBackup", "I_SvcRestore");
+        BackupInfoGlyph.InfoText = InfoTexts.JoinAttributed(
+            new InfoTexts.Attributed(["S_Backup"], "I_SvcBackup"),
+            new InfoTexts.Attributed(["S_Restore"], "I_SvcRestore"));
 }
