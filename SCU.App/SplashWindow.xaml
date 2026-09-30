@@ -14,7 +14,7 @@
     <!-- Заставка стартового экрана: 1774×887 px (соотношение 2:1), отображается 640×320 —
          компактный центр экрана без заметной потери резкости. Клики проходят сквозь
          изображение в окно, которое появится под заставкой. -->
-    <Image Source="Assets/ScreenSaver.png"
+    <Image Source="Assets/SCU.png"
            Width="640" Height="320"
            IsHitTestVisible="False"
            RenderOptions.BitmapScalingMode="HighQuality" />

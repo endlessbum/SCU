@@ -42,8 +42,9 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="Assets\SCU.png" />
-    <Resource Include="Assets\ScreenSaver.png" />
+    <!-- Каноничный логотип — docs/images/scu-logo.png (его путь фиксирован
+         ссылкой в README); ScreenSaver/SCU.png были побайтовыми копиями. -->
+    <Resource Include="..\docs\images\scu-logo.png" Link="Assets\SCU.png" />
     <Resource Include="..\SCU.ico" Link="SCU.ico" />
   </ItemGroup>
 
