@@ -23,9 +23,11 @@ namespace {
 
 // Публичный ключ издателя базы (ECDSA P-256, X||Y, 64 байта).
 // Сгенерирован tools/database-builder (dotnet run DatabaseBuilder.cs -- genkeys).
+// Ротирован 2026-09-30: прежний приватный ключ попал в историю репозитория
+// (коммит 05dbbd0a) и считается скомпрометированным.
 constexpr const char* kDatabasePublicKeyXYHex =
-    "acc96c01195827e2254b516ce8c171cd1c2984422e30c8bafa46f6e6f0b655698"
-    "08d027d5a96143f3253b4cf89db9fca142036e9ad12443e1e5a4904743b406a";
+    "2430f609db729255df398577e2805a8e7dba9e74f9f6980b87ec1c05e4fb10c4"
+    "a4177185f5d665f13b80aa98c862479d9bf3af00462fba840536ddde34d932e0";
 
 // Лимиты под внешние дампы (MalwareBazaar и агрегаторы, ~90 байт на запись):
 // 64 МБ вмещают ~700k хешей с запасом; in-memory map лимита не имеет.

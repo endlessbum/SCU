@@ -12,7 +12,9 @@ public class LoggerRedactionTests
     public void Info_Line_WithBearerToken_IsMasked()
     {
         var logger = Logger.CreateForCurrentRun();
-        const string secret = "sk-abcdef1234567890abcdef1234567890";
+        // Тестовый секрет собирается в рантайме: литерал sk-<hex> в исходнике
+        // совпадает с паттернами secret-scanning (gitleaks, GitHub Push Protection).
+        var secret = "sk-" + new string('a', 32);
 
         logger.Info($"SCU_AI | request | Authorization: Bearer {secret} | model=deepseek-chat");
 

@@ -58,10 +58,12 @@ jobs:
         shell: pwsh
 
       # П. 18/фаза 7: SBOM основных C#-компонентов (CycloneDX).
+      # GitHub license resolution в 6.x выключен по умолчанию (--enable-github-licenses
+      # — opt-in), отдельный флаг отключения из 5.x больше не существует.
       - name: Generate SBOM (CycloneDX)
         run: |
           dotnet tool install --global CycloneDX
-          dotnet-CycloneDX SCU.App/SCU.App.csproj -t -o sbom --filename bom.json --disable-github-licenses
+          dotnet-CycloneDX SCU.App/SCU.App.csproj -t -o sbom --filename bom.json
         shell: pwsh
         continue-on-error: true # инструмент не должен блокировать CI при сбое сети
 

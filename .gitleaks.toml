@@ -1,0 +1,21 @@
+# Расширение дефолтных правил gitleaks (gitleaks-action подхватывает файл
+# автоматически). Ложные срабатывания: атрибут x:Key="..." в XAML-словарях
+# локализации выглядит как «keyword key + значение в кавычках».
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "XAML x:Key — идентификатор ресурса локализации, не секрет"
+ruleID = "generic-api-key"
+paths = ['''(?i)\.xaml$''']
+regexes = ['''x:Key="[^"]+"''']
+
+[[allowlists]]
+description = "Тестовые фикстуры LoggerRedactionTests: секреты намеренно фиктивные (собираются в рантайме), файл проверяет маскирование"
+ruleID = "generic-api-key"
+paths = ['''SCU\.Tests/LoggerRedactionTests\.cs$''']
+
+[[allowlists]]
+description = "Приватный ключ подписи базы в истории (коммит 05dbbd0a): ротирован 2026-09-30, публичный ключ в сканере заменён — ключ в истории неактивен"
+ruleID = "private-key"
+paths = ['''db-signing-private\.pem$''']

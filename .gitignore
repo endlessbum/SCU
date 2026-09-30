@@ -5,6 +5,7 @@ publish/
 artifacts/
 build/
 out/
+sbom/
 
 # Приложения
 .zcode/
