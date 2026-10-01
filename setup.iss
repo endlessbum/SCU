@@ -64,25 +64,38 @@ Root: HKCU; Subkey: "Software\SCU"; ValueType: string; ValueName: "Language"; Va
 Filename: "{app}\SCU.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; Журналы работы приложения, если писал их рядом с exe
+; Журналы работы приложения, если писал их рядом с exe.
 Type: filesandordirs; Name: "{app}\logs"
+; Страховка: каталог базы сканера (ставится через [Files] и удаляется сам,
+; но если приложение пересоздавало его в рантайме — чтобы не оставлять).
+Type: filesandordirs; Name: "{app}\security"
 
 [Code]
-// Бэкапы, состояние и журналы живут в %AppData%\SCU и переживают удаление.
-// Деинсталлятор спрашивает, оставлять ли их (переустановка сохранит бэкапы).
+// Данные в профиле пользователя переживают удаление: %AppData%\SCU (настройки,
+// бэкапы служб/сети/обновлений, журналы, скрипты, состояние браузера/DeepSeek)
+// и %LocalAppData%\SCU (кэш сканера, карантин). Деинсталлятор спрашивает один
+// раз и сносит оба каталога; «Нет» оставляет данные для переустановки.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   UserDataDir: string;
+  LocalDataDir: string;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
     UserDataDir := ExpandConstant('{userappdata}') + '\SCU';
-    if DirExists(UserDataDir) then
+    LocalDataDir := ExpandConstant('{localappdata}') + '\SCU';
+    if DirExists(UserDataDir) or DirExists(LocalDataDir) then
       if MsgBox(
-           'Удалить также данные SCU (бэкапы, состояние, журналы)?' + #13#10 +
-           UserDataDir + #13#10 + #13#10 +
-           'Если оставить, при переустановке прежние бэкапы и настройки сохранятся.',
+           'Удалить также данные SCU в профиле пользователя?' + #13#10 +
+           UserDataDir + #13#10 +
+           LocalDataDir + #13#10 + #13#10 +
+           'Это настройки, бэкапы служб/сети/обновлений (откат твиков станет невозможен),' + #13#10 +
+           'журналы, скрипты и карантин (файлы карантина восстановить будет нельзя).' + #13#10 +
+           'Если оставить, при переустановке прежние настройки и бэкапы сохранятся.',
            mbConfirmation, MB_YESNO) = IDYES then
+      begin
         DelTree(UserDataDir, True, True, True);
+        DelTree(LocalDataDir, True, True, True);
+      end;
   end;
 end;
