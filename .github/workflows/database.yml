@@ -1,8 +1,15 @@
 # Ежедневная пересборка и публикация базы сигнатур сканера: fetch (внешние
 # дампы SHA256 — MalwareBazaar recent + GitHub-агрегаторы) -> подписанный
-# пакет (ECDSA P-256, секрет DB_SIGNING_KEY) -> GitHub Release с датным тегом.
-# Дефолтный URL обновления в приложении — releases/latest/download/database-latest.zip:
-# свежий релиз с флагом --latest сам становится целью автообновления при старте.
+# пакет (ECDSA P-256, секрет DB_SIGNING_KEY) -> rolling pre-release с
+# фиксированным тегом scanner-db.
+#
+# П. releases-аудита: плашку «Latest» держит последний релиз приложения SCU.
+# Прежде база публиковалась с --latest и датным тегом db-ГГГГ.ММ.ДД — релиз
+# базы ежедневно перетягивал Latest на себя. Теперь база — pre-release:
+# GitHub исключает pre-release из auto-latest и из /releases/latest/...,
+# поэтому конфликт невозможен в принципе. Приложение качает базу по прямому
+# URL releases/download/scanner-db/database-latest.zip (работает и для
+# pre-release; не зависит от Latest).
 #
 # Источники переопределяются репо-переменной DATABASE_SOURCES (строка из
 # токенов вида «имя|url», разделённых пробелами); пусто — встроенный дефолт.
@@ -82,24 +89,16 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: db-${{ env.DB_VERSION }}
+          TAG: scanner-db
         run: |
-          # Перезапуск воркфлоу за тот же день: старый релиз сносятся и создаётся заново.
+          # Rolling pre-release: тег пересоздаётся ежедневно (всегда указывает
+          # на свежий коммит), ассет — свежая подписанная база. Прежде здесь
+          # был gh release create --latest с датным тегом db-*: релиз базы
+          # забирал плашку «Latest» у релизов приложения (п. releases-аудита).
+          # Перезапуск воркфлоу за тот же день: старый релиз сносится и
+          # создаётся заново.
           gh release delete "$TAG" --cleanup-tag -y 2>/dev/null || true
           gh release create "$TAG" SecurityScanner/build/database-latest.zip \
-            --latest \
+            --prerelease \
             --title "Scanner database $DB_VERSION" \
-            --notes "Автосборка базы сигнатур из внешних дампатов за $DB_VERSION."
-
-      # Датные релизы копятся; старше 30 дней чистим, чтобы не раздувать список.
-      - name: Cleanup old database releases
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          CUTOFF=$(date -u -d '30 days ago' +%s)
-          gh release list --json tagName,createdAt --limit 100 \
-            | jq -r --argjson cutoff "$CUTOFF" \
-              '.[] | select(.tagName | startswith("db-")) | select((.createdAt | fromdate) < $cutoff) | .tagName' \
-            | while read -r tag; do
-                gh release delete "$tag" --cleanup-tag -y || true
-              done
+            --notes "Автосборка базы сигнатур из внешних дампов за $DB_VERSION. Rolling pre-release: тег scanner-db пересоздаётся ежедневно и не является релизом приложения."

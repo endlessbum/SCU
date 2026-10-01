@@ -14,11 +14,15 @@ namespace SCU.Infrastructure.Networking;
 
 public sealed class ScannerUpdateService
 {
-    // Адрес по умолчанию — ассет database-latest.zip последнего релиза GitHub
-    // (издатель публикует пакет к релизу); переопределяется файлом
-    // %APPDATA%\SCU\scanner-update.json ({"url": "..."}).
+    // Адрес по умолчанию — ассет database-latest.zip на фиксированном теге
+    // scanner-db (rolling pre-release, публикуется database.yml ежедневно).
+    // П. releases-аудита: прежде URL был releases/latest/download/... — он
+    // завязывал «Latest» на релиз базы, и ежедневный db-* релиз перетягивал
+    // плашку Latest у релизов приложения. Фиксированный тег от Latest не
+    // зависит; прямой /releases/download/... отдаёт ассеты и pre-release.
+    // Переопределяется файлом %APPDATA%\SCU\scanner-update.json ({"url": "..."}).
     public const string DefaultUrl =
-        "https://github.com/endlessbum/SCU/releases/latest/download/database-latest.zip";
+        "https://github.com/endlessbum/SCU/releases/download/scanner-db/database-latest.zip";
 
     private const int MaxRedirects = 3;
 

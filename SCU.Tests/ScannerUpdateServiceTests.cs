@@ -111,7 +111,8 @@ public class ScannerUpdateServiceTests
     public void OverridePolicy_GithubAndLoopbackAllowed()
     {
         Assert.True(ScannerUpdateService.IsAllowedOverride(
-            "https://github.com/endlessbum/SCU/releases/latest/download/database-latest.zip"));
+            "https://github.com/endlessbum/SCU/releases/download/scanner-db/database-latest.zip"));
+        Assert.True(ScannerUpdateService.IsAllowedOverride(ScannerUpdateService.DefaultUrl));
         Assert.True(ScannerUpdateService.IsAllowedOverride(
             "https://release-assets.githubusercontent.com/anything/database-latest.zip"));
         Assert.True(ScannerUpdateService.IsAllowedOverride("http://127.0.0.1:9001/db.zip"));
