@@ -9,7 +9,7 @@ using SCU.Interop;
 namespace SCU.Infrastructure.Windows.Network;
 
 // Раздел 9 «Utilities.bat» — сеть: TCP Global (Auto-Tuning, ECN), MTU, QoS override, NetBIOS; профиль NIC — фасад над AdapterProfileManager (п. 13 аудита, B4).
-// Основные изменения используют резерв → изменение → проверка; профиль NIC делает последовательные изменения, один перезапуск адаптера и затем проверку.
+// Основные изменения используют бэкап → изменение → проверка; профиль NIC делает последовательные изменения, один перезапуск адаптера и затем проверку.
 public sealed class NetworkService
 {
     private const string PschedSubKey = @"SOFTWARE\Policies\Microsoft\Windows\Psched";
@@ -69,7 +69,7 @@ public sealed class NetworkService
         return Result<TcpGlobalState>.Success(new TcpGlobalState(autoTuning, ecn));
     }
 
-    // Резерв TCP Global + применение значения. Повторный резерв не перезаписывает исходное (как в BAT).
+    // Бэкап TCP Global + применение значения. Повторный бэкап не перезаписывает исходное (как в BAT).
     public async Task<Result> SetTcpGlobalAsync(string setting, string value, CancellationToken ct = default)
     {
         var backup = await BackupTcpGlobalAsync(ct).ConfigureAwait(false);
@@ -110,7 +110,7 @@ public sealed class NetworkService
         var backupFile = TcpGlobalBackupFile;
         if (!File.Exists(backupFile))
         {
-            return Result.Success("Резерв TCP Global отсутствует — восстанавливать нечего.");
+            return Result.Success("Бэкап TCP Global отсутствует — восстанавливать нечего.");
         }
 
         var lines = File.ReadAllLines(backupFile);
@@ -131,7 +131,7 @@ public sealed class NetworkService
 
         if (autoTuning is null || ecn is null)
         {
-            return Result.Failure("Резерв TCP Global повреждён.");
+            return Result.Failure("Бэкап TCP Global повреждён.");
         }
 
         var restoreAuto = await _runner
@@ -143,7 +143,7 @@ public sealed class NetworkService
         _logger.Info($"NET | restore TCP Global | auto rc={restoreAuto.Code} | ecn rc={restoreEcn.Code}");
         if (!restoreAuto.IsSuccess || !restoreEcn.IsSuccess)
         {
-            return Result.Failure("TCP Global не восстановлены; резерв сохранён.");
+            return Result.Failure("TCP Global не восстановлены; бэкап сохранён.");
         }
 
         var verify = await GetTcpGlobalAsync(ct).ConfigureAwait(false);
@@ -151,10 +151,10 @@ public sealed class NetworkService
             || !string.Equals(verify.Value?.AutoTuning, autoTuning, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(verify.Value?.Ecn, ecn, StringComparison.OrdinalIgnoreCase))
         {
-            return Result.Failure("TCP Global не подтверждены после восстановления; резерв сохранён.");
+            return Result.Failure("TCP Global не подтверждены после восстановления; бэкап сохранён.");
         }
 
-        // Удаление резерва — необязательный хвост: не роняет успешную операцию.
+        // Удаление бэкапа — необязательный хвост: не роняет успешную операцию.
         try
         {
             File.Delete(backupFile);
@@ -211,7 +211,7 @@ public sealed class NetworkService
         var backupFile = MtuBackupFile;
         if (!File.Exists(backupFile))
         {
-            return Result.Success("Резерв MTU отсутствует — восстанавливать нечего.");
+            return Result.Success("Бэкап MTU отсутствует — восстанавливать нечего.");
         }
 
         var failures = 0;
@@ -238,10 +238,10 @@ public sealed class NetworkService
 
         if (failures > 0)
         {
-            return Result.Failure("MTU восстановлен не полностью; резерв сохранён.");
+            return Result.Failure("MTU восстановлен не полностью; бэкап сохранён.");
         }
 
-        // Удаление резерва — необязательный хвост: не роняет успешную операцию.
+        // Удаление бэкапа — необязательный хвост: не роняет успешную операцию.
         try
         {
             File.Delete(backupFile);
@@ -251,7 +251,7 @@ public sealed class NetworkService
             _logger.Warn("NET | MTU backup cleanup failed: " + exception.Message);
         }
 
-        return Result.Success("MTU восстановлены из резерва.");
+        return Result.Success("MTU восстановлены из бэкапа.");
     }
 
     // Только чтение: null — значение (или ключ Psched) отсутствует.
@@ -272,7 +272,7 @@ public sealed class NetworkService
         var current = GetQosOverride();
         try
         {
-            // Повторный резерв не перезаписывает исходное значение (как :NetQoSSave в BAT).
+            // Повторный бэкап не перезаписывает исходное значение (как :NetQoSSave в BAT).
             if (!File.Exists(backupFile))
             {
                 Directory.CreateDirectory(BackupDirectory);
@@ -320,7 +320,7 @@ public sealed class NetworkService
         var backupFile = QosBackupFile;
         if (!File.Exists(backupFile))
         {
-            return Result.Success("Резерв QoS отсутствует — восстанавливать нечего.");
+            return Result.Success("Бэкап QoS отсутствует — восстанавливать нечего.");
         }
 
         var content = File.ReadAllText(backupFile).Trim();
@@ -341,11 +341,11 @@ public sealed class NetworkService
         }
         else
         {
-            return Result.Failure("Резерв QoS повреждён: ожидается absent или present=<0..100>.");
+            return Result.Failure("Бэкап QoS повреждён: ожидается absent или present=<0..100>.");
         }
         if (result.IsSuccess)
         {
-            // Удаление резерва — необязательный хвост: не роняет успешную операцию.
+            // Удаление бэкапа — необязательный хвост: не роняет успешную операцию.
             try
             {
                 File.Delete(backupFile);
@@ -359,7 +359,7 @@ public sealed class NetworkService
         return result;
     }
 
-    // NetBIOS over TCP/IP: резерв по индексам интерфейсов через WMI, изменение SetTcpipNetbios.
+    // NetBIOS over TCP/IP: бэкап по индексам интерфейсов через WMI, изменение SetTcpipNetbios.
     public Task<Result> SetNetBiosAsync(int mode, CancellationToken ct = default)
     {
         // WMI-вызовы блокирующие — уводим в пул, чтобы UI не залипал. Токен проверяется
@@ -453,7 +453,7 @@ public sealed class NetworkService
         var backupFile = NetBiosBackupFile;
         if (!File.Exists(backupFile))
         {
-            return Result.Success("Резерв NetBIOS отсутствует — восстанавливать нечего.");
+            return Result.Success("Бэкап NetBIOS отсутствует — восстанавливать нечего.");
         }
 
         try
@@ -482,7 +482,7 @@ public sealed class NetworkService
                 using var adapterObject = new ManagementObject(
                     $@"\\.\root\cimv2:Win32_NetworkAdapterConfiguration.Index={index}");
                 using var inParams = adapterObject.GetMethodParameters("SetTcpipNetbios");
-                // Восстанавливаем сохранённый режим из резерва, а не текущее значение адаптера.
+                // Восстанавливаем сохранённый режим из бэкапа, а не текущее значение адаптера.
                 inParams["TcpipNetbiosOptions"] = savedMode;
                 using var outParams = adapterObject.InvokeMethod("SetTcpipNetbios", inParams, null);
                 if (Convert.ToInt32(outParams?["ReturnValue"] ?? -1) != 0)
@@ -498,16 +498,16 @@ public sealed class NetworkService
 
             if (failures > 0)
             {
-                return Result.Failure("NetBIOS не восстановлен; резерв сохранён.");
+                return Result.Failure("NetBIOS не восстановлен; бэкап сохранён.");
             }
 
             if (restored == 0)
             {
-                return Result.Success("Резерв NetBIOS пуст — восстанавливать нечего (адаптеры не найдены).");
+                return Result.Success("Бэкап NetBIOS пуст — восстанавливать нечего (адаптеры не найдены).");
             }
 
             File.Delete(backupFile);
-            return Result.Success("NetBIOS восстановлен из резерва.");
+            return Result.Success("NetBIOS восстановлен из бэкапа.");
         }
         catch (OperationCanceledException)
         {
@@ -654,7 +654,7 @@ public sealed class NetworkService
     {
         if (File.Exists(TcpGlobalBackupFile))
         {
-            return Result.Success("Резерв уже существует.");
+            return Result.Success("Бэкап уже существует.");
         }
 
         var state = await GetTcpGlobalAsync(ct).ConfigureAwait(false);
@@ -670,11 +670,11 @@ public sealed class NetworkService
         }
         catch (Exception exception)
         {
-            return Result.Failure("Не удалось записать резерв TCP Global: " + exception.Message);
+            return Result.Failure("Не удалось записать бэкап TCP Global: " + exception.Message);
         }
 
         _logger.Info($"NET | TCP Global backup | auto={state.Value?.AutoTuning} ecn={state.Value?.Ecn}");
-        return Result.Success("Резерв сохранён.");
+        return Result.Success("Бэкап сохранён.");
     }
 
     private async Task<Result<int>> GetCurrentMtuAsync(string interfaceAlias, CancellationToken ct)
@@ -739,11 +739,11 @@ public sealed class NetworkService
         }
         catch (Exception exception)
         {
-            return Result.Failure("Не удалось записать резерв MTU: " + exception.Message);
+            return Result.Failure("Не удалось записать бэкап MTU: " + exception.Message);
         }
 
         _logger.Info($"NET | MTU backup | {interfaceAlias}={current.Value}");
-        return Result.Success("Резерв сохранён.");
+        return Result.Success("Бэкап сохранён.");
     }
 
     private static IReadOnlyList<(uint Index, int Options)> QueryNetBiosAdapters()

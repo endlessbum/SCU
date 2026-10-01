@@ -17,7 +17,10 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RichTextBox">
+                        <!-- OverlayScrollViewerStyle: без системного светлого угла
+                             (у дефолтной темы он белый), полосы рисуются поверх контента. -->
                         <ScrollViewer x:Name="PART_ContentHost"
+                                      Style="{StaticResource OverlayScrollViewerStyle}"
                                       Margin="{TemplateBinding Padding}"
                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </ControlTemplate>

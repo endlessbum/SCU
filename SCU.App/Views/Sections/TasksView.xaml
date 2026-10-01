@@ -10,7 +10,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Описание раздела (подсказка ⓘ шапочных операций перенесена к кнопкам резерва) -->
+        <!-- Описание раздела (подсказка ⓘ шапочных операций перенесена к кнопкам бэкапа) -->
         <TextBlock Grid.Row="0"
                    Style="{StaticResource SectionDescription}"
                    Text="{DynamicResource S_TasksDesc}" />

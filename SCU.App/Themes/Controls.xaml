@@ -11,6 +11,10 @@
       (Тусклый/Насыщенный) управляется централизованно ThemeManager'ом.
     -->
 
+    <!-- Общие конвертеры (п. аудита UI): раньше BoolToVis копировался
+         локально в 10+ view. -->
+    <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
     <!-- Шрифты: Segoe UI Variable (ближайший системный аналог SF Pro,
          полная поддержка кириллицы), иконки Fluent/MDL2, моно для журнала -->
     <FontFamily x:Key="AppFontFamily">Segoe UI Variable Display, Segoe UI Variable Text, Segoe UI</FontFamily>
@@ -518,7 +522,7 @@
                                 Margin="3,0,0,0"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Center"
-                                Background="#FFFFFFFF">
+                                Background="{DynamicResource SwitchKnobBrush}">
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="4"
                                                   ShadowDepth="1"
@@ -600,7 +604,7 @@
                                 Margin="12,0,0,0"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Center"
-                                Background="#FFFFFFFF">
+                                Background="{DynamicResource SwitchKnobBrush}">
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="10"
                                                   ShadowDepth="2"
@@ -1124,26 +1128,61 @@
                     <Grid Background="Transparent">
                         <Track x:Name="PART_Track" IsDirectionReversed="True">
                             <Track.Thumb>
+                                <!-- Шаблон ползунка зависит от ориентации хозяина
+                                     (TemplatedParent — ScrollBar): вертикальный — узкая
+                                     капсула по центру, горизонтальный — плоская капсула
+                                     вдоль нижнего края (панель «Терминал», длинные строки). -->
                                 <Thumb>
-                                    <Thumb.Template>
-                                        <ControlTemplate TargetType="Thumb">
-                                            <Border x:Name="ThumbBd"
-                                                    Width="4"
-                                                    Margin="4,0"
-                                                    CornerRadius="2"
-                                                    HorizontalAlignment="Center"
-                                                    Background="{DynamicResource TertiaryTextBrush}" />
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="ThumbBd" Property="Width" Value="6" />
-                                                    <Setter TargetName="ThumbBd" Property="Background" Value="{DynamicResource SecondaryTextBrush}" />
-                                                </Trigger>
-                                                <Trigger Property="IsDragging" Value="True">
-                                                    <Setter TargetName="ThumbBd" Property="Background" Value="{DynamicResource PrimaryTextBrush}" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Thumb.Template>
+                                    <Thumb.Style>
+                                        <Style TargetType="Thumb">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Thumb">
+                                                        <Border x:Name="ThumbBd"
+                                                                Width="4"
+                                                                Margin="4,0"
+                                                                CornerRadius="2"
+                                                                HorizontalAlignment="Center"
+                                                                Background="{DynamicResource TertiaryTextBrush}" />
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="ThumbBd" Property="Width" Value="6" />
+                                                                <Setter TargetName="ThumbBd" Property="Background" Value="{DynamicResource SecondaryTextBrush}" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsDragging" Value="True">
+                                                                <Setter TargetName="ThumbBd" Property="Background" Value="{DynamicResource PrimaryTextBrush}" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Orientation, RelativeSource={RelativeSource TemplatedParent}}" Value="Horizontal">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="Thumb">
+                                                                <Border x:Name="ThumbBdH"
+                                                                        Height="4"
+                                                                        Margin="0,4"
+                                                                        CornerRadius="2"
+                                                                        VerticalAlignment="Center"
+                                                                        Background="{DynamicResource TertiaryTextBrush}" />
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="ThumbBdH" Property="Height" Value="6" />
+                                                                        <Setter TargetName="ThumbBdH" Property="Background" Value="{DynamicResource SecondaryTextBrush}" />
+                                                                    </Trigger>
+                                                                    <Trigger Property="IsDragging" Value="True">
+                                                                        <Setter TargetName="ThumbBdH" Property="Background" Value="{DynamicResource PrimaryTextBrush}" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Thumb.Style>
                                 </Thumb>
                             </Track.Thumb>
                             <Track.DecreaseRepeatButton>
@@ -1461,7 +1500,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ContentControl">
-                    <Border Margin="0,0,0,10"
+                    <Border Margin="0,0,0,12"
                             Padding="16,12"
                             Background="{DynamicResource GlassFillBrush}"
                             BorderBrush="{DynamicResource GlassStrokeBrush}"
@@ -1540,7 +1579,7 @@
                 <TextBlock FontSize="12"
                            TextTrimming="CharacterEllipsis"
                            Text="{Binding Operation}" />
-                <!-- Пометка «Резерв: RP-12345» для событий с идентификатором резерва -->
+                <!-- Пометка «бэкап: RP-12345» для событий с идентификатором бэкапа -->
                 <TextBlock FontSize="12"
                            Foreground="{DynamicResource TertiaryTextBrush}"
                            Text="{Binding BackupText}">

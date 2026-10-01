@@ -7,7 +7,6 @@
          DialogBackgroundBrush с GlassStrokeBrush-контуром, глиф по типу,
          кнопка закрытия. Кнопки не перехватывают ввод в остальном окне. -->
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis" />
     </UserControl.Resources>
     <StackPanel>
         <!-- Информер: подсказка про отключение UAC-уведомлений в настройках;

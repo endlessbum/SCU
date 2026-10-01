@@ -40,6 +40,29 @@ public sealed class TrustedCertificateService
 
     // Удаление из Root и CA (текущий пользователь и машина). Хранилище машины
     // требует прав администратора — при их отсутствии даётся понятная ошибка.
+    // П. №14 аудита: сертификаты из store.Certificates — это handle'ы, которые
+    // нужно освобождать; сборка по SubjectPrefix фильтрует только часть
+    // коллекции, остальные живут до GC. Диспозим всё прочитанное.
+    private static List<X509Certificate2> ReadMatchingCerts(X509Store store)
+    {
+        var matching = new List<X509Certificate2>();
+        foreach (var certificate in store.Certificates)
+        {
+            if (certificate.GetNameInfo(X509NameType.SimpleName, false)
+                .StartsWith(SubjectPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                matching.Add(certificate);
+            }
+            else
+            {
+                certificate.Dispose();
+            }
+        }
+
+        return matching;
+    }
+
+    // Вызывается после удаления сертификата из хранилища: handle больше не нужен.
     public Result Remove()
     {
         var removed = 0;
@@ -56,6 +79,7 @@ public sealed class TrustedCertificateService
                 {
                     store.Remove(certificate);
                     removed++;
+                    certificate.Dispose();
                 }
             }
             catch (Exception exception)
@@ -73,11 +97,4 @@ public sealed class TrustedCertificateService
             ? Result.Success("Сертификат Минцифры не найден в хранилищах сертификатов.")
             : Result.Success($"Удалено сертификатов: {removed}.");
     }
-
-    private static List<X509Certificate2> ReadMatchingCerts(X509Store store) =>
-        store.Certificates
-            .Cast<X509Certificate2>()
-            .Where(c => c.GetNameInfo(X509NameType.SimpleName, false)
-                .StartsWith(SubjectPrefix, StringComparison.OrdinalIgnoreCase))
-            .ToList();
 }

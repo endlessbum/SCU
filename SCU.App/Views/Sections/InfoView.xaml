@@ -9,7 +9,6 @@
              d:DesignHeight="450" d:DesignWidth="800">
 
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
         <Style x:Key="HiddenWhenLoadingStyle" TargetType="FrameworkElement">
             <Setter Property="Visibility" Value="Visible" />
@@ -71,8 +70,9 @@
                     HorizontalAlignment="Center" />
         </StackPanel>
 
-        <!-- Данные: прокручивает внешний ScrollViewer страницы — вложенная прокрутка ломает колесо -->
-        <StackPanel>
+        <!-- Данные: прокручивает внешний ScrollViewer страницы — вложенная прокрутка ломает колесо.
+             MaxWidth как в «Бэнчмарке»: на широком окне карточки не растягиваются и центрируются. -->
+        <StackPanel MaxWidth="880" HorizontalAlignment="Stretch">
             <StackPanel.Style>
                 <Style TargetType="StackPanel" BasedOn="{StaticResource HiddenWhenLoadingStyle}">
                     <Style.Triggers>

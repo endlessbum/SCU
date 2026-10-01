@@ -2,7 +2,7 @@ using Xunit;
 
 namespace SCU.Tests;
 
-// Чтение поля Start из текстового резерва служб "name|start|state|delayed":
+// Чтение поля Start из текстового бэкапа служб "name|start|state|delayed":
 // по нему включение службы возвращается в исходный режим запуска.
 public class ServiceManagerBackupTests : IDisposable
 {

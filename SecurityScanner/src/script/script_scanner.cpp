@@ -14,7 +14,9 @@ constexpr size_t kMaxScriptBytes = 2ull * 1024 * 1024; // большие скр�
 constexpr size_t kMinBase64Run = 200;                  // минимальный base64-блоб для декодирования
 constexpr size_t kMaxDecodedBytes = 1024 * 1024;
 
-// Копия файла как ASCII-текст (нелатинские байты не влияют на паттерны).
+// Копия файла как ASCII-текст В ИСХОДНОМ РЕГИСТРЕ (п. SCAN-05 аудита:
+// base64-прогон декодируется только из оригинального регистра, декодер
+// различает 'A-Z' и 'a-z'; lowercase делается позже, отдельно для матчинга).
 bool ReadText(const std::wstring& path, std::string& text)
 {
     HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
@@ -39,11 +41,18 @@ bool ReadText(const std::wstring& path, std::string& text)
         return false;
     }
 
-    text.reserve(buffer.size());
-    for (const unsigned char b : buffer) {
-        text += static_cast<char>(std::tolower(b));
-    }
+    text.assign(buffer.data(), buffer.size());
     return true;
+}
+
+std::string ToLowerAscii(const std::string& text)
+{
+    std::string lowered;
+    lowered.reserve(text.size());
+    for (const char c : text) {
+        lowered += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return lowered;
 }
 
 int DecodeBase64Char(char c)
@@ -56,8 +65,9 @@ int DecodeBase64Char(char c)
     return -1;
 }
 
-// Декодирование base64-прогонов в тексте (обфускация -EncodedCommand /
-// FromBase64String): результат добавляется lowercase в decodedText.
+// Декодирование base64-прогонов из текста В ОРИГИНАЛЬНОМ РЕГИСТРЕ (обфускация
+// -EncodedCommand / FromBase64String). Результат — lowercase: он идёт только
+// в общий поток паттерн-матчинга.
 void AppendDecodedBase64(const std::string& text, std::string& decodedText)
 {
     size_t runStart = std::string::npos;
@@ -71,9 +81,12 @@ void AppendDecodedBase64(const std::string& text, std::string& decodedText)
         }
         if (!isBase64 && runStart != std::string::npos) {
             const size_t runLength = i - runStart;
+            // Валидные длины base64-прогона без учёта '='-пэддинга: %4 == 0
+            // (без пэддинга), 2 (один '='), 3 (два '='). Прежний допуск только
+            // %4 == 0 отбрасывал все payload'ы с пэддингом (п. SCAN-05).
             if (runLength >= kMinBase64Run
                 && decodedText.size() < kMaxDecodedBytes
-                && runLength % 4 == 0) {
+                && runLength % 4 != 1) {
                 int accumulator = 0;
                 int bits = 0;
                 for (size_t j = runStart; j < i; ++j) {
@@ -86,7 +99,12 @@ void AppendDecodedBase64(const std::string& text, std::string& decodedText)
                     if (bits >= 8) {
                         bits -= 8;
                         const char decoded = static_cast<char>((accumulator >> bits) & 0xFF);
-                        decodedText += static_cast<char>(std::tolower(static_cast<unsigned char>(decoded)));
+                        // UTF-16LE-payload'ы (-EncodedCommand) декодируются в текст
+                        // с перемежающимися '\0': без их выкидывания ни один
+                        // паттерн в decodedText не сматчится (п. SCAN-05).
+                        if (decoded != '\0') {
+                            decodedText += static_cast<char>(std::tolower(static_cast<unsigned char>(decoded)));
+                        }
                     }
                 }
                 decodedText += '\n';
@@ -217,17 +235,20 @@ void AnalyzeScriptHost(const std::string& text, ScriptAnalysis& analysis)
 ScriptAnalysis ScriptScanner::Analyze(const std::wstring& path)
 {
     ScriptAnalysis analysis;
+    // ReadText отдаёт оригинальный регистр: base64 декодируем из него,
+    // а lowercase-копию строим только для паттерн-матчинга (п. SCAN-05).
     std::string text;
     if (!ReadText(path, text)) {
         return analysis;
     }
 
-    std::string combined = text;
     std::string decoded;
     AppendDecodedBase64(text, decoded);
+
+    std::string combined = ToLowerAscii(text);
     if (!decoded.empty()) {
         combined += '\n';
-        combined += decoded;
+        combined += decoded; // уже lowercase (см. AppendDecodedBase64)
     }
 
     return AnalyzeText(combined);

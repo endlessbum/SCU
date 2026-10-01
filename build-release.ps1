@@ -41,9 +41,18 @@ if (-not (Test-Path (Join-Path $scannerOut 'ScannerCore.exe'))) { throw 'Scanner
 
 Write-Host '=== 2. dotnet publish ==='
 $publishDir = Join-Path $root 'publish'
-dotnet publish (Join-Path $root 'SCU.App\SCU.App.csproj') -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true `
-    -p:EnableCompressionInSingleFile=true -o $publishDir
+$publishArgs = @(
+    (Join-Path $root 'SCU.App\SCU.App.csproj'), '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true',
+    '-p:PublishSingleFile=true', '-p:PublishReadyToRun=true', '-p:IncludeNativeLibrariesForSelfExtract=true',
+    '-p:EnableCompressionInSingleFile=true', '-o', $publishDir
+)
+# П. REL-02 аудита: -SkipSign обязан давать рабочий вариант. Pin вшивается в
+# SCU.dll на этапе компиляции из signing\thumbprint.txt, поэтому без явного
+# отключения pin unsigned ScannerCore не смог бы запуститься.
+if ($SkipSign) {
+    $publishArgs += '-p:ScannerForceNoPin=true'
+}
+dotnet publish @publishArgs
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
 # Fail fast: сканер и база обязаны быть в publish (п. 31).
@@ -74,7 +83,12 @@ if ($signingEnabled) {
     Write-Host "signed: ScannerCore.exe, SCU.exe (thumbprint $thumbprint)"
 }
 else {
-    Write-Warning 'Подпись пропущена (-SkipSign или нет signing\thumbprint.txt): ScannerCore в dev-режиме целостности.'
+    if ($SkipSign -and (Test-Path $thumbprintFile)) {
+        Write-Warning 'Подпись пропущена (-SkipSign): SCU собран БЕЗ pin (-p:ScannerForceNoPin=true), ScannerCore.exe запускается без проверки целостности. Только для разработки/тестов.'
+    }
+    else {
+        Write-Warning 'Подпись пропущена (нет signing\thumbprint.txt): SCU собран без pin, ScannerCore.exe запускается без проверки целостности.'
+    }
 }
 
 if ($SkipInstaller) {
@@ -110,17 +124,17 @@ if ($LASTEXITCODE -ne 0) { throw 'ISCC failed' }
 # всех исполняемых артефактов и считаем манифест контрольных сумм.
 Write-Host '=== 5. Verify signatures + SHA256 manifest ==='
 if ($signingEnabled) {
+    # Проверяем ровно те файлы, которые подписали в шаге 3: точные пути в publish.
+    # Раньше здесь был рекурсивный поиск по корню с нерабочим regex (literal
+    # backspace в 'uild') — он мог подхватить несвежий артефакт из build-папок.
     foreach ($binary in @('ScannerCore.exe', 'SCU.exe')) {
-        $path = Get-ChildItem -Path $root -Recurse -Filter $binary -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notmatch 'uild' } |
-            Select-Object -First 1
-        if ($path) {
-            # signtool verify не принимает /n (он только у sign); подписанта
-            # проверяем по отпечатку из списка сертификатов файла.
-            & $signtool verify /pa $path.FullName
-            if ($LASTEXITCODE -ne 0) { throw "signature verification failed: $($path.FullName)" }
-            Write-Host "verified: $($path.FullName)"
-        }
+        $path = Join-Path $publishDir $binary
+        if (-not (Test-Path $path)) { throw "verify: отсутствует $path" }
+        # signtool verify не принимает /n (он только у sign); подписанта
+        # проверяем по отпечатку из списка сертификатов файла.
+        & $signtool verify /pa $path
+        if ($LASTEXITCODE -ne 0) { throw "signature verification failed: $path" }
+        Write-Host "verified: $path"
     }
 }
 

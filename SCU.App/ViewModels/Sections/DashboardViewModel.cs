@@ -298,16 +298,28 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
     {
         if (value)
         {
+            if (IsRunning)
+            {
+                // П. №8 аудита: ранее запрос ON во время завершения предыдущего
+                // пакета молча отбрасывался finally (BatchSwitchOn = false).
+                // Запоминаем и запускаем пакет после завершения текущего.
+                _rerunRequested = true;
+                return;
+            }
+
             TaskRunner.RunAndForget(RunBatchAsync(), _logger, "batch apply");
         }
         else if (IsRunning)
         {
-            // Ручное выключение посреди пакета: отменяем оставшиеся операции.
-            // Иначе тумблер уже в OFF, а утилиты продолжают применяться —
-            // интерфейс врёт о состоянии.
+            // Ручное выключение посреди пакета: отменяем оставшиеся операции
+            // и отложенный запуск. Иначе тумблер уже в OFF, а утилиты
+            // продолжают применяться — интерфейс врёт о состоянии.
+            _rerunRequested = false;
             CancelOngoing();
         }
     }
+
+    private bool _rerunRequested;
 
     // Отмена пакета: пользователем (тумблер в OFF) или уходом с раздела
     // (MainViewModel.CancelOngoingFor). Гасит CTS пакета и операцию раздела,
@@ -449,8 +461,20 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
             // Порядок важен: сначала IsRunning=false, затем авто-возврат тумблера —
             // OnBatchSwitchOnChanged(false) при IsRunning=false ничего не отменяет.
             IsRunning = false;
-            // Авто-возврат в OFF: выключатель — «Apply», а не постоянное состояние.
-            BatchSwitchOn = false;
+            var rerun = _rerunRequested;
+            _rerunRequested = false;
+            if (rerun)
+            {
+                // П. №8: отложенный запрос ON — повторное включение тумблера
+                // запускает новый пакет штатным путём через OnBatchSwitchOnChanged.
+                BatchSwitchOn = true;
+            }
+            else
+            {
+                // Авто-возврат в OFF: выключатель — «Apply», а не постоянное состояние.
+                BatchSwitchOn = false;
+            }
+
             // Один пересчёт бэнчмарка на весь пакет (не на каждую утилиту).
             BatchCompleted?.Invoke();
         }
@@ -694,7 +718,7 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
     [
         Utility(6, "svc_backup", "S_Backup",
             () => RunAsync(_services.BackupCommand, () => _services.StatusText),
-            keywords: "служб service резерв бэкап backup"),
+            keywords: "служб service бэкап backup"),
         Utility(6, "svc_restore", "S_Restore",
             () => RunAsync(_services.RestoreCommand, () => _services.StatusText),
             keywords: "служб service откат restore восстанов"),
@@ -704,10 +728,10 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
     [
         Utility(15, "tasks_backup", "S_Backup",
             () => RunAsync(_tasks.BackupCommand, () => _tasks.StatusText),
-            keywords: "задач планировщ scheduler task резерв backup"),
+            keywords: "задач планировщ scheduler task бэкап backup"),
         Utility(15, "tasks_restore", "S_Rollback",
             () => RunAsync(_tasks.RestoreCommand, () => _tasks.StatusText),
-            keywords: "задач планировщ task откат restore"),
+            keywords: "задач планировщ task бэкап restore"),
     ];
 
     private List<BatchUtility> BuildPower()

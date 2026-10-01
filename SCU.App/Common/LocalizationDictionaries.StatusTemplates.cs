@@ -17,7 +17,7 @@ internal static partial class LocalizationDictionaries
         ["Удалено сертификатов: {0}."] = "Removed certificates: {0}.",
         ["Параметр не применился: фактическое значение {0}."] =
             "Parameter was not applied: actual value {0}.",
-        ["Резерв {0}\\{1}: не удалось прочитать значение."] =
+        ["Бэкап {0}\\{1}: не удалось прочитать значение."] =
             "Backup {0}\\{1}: failed to read the value.",
         ["Возвращено к заводским значениям ({0})."] =
             "Restored to factory values ({0}).",
@@ -87,17 +87,17 @@ internal static partial class LocalizationDictionaries
             "MTU {0} set for {1} and verified by reading.",
         ["QoS override = {0}%."] = "QoS override = {0}%.",
         ["Не удалось прочитать текущий MTU: {0}"] = "Failed to read the current MTU: {0}",
-        ["Не удалось записать резерв MTU: {0}"] = "Failed to save the MTU backup: {0}",
+        ["Не удалось записать бэкап MTU: {0}"] = "Failed to save the MTU backup: {0}",
         ["Не удалось сохранить/установить QoS — профиль отменён: {0}"] =
             "Failed to save/apply QoS — profile cancelled: {0}",
         ["Профиль применён частично: {0}"] = "Profile applied partially: {0}",
         ["Сброс завершён не полностью: {0}"] = "Reset did not complete fully: {0}",
-        ["Не удалось сохранить резерв свойств адаптеров: {0}"] = "Failed to save the adapter properties backup: {0}",
-        ["Свойства адаптеров восстановлены из резерва ({0} значений)."] = "Adapter properties restored from the backup ({0} values).",
-        ["Свойства адаптеров восстановлены не полностью: значений {0}, ошибок {1}, ошибок перезапуска {2}; резерв сохранён."] =
+        ["Не удалось сохранить бэкап свойств адаптеров: {0}"] = "Failed to save the adapter properties backup: {0}",
+        ["Свойства адаптеров восстановлены из бэкапа ({0} значений)."] = "Adapter properties restored from the backup ({0} values).",
+        ["Свойства адаптеров восстановлены не полностью: значений {0}, ошибок {1}, ошибок перезапуска {2}; бэкап сохранён."] =
             "Adapter properties were not fully restored: {0} values, {1} errors, {2} restart errors; the backup is preserved.",
         ["Не удалось восстановить свойства адаптеров: {0}"] = "Failed to restore the adapter properties: {0}",
-        ["Не удалось записать резерв TCP Global: {0}"] = "Failed to save the TCP Global backup: {0}",
+        ["Не удалось записать бэкап TCP Global: {0}"] = "Failed to save the TCP Global backup: {0}",
         ["Не удалось изменить QoS: {0}"] = "Failed to change QoS: {0}",
         ["Не удалось сохранить исходный QoS: {0}"] = "Failed to save the original QoS: {0}",
         ["Интерфейс «{0}» не найден."] = "Interface «{0}» was not found.",
@@ -120,7 +120,7 @@ internal static partial class LocalizationDictionaries
         ["powercfg завершился с кодом {0}"] = "powercfg exited with code {0}",
         ["Не удалось открыть раздел реестра для резервирования файла подкачки."] =
             "Failed to open the registry key for backing up the page file settings.",
-        ["Не удалось сохранить резерв файла подкачки: {0}"] =
+        ["Не удалось сохранить бэкап файла подкачки: {0}"] =
             "Failed to save the page file backup: {0}",
         ["Не удалось записать {0}\\{1}: {2}"] = "Failed to write {0}\\{1}: {2}",
         ["Не удалось удалить {0}: значение осталось в реестре."] =
@@ -151,7 +151,7 @@ internal static partial class LocalizationDictionaries
         ["Откат завершился с кодом {0}: {1}"] = "Rollback finished with code {0}: {1}",
         ["Не удалось прочитать автозагрузку (код {0}): {1}"] =
             "Failed to read startup entries (code {0}): {1}",
-        ["Загружено служб: {0}. {1}. Резерв: {2}."] =
+        ["Загружено служб: {0}. {1}. Бэкап: {2}."] =
             "Loaded services: {0}. {1}. Backup: {2}.",
         ["Загружено элементов: {0}. {1}."] = "Loaded entries: {0}. {1}.",
         ["Откат выполнен. {0}"] = "Restore completed. {0}",
@@ -165,7 +165,7 @@ internal static partial class LocalizationDictionaries
         ["{0} Список обновлён ({1})."] = "{0} List refreshed ({1}).",
         ["Не удалось прочитать задачи: {0}"] = "Failed to read tasks: {0}",
         ["Не удалось прочитать службы: {0}"] = "Failed to read services: {0}",
-        ["Резерв сохранён: {0}"] = "Backup saved: {0}",
+        ["Бэкап сохранён: {0}"] = "Backup saved: {0}",
         ["Элемент отключён. {0}"] = "Entry disabled. {0}",
         ["Задача отключена. {0}"] = "Task disabled. {0}",
         ["Отключение задач"] = "Disabling tasks",
@@ -178,7 +178,7 @@ internal static partial class LocalizationDictionaries
         ["Отключение всех задач ({0})"] = "All tasks disabled ({0})",
         ["Загружено задач: {0}."] =
             "Loaded tasks: {0}.",
-        ["Резерв не сохранён (код {0}): {1}"] = "Backup not saved (code {0}): {1}",
+        ["Бэкап не сохранён (код {0}): {1}"] = "Backup not saved (code {0}): {1}",
         ["Ошибка: {0}"] = "Error: {0}",
         ["Ошибка (код {0}): {1}"] = "Error (code {0}): {1}",
     };

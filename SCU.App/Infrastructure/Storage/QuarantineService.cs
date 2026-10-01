@@ -65,7 +65,7 @@ public sealed class QuarantineService
 
     public QuarantineService(string? root = null, Logger? logger = null)
     {
-        _logger = logger ?? Logger.CreateForCurrentRun();
+        _logger = logger ?? Logger.CurrentRun;
         _root = root ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "SCU", "Quarantine");

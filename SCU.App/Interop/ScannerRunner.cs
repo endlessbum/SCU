@@ -32,6 +32,9 @@ public sealed class ScannerRunner
     // Пин-проверка ScannerCore перед запуском (п. 48: предотвращение подмены).
     // 1) WinVerifyTrust: хэш подписи соответствует содержимому — файл со
     //    скопированным сертификатом не проходит (CreateFromSignedFile его бы пропустил).
+    //    Отказ «корень не доверенный» допускается (п. SEC-01 аудита): release
+    //    подписывается self-signed сертификатом, C++-сторона pin-режима также
+    //    не требует доверенного корня; дайджест-ошибки остаются фатальными.
     // 2) Точное совпадение отпечатка сертификата подписанта с пином.
     // В dev-сборках (без пина) пропускается.
     private Result VerifyScannerPin()
@@ -43,10 +46,10 @@ public sealed class ScannerRunner
 
         try
         {
-            var trust = SignatureVerifier.VerifyAuthenticodeIntegrity(_scannerPath);
-            if (!trust.IsSuccess)
+            var integrity = SignatureVerifier.VerifyPinnedBinaryIntegrity(_scannerPath);
+            if (!integrity.IsSuccess)
             {
-                _logger.Error("SCAN | pin check | ScannerCore failed WinVerifyTrust | " + trust.Message);
+                _logger.Error("SCAN | pin check | ScannerCore failed WinVerifyTrust | " + integrity.Message);
                 return Result.Failure("ScannerCore.exe: проверка подписи не пройдена — запуск запрещён.", 98);
             }
 

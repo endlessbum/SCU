@@ -16,7 +16,7 @@ public sealed record RegistryTweak(
     object OffValue,
     object? RestoreValue);
 
-// Снимок исходного состояния одного значения для JSON-резерва.
+// Снимок исходного состояния одного значения для JSON-бэкапа.
 public sealed record RegistryValueSnapshotDto
 {
     [JsonPropertyName("subKey")] public string SubKey { get; set; } = string.Empty;
@@ -26,7 +26,7 @@ public sealed record RegistryValueSnapshotDto
     [JsonPropertyName("data")] public string? Data { get; set; }
 }
 
-// Реестровые операции с резервом и верификацией: backup -> change -> verify.
+// Реестровые операции с бэкапом и верификацией: backup -> change -> verify.
 // Аналог reg add / reg delete из Utilities.bat, но через Microsoft.Win32.Registry.
 public sealed class RegistryHelper
 {
@@ -40,7 +40,7 @@ public sealed class RegistryHelper
     }
 
     // Записывает OffValue для всех твиков, предварительно сохранив исходные значения в backupFile.
-    // Повторный вызов не перезаписывает существующий резерв: первое сохранение — исходник.
+    // Повторный вызов не перезаписывает существующий бэкап: первое сохранение — исходник.
     // Сбой в середине списка не оставляет реестр «наполовину применённым»: перед каждой
     // записью снимается текущее значение, применённое подмножество откатывается по снимкам.
     public Result Apply(IReadOnlyList<RegistryTweak> tweaks, string backupFile)
@@ -141,12 +141,12 @@ public sealed class RegistryHelper
         }
     }
 
-    // Возвращает значения из резерва: существовавшие — записывает, отсутствовавшие — удаляет.
+    // Возвращает значения из бэкапа: существовавшие — записывает, отсутствовавшие — удаляет.
     public Result Restore(IReadOnlyList<RegistryTweak> tweaks, string backupFile)
     {
         if (!File.Exists(backupFile))
         {
-            return Result.Failure("Файл резерва реестра не найден.", 2);
+            return Result.Failure("Файл бэкапа реестра не найден.", 2);
         }
 
         List<RegistryValueSnapshotDto> snapshots;
@@ -157,7 +157,7 @@ public sealed class RegistryHelper
         }
         catch (Exception exception)
         {
-            return Result.Failure("Резерв реестра повреждён: " + exception.Message);
+            return Result.Failure("Бэкап реестра повреждён: " + exception.Message);
         }
 
         var skipped = new List<string>();
@@ -169,7 +169,7 @@ public sealed class RegistryHelper
             var tweak = ResolveTweak(snapshots, snapshot, tweaks);
             if (tweak is null)
             {
-                // Значение есть в резерве, но нет в текущем списке твиков — восстанавливать
+                // Значение есть в бэкапе, но нет в текущем списке твиков — восстанавливать
                 // нечем. Не молчим: попадает в итоговое сообщение и лог.
                 skipped.Add($"{snapshot.SubKey}\\{snapshot.ValueName}");
                 continue;
@@ -191,7 +191,7 @@ public sealed class RegistryHelper
 
             var kind = (RegistryValueKind)snapshot.Kind;
             // DecodeValue для Binary идёт через FromBase64String и падает FormatException
-            // на повреждённом резерве — прерываем Restore понятной ошибкой, а не исключением.
+            // на повреждённом бэкапе — прерываем Restore понятной ошибкой, а не исключением.
             object? value;
             try
             {
@@ -201,13 +201,13 @@ public sealed class RegistryHelper
             {
                 RollbackRestore(restored);
                 return Result.Failure(
-                    $"Резерв {snapshot.SubKey}\\{snapshot.ValueName}: данные повреждены ({exception.Message}).");
+                    $"Бэкап {snapshot.SubKey}\\{snapshot.ValueName}: данные повреждены ({exception.Message}).");
             }
 
             if (value is null)
             {
                 RollbackRestore(restored);
-                return Result.Failure($"Резерв {snapshot.SubKey}\\{snapshot.ValueName}: не удалось прочитать значение.");
+                return Result.Failure($"Бэкап {snapshot.SubKey}\\{snapshot.ValueName}: не удалось прочитать значение.");
             }
 
             var writeResult = WriteValue(tweak.Hive, snapshot.SubKey, snapshot.ValueName, kind, value);
@@ -225,11 +225,11 @@ public sealed class RegistryHelper
         {
             _logger.Warn("REG | restore skipped | " + string.Join("; ", skipped));
             return Result.Success(
-                "Реестр восстановлен из резерва. Пропущены значения, отсутствующие в текущем списке твиков: "
+                "Реестр восстановлен из бэкапа. Пропущены значения, отсутствующие в текущем списке твиков: "
                 + string.Join("; ", skipped) + ".");
         }
 
-        return Result.Success("Реестр восстановлен из резерва.");
+        return Result.Success("Реестр восстановлен из бэкапа.");
     }
 
     // Откат частично выполненного Restore: возвращаем значения в состояние «отключено» (OffValue),
@@ -250,8 +250,8 @@ public sealed class RegistryHelper
         }
     }
 
-    // Возврат к заводскому состоянию без резерва: значения удаляются (RestoreValue=null-семантика).
-    // Нужно для «Включить», когда отключение делали не через приложение и резерва нет.
+    // Возврат к заводскому состоянию без бэкапа: значения удаляются (RestoreValue=null-семантика).
+    // Нужно для «Включить», когда отключение делали не через приложение и бэкапа нет.
     public Result ResetToDefault(IReadOnlyList<RegistryTweak> tweaks)
     {
         var deleted = 0;
@@ -293,8 +293,8 @@ public sealed class RegistryHelper
 
     private Result BackupValues(IReadOnlyList<RegistryTweak> tweaks, string backupFile)
     {
-        // Чтение и запись резерва под общим try: значение может исчезнуть между
-        // GetValue и GetValueKind — это ошибка резерва, а не падение Apply.
+        // Чтение и запись бэкапа под общим try: значение может исчезнуть между
+        // GetValue и GetValueKind — это ошибка бэкапа, а не падение Apply.
         try
         {
             var snapshots = new List<RegistryValueSnapshotDto>(tweaks.Count);
@@ -303,7 +303,7 @@ public sealed class RegistryHelper
                 using var key = OpenKey(tweak.Hive, tweak.SubKey, writable: false);
                 // DoNotExpandEnvironmentNames: иначе REG_EXPAND_SZ сохраняется уже
                 // развёрнутым и %env%-переменные теряются при восстановлении.
-                // Отказ в доступе здесь бросает исключение и валит весь резерв (fail-closed),
+                // Отказ в доступе здесь бросает исключение и валит весь бэкап (fail-closed),
                 // а не записывает Exists=false: null от GetValue/отсутствие раздела — единственный
                 // путь к Exists=false.
                 var value = key?.GetValue(
@@ -336,10 +336,10 @@ public sealed class RegistryHelper
         }
         catch (Exception exception)
         {
-            return Result.Failure("Не удалось сохранить резерв реестра: " + exception.Message);
+            return Result.Failure("Не удалось сохранить бэкап реестра: " + exception.Message);
         }
 
-        return Result.Success("Резерв сохранён.");
+        return Result.Success("Бэкап сохранён.");
     }
 
     private Result VerifyApplied(IReadOnlyList<RegistryTweak> tweaks)
@@ -447,7 +447,7 @@ public sealed class RegistryHelper
             return match;
         }
 
-        // Значение есть в резерве, но нет в текущем списке твиков — восстанавливать нечем.
+        // Значение есть в бэкапе, но нет в текущем списке твиков — восстанавливать нечем.
         return null;
     }
 
@@ -491,7 +491,7 @@ public sealed class RegistryHelper
     }
 
     // REG_MULTI_SZ читается в двух форматах: новый — JSON-массив (элементы с
-    // переводами строк сохраняются), старый (резервы до изменения) — строки,
+    // переводами строк сохраняются), старый (бэкапы до изменения) — строки,
     // склеенные "\n". Старый формат оставался только как fallback: JSON-парс
     // "a\nb" даёт ошибку, и значение уходит в Split('\n').
     private static object? DecodeMultiString(string data)

@@ -2,7 +2,7 @@ using SCU.Common;
 
 namespace SCU.AppCore;
 
-// П.2: retention резервных копий. Каталоги %AppData%\SCU\backup\* (tasks, services
+// П.2: retention бэкапов. Каталоги %AppData%\SCU\backup\* (tasks, services
 // и другие) с временными именами файлов (tasks_*.txt, services_*.txt) растут бесконечно.
 // Правило: в каталоге хранятся MaxFilesPerDirectory самых свежих файлов; более старые
 // удаляются при создании нового (и контрольным обходом на старте приложения).
@@ -16,7 +16,7 @@ public static class BackupRetention
         "SCU", "backup");
 
     // Оставить MaxFilesPerDirectory самых свежих файлов каталога, остальные удалить.
-    // Любой сбой (нет каталога, файл занят) не роняет вызывающую операцию: резерв
+    // Любой сбой (нет каталога, файл занят) не роняет вызывающую операцию: бэкап
     // важнее уборки. Сортировка по LastWriteTimeUtc, при равенстве — по имени (стабильно).
     public static void Enforce(string? directory, Logger? logger = null)
     {

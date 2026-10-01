@@ -5,7 +5,7 @@ using SCU.Interop;
 namespace SCU.Infrastructure.Windows.Tweaks;
 
 // Категории приватности из раздела 5 «Utilities.bat» (телеметрия, уведомления, UWP, Copilot,
-// оптимизация доставки). Реестр — через RegistryHelper с резервом; службы — через ServiceManager;
+// оптимизация доставки). Реестр — через RegistryHelper с бэкапом; службы — через ServiceManager;
 // задачи CEIP — через SCU.ps1 (TasksBackup / TasksDisable / TasksRestore).
 public sealed class PrivacyService
 {
@@ -154,7 +154,7 @@ public sealed class PrivacyService
     public bool IsCategoryApplied(string categoryId)
     {
         // CEIP управляется задачами планировщика: проверяем фактическое состояние
-        // задач, а не наличие файла резерва — резерв писался ДО отключения, и после
+        // задач, а не наличие файла бэкапа — бэкап писался ДО отключения, и после
         // сбоя SCU.ps1 категория считалась применённой, хотя задачи были включены.
         if (categoryId == "ceip")
         {
@@ -260,7 +260,7 @@ public sealed class PrivacyService
             return serviceResult;
         }
 
-        // Если категорию отключали не через приложение — резерва нет.
+        // Если категорию отключали не через приложение — бэкапа нет.
         // Тогда «включить» = вернуть заводское состояние (удалить значения), а не падать.
         var backupFile = Path.Combine(BackupDirectory, categoryId + ".json");
         var restoreResult = File.Exists(backupFile)
@@ -274,13 +274,13 @@ public sealed class PrivacyService
         return Result.Success("Включено. " + restoreResult.Message + (serviceResult.Message.Length > 0 ? " " + serviceResult.Message : string.Empty));
     }
 
-    // CEIP-задачи: отключение через PS с резервом, включение из резерва.
+    // CEIP-задачи: отключение через PS с бэкапом, включение из бэкапа.
     public async Task<Result> DisableCeipTasksAsync(SCURunner runner, CancellationToken ct = default)
     {
-        // Повторное отключение не перезаписывает резерв: первый манifест = исходное состояние задач.
+        // Повторное отключение не перезаписывает бэкап: первый манifест = исходное состояние задач.
         if (File.Exists(TasksBackupFile))
         {
-            return Result.Success("Резерв задач уже существует; задачи уже отключены.");
+            return Result.Success("Бэкап задач уже существует; задачи уже отключены.");
         }
 
         return await runner.RunAsync(
@@ -298,7 +298,7 @@ public sealed class PrivacyService
     {
         if (!File.Exists(TasksBackupFile))
         {
-            return Result.Failure("Резерв задач CEIP не создавался — включение недоступно.", 2);
+            return Result.Failure("Бэкап задач CEIP не создавался — включение недоступно.", 2);
         }
 
         var result = await runner.RunAsync(
@@ -307,7 +307,7 @@ public sealed class PrivacyService
             null,
             ct).ConfigureAwait(false);
 
-        // Задачи восстановлены — резерв больше не означает «отключено».
+        // Задачи восстановлены — бэкап больше не означает «отключено».
         if (result.IsSuccess)
         {
             try

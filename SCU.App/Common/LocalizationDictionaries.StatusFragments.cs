@@ -46,7 +46,7 @@ internal static partial class LocalizationDictionaries
             "Failed to save the original TCP Global settings — change cancelled.",
         ["Изменение применено, но не подтверждено чтением: "] =
             "Change applied, but not verified by reading: ",
-        ["TCP Global не подтверждены после восстановления; резерв сохранён."] =
+        ["TCP Global не подтверждены после восстановления; бэкап сохранён."] =
             "TCP Global settings were not verified after restore; backup preserved.",
         ["MTU изменён, но не подтверждён чтением: "] = "MTU changed, but not verified by reading: ",
         ["Не удалось сохранить исходный MTU — изменение отменено."] =
@@ -64,8 +64,8 @@ internal static partial class LocalizationDictionaries
             "Failed to dump the current adapter properties: ",
         ["Не удалось сохранить исходный QoS: "] = "Failed to save the original QoS: ",
         ["Не удалось изменить QoS: "] = "Failed to change QoS: ",
-        ["Не удалось записать резерв MTU: "] = "Failed to save the MTU backup: ",
-        ["Не удалось записать резерв TCP Global: "] = "Failed to save the TCP Global backup: ",
+        ["Не удалось записать бэкап MTU: "] = "Failed to save the MTU backup: ",
+        ["Не удалось записать бэкап TCP Global: "] = "Failed to save the TCP Global backup: ",
         ["Профиль применён частично: "] = "Profile applied partially: ",
         ["Сброс завершён не полностью: "] = "Reset did not complete fully: ",
         ["Не удалось прочитать текущий MTU: "] = "Failed to read the current MTU: ",
@@ -82,8 +82,8 @@ internal static partial class LocalizationDictionaries
             "The ceip category requires SCURunner (not provided to the constructor).",
         ["Параметры применены и проверены. "] = "Settings applied and verified. ",
         ["Включено. "] = "Enabled. ",
-        ["Не удалось сохранить резерв реестра: "] = "Failed to save the registry backup: ",
-        ["Резерв реестра повреждён: "] = "The registry backup is corrupted: ",
+        ["Не удалось сохранить бэкап реестра: "] = "Failed to save the registry backup: ",
+        ["Бэкап реестра повреждён: "] = "The registry backup is corrupted: ",
         ["Не удалось восстановить реестр: "] = "Failed to restore the registry: ",
         ["Не удалось удалить "] = "Failed to delete ",
         ["Не удалось открыть "] = "Failed to open ",
@@ -117,7 +117,7 @@ internal static partial class LocalizationDictionaries
         ["Не удалось прочитать список планов: "] = "Failed to read the power plan list: ",
         ["Не удалось создать копию плана: "] = "Failed to duplicate the power plan: ",
         ["Не удалось создать точку восстановления: "] = "Failed to create the restore point: ",
-        ["Не удалось сохранить резерв файла подкачки: "] =
+        ["Не удалось сохранить бэкап файла подкачки: "] =
             "Failed to save the page file backup: ",
         ["Пауза обновлений должна быть от 1 до 35 дней."] =
             "The update pause must be between 1 and 35 days.",
@@ -126,7 +126,7 @@ internal static partial class LocalizationDictionaries
         ["Провайдер wintrust недоступен."] = "The WinTrust provider is unavailable.",
         ["Реестр обновлён, но SystemParametersInfo не применил параметры."] =
             "The registry was updated, but SystemParametersInfo did not apply the settings.",
-        ["Резерв панели задач не читается: "] = "The taskbar backup cannot be read: ",
+        ["Бэкап панели задач не читается: "] = "The taskbar backup cannot be read: ",
         ["Файл не имеет подписи Authenticode."] = "The file has no Authenticode signature.",
         ["Файл не найден: "] = "File not found: ",
         ["Файл не подписан или подпись не читается: "] =

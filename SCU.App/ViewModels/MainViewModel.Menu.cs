@@ -401,6 +401,9 @@ public partial class MainViewModel
         Dashboard.DeleteUtility(utilityId);
         _menuStore.Save(_menu);
         ApplyMenu();
+        // MenuApplied нужен и здесь: MainWindow сбрасывает кэш view пользовательских
+        // вкладок, иначе переиспользованный view показывает удалённую утилиту.
+        MenuApplied?.Invoke();
         return true;
     }
 

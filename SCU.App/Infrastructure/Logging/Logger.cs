@@ -61,6 +61,30 @@ public sealed class Logger
         throw new InvalidOperationException("Не удалось создать файл журнала.", lastError);
     }
 
+    // Единый логгер на запуск приложения (п. №9 аудита): раньше AI-инструменты,
+    // QuarantineService и др. вызывали CreateForCurrentRun() в конструкторах —
+    // каждый создавал собственный SCU_<timestamp>.log, куда предупреждения
+    // попадали в файл, который никто не открывает.
+    private static Logger? _currentRun;
+    private static readonly object CurrentRunGate = new();
+
+    public static Logger CurrentRun
+    {
+        get
+        {
+            if (_currentRun is not null)
+            {
+                return _currentRun;
+            }
+
+            lock (CurrentRunGate)
+            {
+                _currentRun ??= CreateForCurrentRun();
+                return _currentRun;
+            }
+        }
+    }
+
     public IReadOnlyList<string> Snapshot()
     {
         lock (_gate)

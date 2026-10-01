@@ -49,10 +49,10 @@ public sealed class BloatRow : INotifyPropertyChanged
     public bool HasLeftover => !string.IsNullOrEmpty(_leftoverText);
 
     public string ToolTipText =>
-        $"Пакеты: {RemoveNames}\n" +
+        L.T("Пакеты: {0}", RemoveNames) + "\n" +
         (Irreversible
-            ? "Удаление необратимо в рамках этой утилиты.\nПереустановка возможна только средствами Windows/Store/winget."
-            : "Удаление изменяет состав установленных компонентов; перед операцией приложение показывает подтверждение.");
+            ? L.T("Удаление необратимо в рамках этой утилиты.\nПереустановка возможна только средствами Windows/Store/winget.")
+            : L.T("Удаление изменяет состав установленных компонентов; перед операцией приложение показывает подтверждение."));
 
     public string StateText
     {

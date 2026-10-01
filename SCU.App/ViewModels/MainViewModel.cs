@@ -312,7 +312,6 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
 
     private void RefreshStatusTexts()
     {
-        AdminStatusText = L.T(IsAdmin ? "есть" : "нет — изменяющие операции недоступны");
         ScuStatusText = L.T(IsSCUAvailable ? "да" : "нет");
     }
 
@@ -487,9 +486,6 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
 
     [ObservableProperty]
     private bool isAdmin;
-
-    [ObservableProperty]
-    private string adminStatusText = string.Empty;
 
     [ObservableProperty]
     private bool isSCUAvailable;

@@ -819,7 +819,7 @@ set "WFAIL=0"
 set "WU_SVCS=wuauserv,bits,cryptsvc,msiserver"
 echo  • Сохранение исходного состояния служб
 if not exist "%SCRIPT_PS%" (
-    call :Err "SCU.ps1 не найден — очистка без резерва служб отменена."
+    call :Err "SCU.ps1 не найден — очистка без бэкапа служб отменена."
     exit /b 1
 )
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesBackup -OutFile "%BAK_SVC%\wu_backup.txt" -Services "%WU_SVCS%"
@@ -830,7 +830,7 @@ if not "!WUBKRC!"=="0" (
     exit /b 1
 )
 if not exist "%BAK_SVC%\wu_backup.txt" (
-    call :Err "Файл резерва служб не создан — очистка отменена."
+    call :Err "Файл бэкапа служб не создан — очистка отменена."
     exit /b 1
 )
 call :Ok "состояние служб сохранено"
@@ -1105,7 +1105,7 @@ if not "!DOBKRC!"=="0" (
     exit /b 1
 )
 if not exist "%BAK_SVC%\dosvc_backup.txt" (
-    call :Err "Резерв dosvc не создан — очистка отменена."
+    call :Err "Бэкап dosvc не создан — очистка отменена."
     exit /b 1
 )
 call :Ok "состояние службы сохранено"
@@ -1157,7 +1157,7 @@ if not exist "%SCRIPT_PS%" (
         call :Err "Не удалось сохранить состояние dosvc (код !DOBKRC!) — шаг пропущен."
         set "DOFAIL=1"
     ) else if not exist "%BAK_SVC%\dosvc_backup.txt" (
-        call :Err "Резерв dosvc не создан — шаг пропущен."
+        call :Err "Бэкап dosvc не создан — шаг пропущен."
         set "DOFAIL=1"
     ) else (
         call :Ok "состояние dosvc сохранено"
@@ -1813,9 +1813,9 @@ goto UWPMenu
 :TasksMenu
 call :Hdr "ПЛАНИРОВЩИК — ТЕЛЕМЕТРИЯ / CEIP"
 echo  %Bold%[1]%Reset%  Отключить задачи телеметрии и CEIP
-echo  %Bold%[2]%Reset%  Включить задачи обратно  (из резерва)
+echo  %Bold%[2]%Reset%  Включить задачи обратно  (из бэкапа)
 echo  %Bold%[3]%Reset%  Показать статус задач
-echo  %Bold%[4]%Reset%  Сохранить текущее состояние в резерв
+echo  %Bold%[4]%Reset%  Сохранить текущее состояние в бэкап
 echo  %Bold%[0]%Reset%  Назад
 echo.
 call :Ask
@@ -1855,14 +1855,14 @@ call :PauseBack
 goto TasksMenu
 
 :TasksDisableList
-rem %1 = список задач через ";". Первый запуск создаёт резерв, повторные его не затирают.
+rem %1 = список задач через ";". Первый запуск создаёт бэкап, повторные его не затирают.
 set "TLIST=%~1"
 if not exist "%BAK_TASKS%" mkdir "%BAK_TASKS%" >nul 2>&1
 if not exist "%SCRIPT_PS%" (
     call :Err "SCU.ps1 не найден — управление задачами недоступно."
     exit /b 1
 )
-echo  %Yellow%Резерв и отключение задач...%Reset%
+echo  %Yellow%Бэкап и отключение задач...%Reset%
 echo.
 if exist "%BACKUP_TASKS%" (
     powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action TasksDisable -Tasks "!TLIST!"
@@ -1872,7 +1872,7 @@ if exist "%BACKUP_TASKS%" (
 set "TRC=!errorlevel!"
 echo.
 if "!TRC!"=="0" (
-    call :Ok "Задачи отключены. Резерв: %BACKUP_TASKS%"
+    call :Ok "Задачи отключены. Бэкап: %BACKUP_TASKS%"
 ) else (
     call :Warn "Часть задач не удалось отключить (код !TRC!) — см. вывод выше."
 )
@@ -1881,7 +1881,7 @@ exit /b !TRC!
 
 :TasksRestoreAll
 if not exist "%BACKUP_TASKS%" (
-    call :Warn "Нет резерва задач — сначала отключите задачи или сохраните состояние."
+    call :Warn "Нет бэкапа задач — сначала отключите задачи или сохраните состояние."
     exit /b 1
 )
 if not exist "%SCRIPT_PS%" (
@@ -2094,7 +2094,7 @@ if "!SVDIS!"=="1" (
 timeout /t 1 >nul
 exit /b !SVC_RC!
 
-rem Восстанавливает одну службу из резерва. Если резерва нет — включает вручную.
+rem Восстанавливает одну службу из бэкапа. Если бэкапа нет — включает вручную.
 :SvcRestoreOne
 set "SVC=%~1"
 set "ONELINE="
@@ -2127,7 +2127,7 @@ if not defined ONELINE (
     exit /b 1
 )
 if not exist "%SCRIPT_PS%" (
-    call :Err "SCU.ps1 не найден — восстановление из резерва недоступно"
+    call :Err "SCU.ps1 не найден — восстановление из бэкапа недоступно"
     exit /b 1
 )
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BACKUP_SVC%" -Services "%SVC%" >nul 2>&1
@@ -2162,10 +2162,10 @@ goto SvcMenu
 :SvcEnableAll
 call :Hdr "ВКЛЮЧЕНИЕ СЛУЖБ"
 if exist "%BACKUP_SVC%" (
-    echo  %Gray%Есть резерв — восстанавливаю исходное состояние служб...%Reset%
+    echo  %Gray%Есть бэкап — восстанавливаю исходное состояние служб...%Reset%
     echo.
     if not exist "%SCRIPT_PS%" (
-        call :Err "SCU.ps1 не найден — восстановление из резерва недоступно."
+        call :Err "SCU.ps1 не найден — восстановление из бэкапа недоступно."
         call :PauseBack
         goto SvcMenu
     )
@@ -2249,7 +2249,7 @@ call :Log "SVC  | %SVC% start not confirmed rc=0"
 exit /b 1
 
 :EnsureBackup
-rem Гарантирует наличие резерва. SVCOK=1 при успехе.
+rem Гарантирует наличие бэкапа. SVCOK=1 при успехе.
 set "SVCOK=0"
 if exist "%BACKUP_SVC%" set "SVCOK=1"
 if "!SVCOK!"=="1" exit /b 0
@@ -2267,7 +2267,7 @@ goto SvcMenu
 if not exist "%BAK_SVC%" mkdir "%BAK_SVC%" >nul 2>&1
 set "SVCOK=0"
 if not exist "%SCRIPT_PS%" (
-    call :Err "SCU.ps1 не найден — резерв служб невозможен."
+    call :Err "SCU.ps1 не найден — бэкап служб невозможен."
     exit /b 1
 )
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesBackup -Services "%SVCCSV%" -OutFile "%BACKUP_SVC%" >nul 2>&1
@@ -2278,7 +2278,7 @@ if not "!BKRC!"=="0" (
     exit /b 1
 )
 if not exist "%BACKUP_SVC%" (
-    call :Err "Файл резерва служб не создан."
+    call :Err "Файл бэкапа служб не создан."
     exit /b 1
 )
 set "SVCOK=1"
@@ -2322,7 +2322,7 @@ if errorlevel 1 goto MainMenu
 call :Hdr "АВТОЗАГРУЗКА ПРОГРАММ"
 echo  %Bold%[1]%Reset%  Показать все элементы автозагрузки
 echo  %Bold%[2]%Reset%  Отключить элемент  (по номеру)
-echo  %Bold%[3]%Reset%  Включить обратно из резерва
+echo  %Bold%[3]%Reset%  Включить обратно из бэкапа
 echo  %Bold%[4]%Reset%  Открыть папки Startup
 echo.
 echo  %Gray%--------------------------------------------------------------------%Reset%
@@ -2387,7 +2387,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action Startu
 set "SURC=!errorlevel!"
 echo.
 if "!SURC!"=="0" (
-    call :Ok "Элемент отключён (резерв: %BACKUP_STARTUP%)"
+    call :Ok "Элемент отключён (бэкап: %BACKUP_STARTUP%)"
 ) else (
     call :Err "Не удалось отключить элемент (код !SURC!) — см. вывод выше."
 )
@@ -2396,14 +2396,14 @@ call :PauseBack
 goto StartUpMenu
 
 :SUEnable
-call :Hdr "ВКЛЮЧЕНИЕ ИЗ РЕЗЕРВА"
+call :Hdr "ВКЛЮЧЕНИЕ ИЗ БЭКАПА"
 if not exist "%SCRIPT_PS%" (
     call :Err "SCU.ps1 не найден — восстановление недоступно."
     call :PauseBack
     goto StartUpMenu
 )
 if not exist "%BACKUP_STARTUP%\manifest.json" (
-    call :Warn "Резерв автозагрузки пуст — нечего восстанавливать."
+    call :Warn "Бэкап автозагрузки пуст — нечего восстанавливать."
     call :PauseBack
     goto StartUpMenu
 )

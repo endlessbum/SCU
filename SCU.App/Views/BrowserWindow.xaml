@@ -12,7 +12,6 @@
         d:DesignHeight="720" d:DesignWidth="1200">
 
     <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <!-- Кнопка панели инструментов: глиф Segoe MDL2 в существующей кнопке темы -->
         <Style x:Key="BrowserToolButton" TargetType="Button" BasedOn="{StaticResource SmallButton}">
             <Setter Property="Padding" Value="8,4" />

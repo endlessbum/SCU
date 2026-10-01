@@ -174,14 +174,14 @@ public sealed class ProfileService
         return result;
     }
 
-    // «Выключить» игровой профиль сети = вернуть TCP Global и QoS из резерва.
+    // «Выключить» игровой профиль сети = вернуть TCP Global и QoS из бэкапа.
     private async Task<Result> RestoreNetworkDefaultsAsync(CancellationToken ct)
     {
         var tcp = await _network.RestoreTcpGlobalAsync(ct).ConfigureAwait(false);
         var qos = _network.RestoreQosOverride();
         if (tcp.IsSuccess && qos.IsSuccess)
         {
-            return Result.Success("TCP Global и QoS возвращены из резерва.");
+            return Result.Success("TCP Global и QoS возвращены из бэкапа.");
         }
 
         var failures = new[] { tcp, qos }

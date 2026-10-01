@@ -3,7 +3,7 @@ using Xunit;
 
 namespace SCU.Tests;
 
-// Регрессионные тесты на исправленные дефекты резерва реестра:
+// Регрессионные тесты на исправленные дефекты бэкапа реестра:
 // REG_MULTI_SZ раньше кодировался как "System.String[]", а нечитаемый DWord
 // молча превращался в 0 при Restore.
 public class RegistryHelperValueTests
@@ -43,7 +43,7 @@ public class RegistryHelperValueTests
     [InlineData("не json [вообще")]
     public void DecodeValue_MultiString_LegacyNewlineFormat_StillReadable(string legacyData)
     {
-        // Резервы старого формата (Join("\n")) остаются читаемыми.
+        // Бэкапы старого формата (Join("\n")) остаются читаемыми.
         var decoded = RegistryHelper.DecodeValue(RegistryValueKind.MultiString, legacyData);
 
         var expected = legacyData.Split('\n');
@@ -53,7 +53,7 @@ public class RegistryHelperValueTests
     [Fact]
     public void DecodeValue_CorruptDWord_ReturnsNull_NotZero()
     {
-        // Повреждённый резерв не должен молча записывать 0 в живое значение реестра.
+        // Повреждённый бэкап не должен молча записывать 0 в живое значение реестра.
         Assert.Null(RegistryHelper.DecodeValue(RegistryValueKind.DWord, "не число"));
         Assert.Null(RegistryHelper.DecodeValue(RegistryValueKind.QWord, "не число"));
     }
@@ -70,7 +70,7 @@ public class RegistryHelperValueTests
     [Fact]
     public void DecodeValue_UnsignedDWord_MaxUint_PreservesBits()
     {
-        // 0xFFFFFFFF хранится в резерве как "4294967295"; при Restore биты восстанавливаются.
+        // 0xFFFFFFFF хранится в бэкапе как "4294967295"; при Restore биты восстанавливаются.
         var value = RegistryHelper.DecodeValue(RegistryValueKind.DWord, "4294967295");
 
         Assert.Equal(unchecked((int)0xFFFFFFFF), value);

@@ -14,11 +14,14 @@ public sealed class HistoryEventRow
         TimeText = @event.Timestamp.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture);
         Category = @event.Category;
         Operation = @event.Operation;
-        IsFail = !string.Equals(@event.Status, HistoryEvent.StatusOk, StringComparison.Ordinal);
+        // П. SCAN-01: warn — неполное покрытие (например, скан с пропусками);
+        // это не ошибка, но и не «чистый успех», поэтому имеет свою метку.
+        IsFail = string.Equals(@event.Status, HistoryEvent.StatusFail, StringComparison.Ordinal);
+        IsWarn = string.Equals(@event.Status, HistoryEvent.StatusWarn, StringComparison.Ordinal);
         Details = @event.Details;
-        // Пометка «Резерв: RP-12345» — только когда событие несёт надёжный идентификатор.
-        BackupText = @event.BackupId is null ? null : L.T("Резерв: {0}", @event.BackupId);
-        StatusText = IsFail ? L.T("Ошибка") : string.Empty;
+        // Пометка «бэкап: RP-12345» — только когда событие несёт надёжный идентификатор.
+        BackupText = @event.BackupId is null ? null : L.T("Бэкап: {0}", @event.BackupId);
+        StatusText = IsFail ? L.T("Ошибка") : IsWarn ? L.T("Неполное") : string.Empty;
     }
 
     public string TimeText { get; }
@@ -29,7 +32,10 @@ public sealed class HistoryEventRow
 
     public bool IsFail { get; }
 
-    // Текстовая пометка ошибки (успешные операции пометки не имеют).
+    // Неполное покрытие (п. SCAN-01): не ошибка, но и не «чистый успех».
+    public bool IsWarn { get; }
+
+    // Текстовая пометка статуса: «Ошибка» для fail, «Неполное» для warn.
     public string StatusText { get; }
 
     public string? Details { get; }

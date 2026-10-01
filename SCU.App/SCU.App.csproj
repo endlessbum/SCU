@@ -57,9 +57,13 @@
 
   <!-- Пиннинг сертификата подписи ScannerCore (документ п. 48):
        отпечаток из SecurityScanner\signing\thumbprint.txt вшивается в SCU.dll.
-       Файла нет — Thumbprint == "", dev-режим без пин-проверки. -->
+       Файла нет — Thumbprint == "", dev-режим без пин-проверки.
+       ScannerForceNoPin=true (build-release.ps1 -SkipSign) — принудительный
+       dev-режим даже при наличии thumbprint.txt, иначе unsigned ScannerCore
+       собирался бы с pin и блокировал собственный запуск (п. REL-02 аудита). -->
   <PropertyGroup>
-    <ScannerSigningThumbprint Condition="Exists('..\SecurityScanner\signing\thumbprint.txt')">$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\SecurityScanner\signing\thumbprint.txt').Trim())</ScannerSigningThumbprint>
+    <ScannerSigningThumbprint Condition="'$(ScannerForceNoPin)' == 'true'"></ScannerSigningThumbprint>
+    <ScannerSigningThumbprint Condition="'$(ScannerForceNoPin)' != 'true' And Exists('..\SecurityScanner\signing\thumbprint.txt')">$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\SecurityScanner\signing\thumbprint.txt').Trim())</ScannerSigningThumbprint>
   </PropertyGroup>
   <Target Name="GenerateScannerSigningPin" BeforeTargets="CoreCompile">
     <PropertyGroup>

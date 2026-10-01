@@ -8,6 +8,10 @@ namespace SCU.Infrastructure.Windows.Services;
 
 public sealed class ServiceManager
 {
+    // Общий логгер запуска (п. №9 аудита): ServiceManager раньше вообще не
+    // логировал, а отказы ChangeStartMode проглатывались молча (п. №17).
+    private static readonly Logger Log = Logger.CurrentRun;
+
     private static readonly TimeSpan ControlTimeout = TimeSpan.FromSeconds(30);
     public static IReadOnlyList<string> DefaultServiceNames { get; } =
     [
@@ -149,7 +153,7 @@ public sealed class ServiceManager
         }
     }
 
-    // Включение отключённой службы: тип запуска из резерва (Automatic, если было 2, иначе Manual),
+    // Включение отключённой службы: тип запуска из бэкапа (Automatic, если было 2, иначе Manual),
     // сам запуск службы не выполняется. Раньше включение шло через ServicesRestore, который
     // восстанавливал исходно выключенное состояние — «включение» оставляло службу выключенной.
     public async Task<Result> SetEnabledAsync(string serviceName, string? backupFilePath, CancellationToken ct = default)
@@ -205,7 +209,7 @@ public sealed class ServiceManager
         }
     }
 
-    // Свежий резерв служб и тип запуска из него — делегированы парсеру (п. 13).
+    // Свежий бэкап служб и тип запуска из него — делегированы парсеру (п. 13).
     private static string? FindLatestServicesBackupPath() => ServiceBackupParser.FindLatestServicesBackupPath();
     internal static int? ReadStartFromBackup(string? backupFilePath, string serviceName) =>
         ServiceBackupParser.ReadStartFromBackup(backupFilePath, serviceName);
@@ -466,6 +470,9 @@ public sealed class ServiceManager
         var previousStart = ReadStartValue(serviceName);
         var previousDelayed = ReadDelayedAutostart(serviceName);
         var previousStatus = controller.Status;
+        // П. №2 аудита: если службу остановили, а применить тип запуска не удалось,
+        // компенсируем остановку — возвращаем службу в исходное состояние.
+        var wasRunning = previousStatus is ServiceControllerStatus.Running or ServiceControllerStatus.StartPending;
 
         ServiceStartMode? targetMode = null;
 
@@ -483,26 +490,28 @@ public sealed class ServiceManager
                 {
                     return Result.Failure($"{serviceName}: не удалось остановить ({exception.Message}). Возможно, службу держат зависимые службы или она защищена системой.");
                 }
-                catch (Exception exception) when (exception.GetType().Name == "TimeoutException")
+                catch (System.TimeoutException)
                 {
                     return Result.Failure($"{serviceName}: не остановилась за 30 секунд — зависимые службы держат её. Попробуйте позже.");
                 }
             }
 
-            // DoSvc и другие службы запрещают ChangeStartMode — исключение не фатально:
-            // Start допишется напрямую в реестр проверкой ниже.
+            // DoSvc и ряд других служб запрещают ChangeStartMode — исключение не фатально:
+            // Start допишется напрямую в реестр проверкой ниже. Но молчать нельзя
+            // (п. №17 аудита): без лога недоступный ChangeStartMode неотличим от сбоя.
             try
             {
                 SetStartMode(serviceName, ServiceStartMode.Disabled);
             }
-            catch
+            catch (Exception exception)
             {
+                Log.Warn($"Служба {serviceName}: ChangeStartMode(Disabled) отклонён ({exception.Message}); Start будет записан в реестр напрямую.");
             }
         }
         else
         {
             // Тумблер «включить»: текущий Start=4 не говорит, каким служба была до отключения.
-            // Берём исходный тип из последнего резерва служб; без подсказки — Manual.
+            // Берём исходный тип из последнего бэкапа служб; без подсказки — Manual.
             // Раньше всегда форсировался Manual — бывшая Automatic служба навсегда понижалась.
             var startFromBackup = ReadStartFromBackup(FindLatestServicesBackupPath(), serviceName);
             targetMode = previousStart == 2 || startFromBackup == 2
@@ -512,8 +521,9 @@ public sealed class ServiceManager
             {
                 SetStartMode(serviceName, targetMode.Value);
             }
-            catch
+            catch (Exception exception)
             {
+                Log.Warn($"Служба {serviceName}: ChangeStartMode({targetMode.Value}) отклонён ({exception.Message}); Start будет записан в реестр напрямую.");
             }
 
             if (previousDelayed && targetMode == ServiceStartMode.Automatic)
@@ -527,6 +537,7 @@ public sealed class ServiceManager
         var expectedStart = disable ? 4 : targetMode == ServiceStartMode.Automatic ? 2 : 3;
         if (ReadStartValue(serviceName) != expectedStart && !ForceStartValue(serviceName, expectedStart))
         {
+            TryRestoreRunningState(controller, wasRunning);
             return Result.Failure(
                 $"Служба {serviceName}: тип запуска не применился (Start={ReadStartValue(serviceName)}, ожидалось {expectedStart}).");
         }
@@ -535,6 +546,7 @@ public sealed class ServiceManager
         var actualStart = ReadStartValue(serviceName);
         if (actualStart != expectedStart)
         {
+            TryRestoreRunningState(controller, wasRunning);
             return Result.Failure($"Служба {serviceName}: тип запуска не применился (Start={actualStart}, ожидалось {expectedStart}).");
         }
 
@@ -545,6 +557,35 @@ public sealed class ServiceManager
 
         var verb = disable ? "отключена" : "включена";
         return Result.Success($"Служба {serviceName} {verb}. Было: Start={previousStart}, State={previousStatus}.");
+    }
+
+    // П. №2 аудита: компенсация частично применённой операции. Служба была
+    // остановлена, а тип запуска применить не удалось — возвращаем её в
+    // рабочее состояние, чтобы тумблер не оставлял систему в промежуточном виде.
+    private static void TryRestoreRunningState(ServiceController controller, bool wasRunning)
+    {
+        if (!wasRunning)
+        {
+            return;
+        }
+
+        try
+        {
+            if (controller.Status is ServiceControllerStatus.Stopped or ServiceControllerStatus.StopPending)
+            {
+                controller.Refresh();
+                if (controller.Status is ServiceControllerStatus.Stopped or ServiceControllerStatus.StopPending)
+                {
+                    controller.Start();
+                    controller.WaitForStatus(ServiceControllerStatus.Running, ControlTimeout);
+                    Log.Warn($"{controller.ServiceName}: служба возвращена в Running после неудачного применения типа запуска.");
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Log.Error($"{controller.ServiceName}: не удалось вернуть службу в Running ({exception.Message}) — служба осталась остановленной, тип запуска не изменён.");
+        }
     }
 
     private enum ServiceOpenStatus

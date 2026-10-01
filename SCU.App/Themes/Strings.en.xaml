@@ -340,6 +340,8 @@
     <sys:String x:Key="S_DialogConfirm">Confirm</sys:String>
     <sys:String x:Key="S_EmptyState">Nothing here yet</sys:String>
     <sys:String x:Key="S_EmptyStateStartup">No startup apps</sys:String>
+    <!-- Input: footnote for asterisked cards (mouse acceleration, sticky keys) -->
+    <sys:String x:Key="S_InputAsteriskNote">* Enabling disables the setting</sys:String>
 
     <!-- ===================== Dashboard: one-click apply switch ===================== -->
     <sys:String x:Key="D_BatchTitle">Apply optimization</sys:String>

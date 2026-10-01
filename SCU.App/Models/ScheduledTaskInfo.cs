@@ -25,7 +25,7 @@ public sealed record ScheduledTaskInfo(
     }
 
     // Информер карточки: только полный путь (состояние видно справа в строке).
-    public string ToolTipText => $"Полный путь: {FullPath}";
+    public string ToolTipText => L.T("Полный путь: {0}", FullPath);
 
     // Назначение задачи для подписи под названием. Список задач фиксированный
     // (TaskManager.DefaultTaskPaths), ключ — имя задачи без папки.
@@ -95,6 +95,6 @@ public sealed record ScheduledTaskInfo(
     // П.18: «Нет задачи» на кнопке не показывается — у отсутствующей задачи та же
     // кнопка «Отключить», но неактивная (CanDisable=false → команда недоступна).
     public string ActionCaption => IsDisabled
-        ? "Отключена"
-        : "Отключить";
+        ? L.T("Отключена")
+        : L.T("Отключить");
 }

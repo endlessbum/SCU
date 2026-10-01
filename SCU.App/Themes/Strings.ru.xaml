@@ -62,7 +62,7 @@
     <sys:String x:Key="S_ScannerInstallDb">Установить пакет базы…</sys:String>
     <sys:String x:Key="S_ScannerUpdateOnline">Обновить базу</sys:String>
     <sys:String x:Key="S_Section15_Title">Задачи планировщика</sys:String>
-    <sys:String x:Key="S_Section15_Desc">Резерв, отключение и откат выбранных задач</sys:String>
+    <sys:String x:Key="S_Section15_Desc">Бэкап, отключение и откат выбранных задач</sys:String>
     <sys:String x:Key="S_Section16_Title">Обновления Windows</sys:String>
     <sys:String x:Key="S_Section16_Desc">Пауза, драйверы и блокировка служб обновления</sys:String>
     <sys:String x:Key="S_Section25_Title">Драйверы</sys:String>
@@ -151,10 +151,10 @@
 
     <sys:String x:Key="S_PrivacyEnableAll">Включить все</sys:String>
     <sys:String x:Key="S_PrivacyEnableAllHint">Активна, пока хотя бы один переключатель ниже выключен.</sys:String>
-    <sys:String x:Key="S_PrivacyToggleTip">Переключает категорию. Перед отключением исходные значения сохраняются в резерв.</sys:String>
+    <sys:String x:Key="S_PrivacyToggleTip">Переключает категорию. Перед отключением исходные значения сохраняются в бэкап.</sys:String>
 
     <sys:String x:Key="S_UacTitle">Контроль учётных записей (UAC)</sys:String>
-    <sys:String x:Key="S_UacDesc">Ослабление требует подтверждения и сохраняет исходные значения в резерв.</sys:String>
+    <sys:String x:Key="S_UacDesc">Ослабление требует подтверждения и сохраняет исходные значения в бэкап.</sys:String>
     <sys:String x:Key="S_UacToggleTip">Стандартный уровень включён — тумблер вверху. Ослабление отключает защищённый рабочий стол и подтверждения для администраторов.</sys:String>
 
     <sys:String x:Key="S_PlanHigh">Высокая производительность</sys:String>
@@ -165,7 +165,7 @@
     <sys:String x:Key="S_PlanBitsum">Bitsum Highest Performance</sys:String>
     <sys:String x:Key="S_PowerHibernation">Гибернация</sys:String>
     <sys:String x:Key="S_PowerHibernationDesc">Сохраняет полное состояние системы на диск (hiberfil.sys) и добавляет пункт «Гибернация» в меню питания. Отключение освобождает место на системном томе, но убирает гибернацию и может повлиять на Fast Startup. Имеет смысл отключать, если гибернацией не пользуетесь и нужен диск без hiberfile.</sys:String>
-    <sys:String x:Key="S_PowerHibernationTip">Управление через powercfg /h. Исходное состояние можно восстановить из резерва.</sys:String>
+    <sys:String x:Key="S_PowerHibernationTip">Управление через powercfg /h. Исходное состояние можно восстановить из бэкапа.</sys:String>
     <sys:String x:Key="S_PowerFastBoot">Быстрый запуск</sys:String>
     <sys:String x:Key="S_PowerFastBootDesc">Использует уменьшенный файл гибернации для ускорения последующей загрузки Windows после завершения работы. Отключение может увеличить время запуска, но исключает гибридное завершение работы. На современных SSD обычно оставляют включённым, если нет причины отключать (отладка, полный холодный старт, проблемы с драйверами).</sys:String>
     <sys:String x:Key="S_PowerFastBootTip">Реестр HiberbootEnabled и проверка доступности через powercfg. Изменение может потребовать перезагрузки.</sys:String>
@@ -265,11 +265,11 @@
     <sys:String x:Key="S_Clean">Очистить</sys:String>
     <sys:String x:Key="S_ColIndex">#</sys:String>
     <sys:String x:Key="S_BloatDesc">Список фиксирован. Скан показывает фактическое наличие. Удаление идёт через powershell: SCU.ps1 с повторной проверкой</sys:String>
-    <sys:String x:Key="S_ServicesDesc">Переключатель включает и отключает службу через .NET API, после резерва</sys:String>
-    <sys:String x:Key="S_SvcToggleTip">Включение и отключение службы после резерва. Недоступно, если служба отсутствует.</sys:String>
+    <sys:String x:Key="S_ServicesDesc">Переключатель включает и отключает службу через .NET API</sys:String>
+    <sys:String x:Key="S_SvcToggleTip">Включение и отключение службы после бэкапа. Недоступно, если служба отсутствует.</sys:String>
     <sys:String x:Key="S_StartupDesc">Прямые правки реестра в этом разделе не используются</sys:String>
-    <sys:String x:Key="S_TasksDesc">Список, резерв, отключение и откат идут через SCU.ps1: TasksBackup, TasksDisable, TasksRestore. Перед первым отключением в сессии создаётся TasksBackup</sys:String>
-    <sys:String x:Key="S_TasksToggleTip">Нужны права администратора. Перед первым отключением создаётся резерв.</sys:String>
+    <sys:String x:Key="S_TasksDesc">Список, бэкап, отключение и откат идут через SCU.ps1: TasksBackup, TasksDisable, TasksRestore. Перед первым отключением в сессии создаётся TasksBackup</sys:String>
+    <sys:String x:Key="S_TasksToggleTip">Нужны права администратора. Перед первым отключением создаётся бэкап.</sys:String>
 
     <sys:String x:Key="S_BloatRemoveAll">Удалить всё</sys:String>
     <sys:String x:Key="S_BloatRemoveAllTip">Удалит все отмеченные приложения и пакеты из списка. Системные компоненты останутся. Действие нельзя отменить кнопкой «Назад»: восстанавливать придётся вручную или из точек восстановления.</sys:String>
@@ -313,7 +313,7 @@
     <sys:String x:Key="S_ColFolder">Папка</sys:String>
 
     <sys:String x:Key="S_WuServicesTitle">Службы обновления</sys:String>
-    <sys:String x:Key="S_WuServicesDesc">Блокировка сохраняет исходное состояние служб в резерв и переводит их в «Отключена» (включая Windows Update Medic, который иначе возвращает wuauserv).</sys:String>
+    <sys:String x:Key="S_WuServicesDesc">Блокировка сохраняет исходное состояние служб в бэкап и переводит их в «Отключена» (включая Windows Update Medic, который иначе возвращает wuauserv).</sys:String>
     <sys:String x:Key="S_WuBlock">Заблокировать обновления</sys:String>
     <sys:String x:Key="S_WuUnblock">Вернуть обновления</sys:String>
     <sys:String x:Key="S_WuPauseTitle">Пауза обновлений</sys:String>
@@ -343,6 +343,8 @@
          ключ показывается в 9 разделах. Для автозагрузки — отдельный S_EmptyStateStartup. -->
     <sys:String x:Key="S_EmptyState">Здесь пока ничего нет</sys:String>
     <sys:String x:Key="S_EmptyStateStartup">Приложений в автозагрузке нет</sys:String>
+    <!-- Ввод: сноска к карточкам со звёздочкой (ускорение мыши, залипание клавиш) -->
+    <sys:String x:Key="S_InputAsteriskNote">* Включение отключает параметр</sys:String>
 
     <!-- ===================== Раздел 0 «Состояние ПК»: большой выключатель ===================== -->
     <sys:String x:Key="D_BatchTitle">Применить оптимизацию</sys:String>
@@ -374,7 +376,7 @@
     <sys:String x:Key="S_AboutPaths">Куда приложение записывает данные</sys:String>
     <sys:String x:Key="S_AboutPathSettings">Настройки</sys:String>
     <sys:String x:Key="S_AboutPathState">Состояние (список выключателя, история, снимки)</sys:String>
-    <sys:String x:Key="S_AboutPathBackup">Резервы изменений реестра и служб</sys:String>
+    <sys:String x:Key="S_AboutPathBackup">Бэкапы изменений реестра и служб</sys:String>
     <sys:String x:Key="S_AboutPathLog">Журнал</sys:String>
 
     <!-- ===================== Раздел 0 «Состояние ПК» ===================== -->
@@ -443,10 +445,10 @@
 
     <sys:String x:Key="I_UiMenuDelay">Уменьшает задержку перед открытием меню «Пуск» и контекстных меню (параметр MenuShowDelay в реестре). 20 мс — почти мгновенно; 400 мс — значение Windows по умолчанию. Применяется сразу.</sys:String>
     <sys:String x:Key="I_UiRestartExplorer">Завершает и заново запускает explorer.exe: панель задач и открытые окна проводника на несколько секунд исчезнут. Нужно, чтобы применить изменения параметров проводника без перезагрузки.</sys:String>
-    <sys:String x:Key="I_UiClearTaskbar">Удаляет закреплённые значки и сбрасывает настройки панели задач, затем перезапускает проводник. Состояние сохраняется в резерв — вернуть можно кнопкой «Восстановить панель задач».</sys:String>
-    <sys:String x:Key="I_UiRestoreTaskbar">Возвращает закреплённые значки и настройки панели задач из резерва, созданного при последней очистке, и перезапускает проводник.</sys:String>
+    <sys:String x:Key="I_UiClearTaskbar">Удаляет закреплённые значки и сбрасывает настройки панели задач, затем перезапускает проводник. Состояние сохраняется в бэкап — вернуть можно кнопкой «Восстановить панель задач».</sys:String>
+    <sys:String x:Key="I_UiRestoreTaskbar">Возвращает закреплённые значки и настройки панели задач из бэкапа, созданного при последней очистке, и перезапускает проводник.</sys:String>
 
-    <sys:String x:Key="I_PrivacyEnableAll">Отключает все перечисленные ниже категории: советы Windows, фоновые UWP-приложения, задачи телеметрии/CEIP, службу DiagTrack и Copilot. Значения восстанавливаются из резерва, а при его отсутствии — к заводским.</sys:String>
+    <sys:String x:Key="I_PrivacyEnableAll">Отключает все перечисленные ниже категории: советы Windows, фоновые UWP-приложения, задачи телеметрии/CEIP, службу DiagTrack и Copilot.</sys:String>
 
     <sys:String x:Key="I_PlanHigh">Высокая производительность: процессор не занижает частоту в простое. Расход энергии и нагрев выше.</sys:String>
     <sys:String x:Key="I_PlanUltimate">Максимальная: отключает почти все механизмы энергосбережения. Для стационарных ПК и ноутбуков в розетке.</sys:String>
@@ -456,17 +458,17 @@
     <sys:String x:Key="I_PowerPageFile">Задаёт фиксированный размер файла подкачки и отключает автоматическое управление Windows. Размер зависит не только от ОЗУ: учитывайте peak commit, настройки crash dump и свободное место на диске. По умолчанию предпочтителен режим «Управляется Windows». Применяется после перезагрузки.</sys:String>
     <sys:String x:Key="I_PowerCpuClear">Удаляет из загрузчика BCD параметры numproc и truncatememory, если они заданы, — Windows перестанет ограничивать число ядер и объём ОЗУ. Применяется после перезагрузки.</sys:String>
 
-    <sys:String x:Key="I_NetGamingProfile">Применяет Auto-Tuning=disabled, ECN=disabled и QoS override=0%. Текущие значения сохраняются в резерв; кнопка «Откатить» возвращает TCP Global и QoS из резерва.</sys:String>
-    <sys:String x:Key="I_NetResetAll">Возвращает TCP Global, QoS override, MTU и NetBIOS к исходным значениям из резервов, созданных при предыдущих изменениях в этом разделе.</sys:String>
-    <sys:String x:Key="I_NetAdapterProfileApply">Применяет универсальный сбалансированный профиль ко всем физическим адаптерам (перечень настроек — выше). Неподдерживаемые драйвером свойства пропускаются; связь может кратковременно прерваться. Свойства каждого адаптера сохраняются в резерв перед применением; «Откатить» возвращает исходные значения.</sys:String>
+    <sys:String x:Key="I_NetGamingProfile">Применяет Auto-Tuning=disabled, ECN=disabled и QoS override=0%. Текущие значения сохраняются в бэкап; кнопка «Откатить» возвращает TCP Global и QoS из бэкапа.</sys:String>
+    <sys:String x:Key="I_NetResetAll">Возвращает TCP Global, QoS override, MTU и NetBIOS к исходным значениям из бэкапов, созданных при предыдущих изменениях в этом разделе.</sys:String>
+    <sys:String x:Key="I_NetAdapterProfileApply">Применяет универсальный сбалансированный профиль ко всем физическим адаптерам (перечень настроек — выше). Неподдерживаемые драйвером свойства пропускаются; связь может кратковременно прерваться. Свойства каждого адаптера сохраняются в бэкап перед применением; «Откатить» возвращает исходные значения.</sys:String>
     <sys:String x:Key="I_NetApplyAutoTuning">Устанавливает уровень TCP Windows Auto-Tuning в выбранное значение. Обычно безопасен normal; disabled иногда помогает со старыми роутерами, но снижает скорость загрузки. Совет: обычно оставляют Auto-Tuning = normal.</sys:String>
     <sys:String x:Key="I_NetApplyEcn">Устанавливает явное уведомление о перегрузке (ECN) для TCP. Включайте, только если ваша сеть и роутер поддерживают ECN. Совет: ECN — только на подтверждённом оборудовании (сеть/роутер).</sys:String>
-    <sys:String x:Key="I_NetMtu">Задаёт MTU выбранного интерфейса, прежнее значение сохраняется в резерв. Стандарт Ethernet/Wi-Fi — 1500; для PPPoE и туннелей часто 1472. Неверное значение приводит к фрагментации пакетов. Совет: стандарт — 1500; PPPoE и мобильные сети — меньше; значения не гарантированы, ориентируйтесь на фактическую сеть.</sys:String>
+    <sys:String x:Key="I_NetMtu">Задаёт MTU выбранного интерфейса, прежнее значение сохраняется в бэкап. Стандарт Ethernet/Wi-Fi — 1500; для PPPoE и туннелей часто 1472. Неверное значение приводит к фрагментации пакетов. Совет: стандарт — 1500; PPPoE и мобильные сети — меньше; значения не гарантированы, ориентируйтесь на фактическую сеть.</sys:String>
     <sys:String x:Key="I_NetMtuCustom">Задаёт своё значение MTU из поля слева (допустимо 576..1500) для выбранного интерфейса.</sys:String>
-    <sys:String x:Key="I_NetMtuRestore">Возвращает интерфейсам MTU-значения, сохранённые в резерв до изменения.</sys:String>
+    <sys:String x:Key="I_NetMtuRestore">Возвращает интерфейсам MTU-значения, сохранённые в бэкап до изменения.</sys:String>
     <sys:String x:Key="I_NetQosSet">Резервирует указанный процент полосы под нестандартный трафик (NonBestEffortLimit). 0% — Windows не резервирует полосу; напрямую скорость интернета это не повышает. Совет: резерв полосы задают только для мультимедиа-целей; для обычного домашнего ПК безопаснее не менять значение.</sys:String>
     <sys:String x:Key="I_NetQosRemove">Удаляет переопределение QoS — используется системное значение по умолчанию.</sys:String>
-    <sys:String x:Key="I_NetQosRestore">Возвращает исходное значение QoS из резерва.</sys:String>
+    <sys:String x:Key="I_NetQosRestore">Возвращает исходное значение QoS из бэкапа.</sys:String>
     <sys:String x:Key="I_NetNetBiosMode">Переключает NetBIOS over TCP/IP на всех интерфейсах: «Отключить» выключает протокол (обычно безопасно в современных сетях), «По DHCP» возвращает автоматический режим. Совет: обычно включён в рабочих сетях; меняйте только при понимании работы SMB и сетевых служб.</sys:String>
     <sys:String x:Key="I_NetNetBiosFlush">Сбрасывает кэш имён NetBIOS (nbtstat -R) и перерегистрирует имена (nbtstat -RR). Безопасно; помогает после смены сетевого окружения.</sys:String>
 
@@ -478,12 +480,12 @@
     <sys:String x:Key="I_CleanupBrowsers">Удаляет кэш Chrome, Edge, Яндекс Браузера, Brave, Vivaldi, Firefox и Opera. Закладки, пароли и история не затрагиваются; заранее закройте браузеры.</sys:String>
     <sys:String x:Key="I_CleanupUpdateCache">Останавливает службы обновления (с сохранением их состояния), очищает SoftwareDistribution\Download и кэш Delivery Optimization, затем возвращает службы. Может освободить несколько ГБ.</sys:String>
 
-    <sys:String x:Key="I_SvcBackup">Сохраняет текущий тип запуска и состояние всех служб из списка в резервный файл. Создавайте перед изменениями.</sys:String>
-    <sys:String x:Key="I_SvcRestore">Возвращает типы запуска и состояние служб из резервного файла, созданного кнопкой «Бэкап».</sys:String>
+    <sys:String x:Key="I_SvcBackup">Сохраняет текущий тип запуска и состояние всех служб из списка в бэкап. Создавайте перед изменениями.</sys:String>
+    <sys:String x:Key="I_SvcRestore">Возвращает типы запуска и состояние служб из бэкапа, созданного кнопкой «Бэкап».</sys:String>
 
-    <sys:String x:Key="I_TasksBackup">Сохраняет в резерв состояние выбранных задач планировщика перед их отключением.</sys:String>
-    <sys:String x:Key="I_TasksRestore">Возвращает задачи планировщика к состоянию из резерва, созданного кнопкой «Бэкап».</sys:String>
-    <sys:String x:Key="I_TasksDisableAll">Отключает все перечисленные задачи планировщика разом. Перед первым отключением создаётся резерв — вернуть прежние состояния можно кнопкой «Откатить».</sys:String>
+    <sys:String x:Key="I_TasksBackup">Сохраняет в бэкап состояние выбранных задач планировщика перед их отключением.</sys:String>
+    <sys:String x:Key="I_TasksRestore">Возвращает задачи планировщика к состоянию из бэкапа, созданного кнопкой «Бэкап».</sys:String>
+    <sys:String x:Key="I_TasksDisableAll">Отключает все перечисленные задачи планировщика разом. Перед первым отключением создаётся бэкап — вернуть прежние состояния можно кнопкой «Откатить».</sys:String>
 
     <!-- ===================== Раздел 20 «Бэнчмарк» ===================== -->
     <sys:String x:Key="S_Section20_Title">Бэнчмарк</sys:String>

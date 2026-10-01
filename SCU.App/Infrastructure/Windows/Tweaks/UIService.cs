@@ -341,7 +341,7 @@ public sealed class UIService
             : "Современное контекстное меню восстановлено. Перезапустите проводник.");
     }
 
-    // «Рекомендуем»: скрытие — policy-значения с резервом; показ — их удаление (как в BAT).
+    // «Рекомендуем»: скрытие — policy-значения с бэкапом; показ — их удаление (как в BAT).
     private Result ApplyRecommended(bool show)
     {
         if (!show)
@@ -471,7 +471,7 @@ public sealed class UIService
         var backupPath = BackupPath("taskbar-cleanup.json");
         if (!File.Exists(backupPath))
         {
-            return Result.Failure("Резерв панели задач не найден — сначала выполните очистку из текущего профиля.");
+            return Result.Failure("Бэкап панели задач не найден — сначала выполните очистку из текущего профиля.");
         }
 
         Dictionary<string, TaskbarValueSnapshot>? snapshot;
@@ -482,12 +482,12 @@ public sealed class UIService
         }
         catch (Exception exception)
         {
-            return Result.Failure("Резерв панели задач не читается: " + exception.Message);
+            return Result.Failure("Бэкап панели задач не читается: " + exception.Message);
         }
 
         if (snapshot is null || snapshot.Count == 0)
         {
-            return Result.Failure("Резерв панели задач пуст.");
+            return Result.Failure("Бэкап панели задач пуст.");
         }
 
         var restored = 0;
@@ -496,7 +496,7 @@ public sealed class UIService
         // Граница записи: снимок лежит в пользовательском каталоге и мог быть
         // подменён. Восстановление вправе писать только туда, откуда ClearTaskbar
         // снимал бэкап (Taskband и Streams\Desktop, с их подключами) — иначе
-        // подделанный резерв записал бы произвольные HKCU-значения.
+        // подделанный бэкап записал бы произвольные HKCU-значения.
         var allowedPrefixes = (new[]
         {
             @"Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband",
@@ -530,12 +530,12 @@ public sealed class UIService
 
             try
             {
-                // Декодирование внутри per-entry try: повреждённые данные резерва
+                // Декодирование внутри per-entry try: повреждённые данные бэкапа
                 // (FormatException из FromBase64String) не должны ронять весь restore.
                 var decoded = RegistryHelper.DecodeValue(kind, entry.Data);
                 if (decoded is null)
                 {
-                    errors.Add($"{fullPath}: нечитаемые данные резерва");
+                    errors.Add($"{fullPath}: нечитаемые данные бэкапа");
                     continue;
                 }
 
@@ -585,7 +585,7 @@ public sealed class UIService
         public string Data { get; set; } = string.Empty;
     }
 
-    // Рекурсивный снимок ключа: "ключ\\значение" -> представление для JSON-резерва.
+    // Рекурсивный снимок ключа: "ключ\\значение" -> представление для JSON-бэкапа.
     private static void SnapshotKey(RegistryKey hive, string subKey, Dictionary<string, object> snapshot)
     {
         using var key = hive.OpenSubKey(subKey);

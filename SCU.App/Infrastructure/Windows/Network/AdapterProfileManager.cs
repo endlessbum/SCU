@@ -5,7 +5,7 @@ using SCU.Interop;
 namespace SCU.Infrastructure.Windows.Network;
 
 // П. 13 аудита (B4): зона «профиль адаптера NIC» из NetworkService — применение
-// универсального профиля, резерв и восстановление через PowerShell
+// универсального профиля, бэкап и восстановление через PowerShell
 // (Get/Set-NetAdapterAdvancedProperty). NetworkService хранит тонкий фасад.
 internal sealed class AdapterProfileManager
 {
@@ -26,7 +26,7 @@ internal sealed class AdapterProfileManager
     // Универсальный сбалансированный профиль физическим NIC.
     // Используются стандартизированные NDIS RegistryKeyword, поэтому локализация Windows/драйвера
     // не влияет на поиск свойства. Если конкретный драйвер не предоставляет свойство — оно пропускается.
-    // Перед применением текущие значения тех же ключей сохраняются в резерв (adapter_profile.txt).
+    // Перед применением текущие значения тех же ключей сохраняются в бэкап (adapter_profile.txt).
     public async Task<Result> ApplyUniversalAdapterProfileAsync(
         IProgress<string>? progress = null,
         CancellationToken ct = default)
@@ -256,7 +256,7 @@ foreach ($adapter in $adapters) {
         }
     }
 
-    // Резерв расширенных свойств физических адаптеров ДО применения профиля.
+    // Бэкап расширенных свойств физических адаптеров ДО применения профиля.
     // Фильтр строк "ADAPTER|<адаптер>|<keyword>|<значение|->" из вывода backup-скрипта.
     internal static IReadOnlyList<string> SelectBackupLines(string output)
         => output
@@ -321,17 +321,17 @@ foreach ($adapter in $adapters) {
 }
 """;
 
-    // Выгрузка резерва профиля: PS печатает строки "ADAPTER|<имя>|<keyword>|<значение|->"
+    // Выгрузка бэкапа профиля: PS печатает строки "ADAPTER|<имя>|<keyword>|<значение|->"
     // ("-" — свойства нет), файл пишет C#. Кодировка UTF8 с BOM — иначе Windows PowerShell 5.1
     // прочитает кириллические имена адаптеров в ANSI и откат по ним не найдёт адаптер.
-    // Повторное применение резерв не перезаписывает: в нём значения ДО первой правки.
+    // Повторное применение бэкап не перезаписывает: в нём значения ДО первой правки.
     internal async Task<Result> BackupAdapterProfileAsync(CancellationToken ct)
     {
         try
         {
             if (File.Exists(AdapterProfileBackupFile))
             {
-                return Result.Success("Резерв уже существует.");
+                return Result.Success("Бэкап уже существует.");
             }
 
             var result = await _runner
@@ -356,7 +356,7 @@ foreach ($adapter in $adapters) {
             Directory.CreateDirectory(BackupDirectory);
             File.WriteAllLines(AdapterProfileBackupFile, lines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
             _logger.Info($"NET | adapter profile backup | {lines.Count} строк");
-            return Result.Success("Резерв сохранён.");
+            return Result.Success("Бэкап сохранён.");
         }
         catch (OperationCanceledException)
         {
@@ -364,13 +364,13 @@ foreach ($adapter in $adapters) {
         }
         catch (Exception exception)
         {
-            return Result.Failure("Не удалось сохранить резерв свойств адаптеров: " + exception.Message);
+            return Result.Failure("Не удалось сохранить бэкап свойств адаптеров: " + exception.Message);
         }
     }
 
-    // Откат профиля: Set-NetAdapterAdvancedProperty по значениям из резерва (значение "-" —
+    // Откат профиля: Set-NetAdapterAdvancedProperty по значениям из бэкапа (значение "-" —
     // свойства не было, пропускается), затем перезапуск изменённых адаптеров.
-    // После успеха резерв удаляется (best-effort: сбой удаления не роняет операцию).
+    // После успеха бэкап удаляется (best-effort: сбой удаления не роняет операцию).
     // Разбор вывода restore-скрипта: RESTORE|<адаптер>|<ключ>|OK/FAIL и RESTART|FAIL|<адаптер>.
     internal static (int Restored, int Failures, int RestartsFailed) SummarizeRestoreOutput(string output)
     {
@@ -402,7 +402,7 @@ foreach ($adapter in $adapters) {
     {
         if (!File.Exists(AdapterProfileBackupFile))
         {
-            return Result.Success("Резерв свойств адаптеров отсутствует — восстанавливать нечего.");
+            return Result.Success("Бэкап свойств адаптеров отсутствует — восстанавливать нечего.");
         }
 
         var script = AdapterProfileRestoreScript.Replace(
@@ -429,10 +429,10 @@ foreach ($adapter in $adapters) {
             if (failures > 0 || restartsFailed > 0)
             {
                 return Result.Failure(
-                    $"Свойства адаптеров восстановлены не полностью: значений {restored}, ошибок {failures}, ошибок перезапуска {restartsFailed}; резерв сохранён.");
+                    $"Свойства адаптеров восстановлены не полностью: значений {restored}, ошибок {failures}, ошибок перезапуска {restartsFailed}; бэкап сохранён.");
             }
 
-            // Удаление резерва — необязательный хвост: не роняет успешную операцию.
+            // Удаление бэкапа — необязательный хвост: не роняет успешную операцию.
             try
             {
                 File.Delete(AdapterProfileBackupFile);
@@ -443,7 +443,7 @@ foreach ($adapter in $adapters) {
             }
 
             _logger.Info($"NET | adapter profile restored | {restored} значений");
-            return Result.Success($"Свойства адаптеров восстановлены из резерва ({restored} значений).");
+            return Result.Success($"Свойства адаптеров восстановлены из бэкапа ({restored} значений).");
         }
         catch (OperationCanceledException)
         {

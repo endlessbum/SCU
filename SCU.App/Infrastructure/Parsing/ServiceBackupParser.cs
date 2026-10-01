@@ -1,9 +1,15 @@
+using SCU.Infrastructure.Logging;
+
 namespace SCU.Infrastructure.Parsing;
 
-// П. 13 аудита: чтение резерва служб (services_*.txt) — чистый парсер файла,
+// П. 13 аудита: чтение бэкапа служб (services_*.txt) — чистый парсер файла,
 // вынесен из ServiceManager.
+// П. №17 аудита: «прочесть не удалось» теперь отличимо в логе от «бэкапа нет» —
+// прежде тихий catch возвращал null в обоих случаях.
 internal static class ServiceBackupParser
 {
+    private static readonly Logger Log = Logger.CurrentRun;
+
     internal static string? FindLatestServicesBackupPath()
     {
         try
@@ -21,13 +27,14 @@ internal static class ServiceBackupParser
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .FirstOrDefault();
         }
-        catch
+        catch (Exception exception)
         {
+            Log.Warn("SVC | backup directory unreadable | " + exception.Message);
             return null;
         }
     }
 
-    // Start из строки резерва "name|start|state|delayed"; резерв повреждён/нет записи — Manual.
+    // Start из строки бэкапа "name|start|state|delayed"; бэкап повреждён/нет записи — Manual.
     internal static int? ReadStartFromBackup(string? backupFilePath, string serviceName)    {
         try
         {
@@ -46,9 +53,11 @@ internal static class ServiceBackupParser
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
-            // Резерв читается только как подсказка; ошибка чтения не ломает включение.
+            // Бэкап — только подсказка для включения службы: ошибка чтения не
+            // ломает операцию, но отличить «повреждён» от «нет записи» важно (п. №17).
+            Log.Warn("SVC | backup read failed | " + Path.GetFileName(backupFilePath ?? string.Empty) + " | " + exception.Message);
         }
 
         return null;

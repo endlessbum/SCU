@@ -12,7 +12,7 @@ public enum ProfileTargetKind
 
 // Желаемое состояние шага: On = цель применена, Off = возвращено к исходному.
 // Для PowerPlan осмысленно только On (выбор другой схемы сам является откатом);
-// для NetworkGaming On = игровой профиль, Off = состояние из резерва.
+// для NetworkGaming On = игровой профиль, Off = состояние из бэкапа.
 public enum StepDesire
 {
     Off = 0,

@@ -7,7 +7,6 @@
              mc:Ignorable="d"
              d:DesignHeight="720" d:DesignWidth="860">
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis" />
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -27,7 +26,7 @@
                 <TextBlock Style="{StaticResource CardIntroText}"
                            Text="{DynamicResource S_DrvStateDesc}" />
                 <Button Content="{DynamicResource S_DrvRescan}"
-                        HorizontalAlignment="Left"
+                        HorizontalAlignment="Right"
                         Margin="0,8,0,0"
                         Command="{Binding RefreshCommand}" />
                 <TextBlock Text="{Binding SummaryText}">
@@ -51,7 +50,7 @@
                 <TextBlock Style="{StaticResource CardIntroText}"
                            Text="{DynamicResource S_DrvUpdatesDesc}" />
                 <Button Content="{DynamicResource S_DrvSearch}"
-                        HorizontalAlignment="Left"
+                        HorizontalAlignment="Right"
                         Margin="0,8,0,0"
                         Command="{Binding SearchUpdatesCommand}" />
                 <TextBlock Text="{Binding UpdatesHeaderText}">
@@ -119,7 +118,7 @@
                 </ItemsControl>
                 <Button Style="{StaticResource AccentButton}"
                         Content="{DynamicResource S_DrvInstallAll}"
-                        HorizontalAlignment="Left"
+                        HorizontalAlignment="Right"
                         Margin="0,12,0,0"
                         Command="{Binding InstallAllCommand}"
                         Visibility="{Binding HasUpdates, Converter={StaticResource BoolToVis}}" />
@@ -259,7 +258,7 @@
                 <TextBlock Style="{StaticResource CardIntroText}"
                            Text="{DynamicResource S_DrvExportDesc}" />
                 <Button Content="{DynamicResource S_DrvExport}"
-                        HorizontalAlignment="Left"
+                        HorizontalAlignment="Right"
                         Margin="0,8,0,0"
                         Command="{Binding ExportCommand}" />
             </StackPanel>

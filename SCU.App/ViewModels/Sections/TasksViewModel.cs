@@ -63,7 +63,7 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
     private ScheduledTaskInfo? selectedRow;
 
     public string BackupPathText => string.IsNullOrWhiteSpace(LastBackupPath)
-        ? "резерв ещё не создавался"
+        ? L.T("бэкап ещё не создавался")
         : LastBackupPath;
 
     public bool HasBackup => !string.IsNullOrWhiteSpace(LastBackupPath) && File.Exists(LastBackupPath);
@@ -107,8 +107,8 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
                 return;
             }
 
-            // П.19: без фразы о правах администратора; путь резерва — с новой строки.
-            StatusText = L.T("Загружено задач: {0}.", Rows.Count) + "\n" + L.T("Резерв: {0}", BackupPathText);
+            // П.19: без фразы о правах администратора; путь бэкапа — с новой строки.
+            StatusText = L.T("Загружено задач: {0}.", Rows.Count) + "\n" + L.T("Бэкап: {0}", BackupPathText);
             _logger.Info($"TASKS | refresh | count={Rows.Count} | admin={IsAdmin}");
         }).ConfigureAwait(true);
     }
@@ -116,7 +116,7 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
     [RelayCommand(CanExecute = nameof(CanBackup))]
     private async Task BackupAsync()
     {
-        await RunExclusiveAsync("резерв задач", ct => BackupCoreAsync(ct)).ConfigureAwait(true);
+        await RunExclusiveAsync("бэкап задач", ct => BackupCoreAsync(ct)).ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanRestore))]
@@ -129,7 +129,7 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
 
         await RunExclusiveAsync("восстановление задач", async ct =>
         {
-            StatusText = L.T("Восстановление задач из резерва…");
+            StatusText = L.T("Восстановление задач из бэкапа…");
             _logger.Info("TASKS | restore | file=" + LastBackupPath);
             var result = await _runner.RunAsync(
                 "TasksRestore",
@@ -316,13 +316,13 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, $"tasks_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.txt");
 
-        StatusText = L.T("Сохранение резерва задач…");
+        StatusText = L.T("Сохранение бэкапа задач…");
         _logger.Info("TASKS | backup | file=" + path);
 
         var result = await _taskManager.ListAsync(path, ct).ConfigureAwait(true);
         if (!result.IsSuccess || result.Value is null)
         {
-            StatusText = L.T("Резерв не сохранён (код {0}): {1}", result.Code, result.Message);
+            StatusText = L.T("Бэкап не сохранён (код {0}): {1}", result.Code, result.Message);
             _logger.Error($"TASKS | backup rc={result.Code} | {result.Message}");
             return false;
         }
@@ -330,9 +330,9 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
         LastBackupPath = path;
         _backupDoneThisSession = true;
         ApplyRows(result.Value);
-        StatusText = L.T("Резерв сохранён: {0}", path);
+        StatusText = L.T("Бэкап сохранён: {0}", path);
         _logger.Info("TASKS | backup ok | file=" + path);
-        // П.2: хранятся только MaxFilesPerDirectory свежих резервов, старые удаляются.
+        // П.2: хранятся только MaxFilesPerDirectory свежих бэкапов, старые удаляются.
         BackupRetention.Enforce(directory, _logger);
         return true;
     }

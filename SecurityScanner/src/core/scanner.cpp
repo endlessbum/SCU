@@ -603,42 +603,50 @@ void Scanner::ScanPersistence(ScanStats& stats, std::vector<Detection>& detectio
         std::vector<std::wstring> signals;
         int score = 0;
 
-        if (!entry.targetPath.empty() && FileExistsNow(entry.targetPath)) {
+        const bool hasTarget = !entry.targetPath.empty() && FileExistsNow(entry.targetPath);
+        Verdict targetVerdict = Verdict::Clean;
+        if (hasTarget) {
             const auto cached = verdictCache.find(entry.targetPath);
             if (cached != verdictCache.end()) {
-                verdict = cached->second;
+                targetVerdict = cached->second;
             } else {
                 bool needsArchiveScan = false;
-                verdict = AnalyzeFile(displayPath, entry.targetPath, GetFileSizeSafe(entry.targetPath),
-                                      L"", false, stats, detections, needsArchiveScan,
-                                      /*countInFileStats=*/false);
+                targetVerdict = AnalyzeFile(displayPath, entry.targetPath, GetFileSizeSafe(entry.targetPath),
+                                            L"", false, stats, detections, needsArchiveScan,
+                                            /*countInFileStats=*/false);
 
                 // Persistence-цель — архив: AnalyzeFile анализирует только сам
                 // контейнер (п. 4 аудита). Полный archive-скан обязателен, иначе
-                // malware внутри цели остаётся скрытым; худший вердикт члена
+                // вредонос внутри цели остаётся скрытым; худший вердикт члена
                 // прокидывается наружу как вердикт цели.
-                if (verdict == Verdict::Clean && needsArchiveScan && scanArchives_ && !IsCancelled()) {
-                    verdict = RunArchiveScan(entry.targetPath, entry.targetPath, stats, detections);
+                if (targetVerdict == Verdict::Clean && needsArchiveScan && scanArchives_ && !IsCancelled()) {
+                    targetVerdict = RunArchiveScan(entry.targetPath, entry.targetPath, stats, detections);
                 }
 
-                verdictCache[entry.targetPath] = verdict;
+                verdictCache[entry.targetPath] = targetVerdict;
             }
 
-            if (verdict == Verdict::Clean) {
-                return; // цель чистая — сама запись автозапуска легитимна
+            if (targetVerdict != Verdict::Clean) {
+                verdict = targetVerdict;
+                signals.push_back(L"persistence-target:" + VerdictToWide(targetVerdict));
+                score += 2;
             }
-            signals.push_back(L"persistence-target:" + VerdictToWide(verdict));
-            score += 2;
-        } else {
-            // Цели-файла нет — анализируется сама командная строка.
-            const std::string commandLower = ToLowerAscii(entry.command);
-            const ScriptAnalysis script = ScriptScanner::AnalyzeText(commandLower);
-            score = script.score;
-            signals = script.signals;
-            if (score < kSuspiciousScriptScore) {
-                return; // одиночный слабый сигнал не детект (п. 16)
-            }
-            verdict = Verdict::Suspicious;
+        }
+
+        // П. SCAN-03: командная строка анализируется ВСЕГДА, а не только когда
+        // цель отсутствует. Чистый host-exe (powershell.exe, wscript.exe) с
+        // вредоносными аргументами (-enc <payload>, /c script.vbs) раньше
+        // проходил как clean, пока существовал и был чист сам exe.
+        const std::string commandLower = ToLowerAscii(entry.command);
+        const ScriptAnalysis script = ScriptScanner::AnalyzeText(commandLower);
+        if (script.score >= kSuspiciousScriptScore) {
+            verdict = verdict == Verdict::Clean ? Verdict::Suspicious : verdict;
+            score = std::max(score, script.score);
+            signals.insert(signals.end(), script.signals.begin(), script.signals.end());
+        }
+
+        if (verdict == Verdict::Clean) {
+            return; // и цель, и командная строка чистые
         }
 
         Detection detection;
@@ -646,10 +654,9 @@ void Scanner::ScanPersistence(ScanStats& stats, std::vector<Detection>& detectio
         detection.sha256 = entry.targetPath.empty() ? std::string() : HashTargetForReport(entry.targetPath);
         detection.verdict = verdict;
         detection.ruleId = L"PERSISTENCE";
-        detection.description = entry.targetPath.empty()
-            ? std::wstring(L"Suspicious autostart command")
-            : std::wstring(L"Autostart entry correlated with ")
-                + VerdictToWide(verdict) + L" target";
+        detection.description = targetVerdict != Verdict::Clean
+            ? std::wstring(L"Autostart entry correlated with ") + VerdictToWide(targetVerdict) + L" target"
+            : std::wstring(L"Suspicious autostart command");
         detection.score = score;
         detection.signals = signals;
         detection.source = L"persistence";

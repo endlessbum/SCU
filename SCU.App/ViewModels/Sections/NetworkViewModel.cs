@@ -191,7 +191,7 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
     {
         await RunExclusiveAsync("откат профиля сетевых адаптеров", async ct =>
         {
-            StatusText = L.T("Восстановление свойств сетевых адаптеров из резерва…");
+            StatusText = L.T("Восстановление свойств сетевых адаптеров из бэкапа…");
             var result = await _networkService.RestoreAdapterProfileAsync(ct).ConfigureAwait(true);
             StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
             IsAdapterProfileRestoreAvailable = NetworkService.HasAdapterProfileBackup();
@@ -364,7 +364,7 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
     {
         if (!_dialogs.Ask(
                 L.T("NetBIOS over TCP/IP"),
-                L.T(confirmText) + "\n" + L.T("Исходные режимы сохраняются в резерв."),
+                L.T(confirmText) + "\n" + L.T("Исходные режимы сохраняются в бэкап."),
                 L.T("Применить")))
         {
             return;
@@ -435,7 +435,7 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
         if (!_dialogs.Ask(
                 L.T("Профиль для игр"),
                 L.T("Будут применены: Auto-Tuning=disabled, ECN=disabled, QoS override=0%.\n"
-                    + "Профиль не гарантирует снижение пинга; исходные значения сохраняются в резерв.\nПродолжить?"),
+                    + "Профиль не гарантирует снижение пинга; исходные значения сохраняются в бэкап.\nПродолжить?"),
                 L.T("Применить профиль")))
         {
             return;
@@ -460,13 +460,13 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
         }).ConfigureAwait(true);
     }
 
-    // Откат игрового профиля: TCP Global и QoS возвращаются из резервов последовательно.
+    // Откат игрового профиля: TCP Global и QoS возвращаются из бэкапов последовательно.
     [RelayCommand(CanExecute = nameof(CanModify))]
     private async Task RollbackGamingProfileAsync()
     {
         await RunExclusiveAsync("откат игрового профиля", async ct =>
         {
-            StatusText = L.T("Откат игрового профиля из резерва…");
+            StatusText = L.T("Откат игрового профиля из бэкапа…");
             var tcp = await _networkService.RestoreTcpGlobalAsync(ct).ConfigureAwait(true);
             var qos = await TaskRunner.RunBlocking(_networkService.RestoreQosOverride, ct).ConfigureAwait(true);
             var messages = string.Join(" ", new[] { tcp, qos }.Select(r => L.S(r.Message)));
@@ -491,7 +491,7 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
     {
         if (!_dialogs.Ask(
                 L.T("Сброс сетевых параметров"),
-                L.T("Восстановить TCP Global, QoS override, MTU и NetBIOS из сохранённых резервов?"),
+                L.T("Восстановить TCP Global, QoS override, MTU и NetBIOS из сохранённых бэкапов?"),
                 L.T("Восстановить всё")))
         {
             return;
@@ -499,7 +499,7 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
 
         await RunExclusiveAsync("сброс сетевых параметров", async ct =>
         {
-            StatusText = L.T("Восстановление всех параметров из резервов…");
+            StatusText = L.T("Восстановление всех параметров из бэкапов…");
             var result = await _networkService.ResetAllAsync(ct).ConfigureAwait(true);
             StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Сброс завершён не полностью: {0}", result.Message);
             _logger.Info("NET | reset all | " + (result.IsSuccess ? "ok" : "partial: " + result.Message));

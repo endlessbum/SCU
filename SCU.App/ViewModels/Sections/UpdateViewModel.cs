@@ -221,7 +221,7 @@ public partial class UpdateViewModel : ObservableObject, IDisposable, ISectionOp
     {
         if (!_dialogs.Ask(
                 L.T("Блокировка обновлений Windows"),
-                L.T("Состояние служб wuauserv, UsoSvc, WaaSMedicSvc, DoSvc, BITS будет сохранено в резерв,\nзатем службы переведены в «Отключена».\nWindows перестанет ставить обновления до команды «Вернуть обновления».\nРекомендуется создать точку восстановления (раздел «Поиск и целостность»). Заблокировать?"),
+                L.T("Состояние служб wuauserv, UsoSvc, WaaSMedicSvc, DoSvc, BITS будет сохранено в бэкап,\nзатем службы переведены в «Отключена».\nWindows перестанет ставить обновления до команды «Вернуть обновления».\nРекомендуется создать точку восстановления (раздел «Поиск и целостность»). Заблокировать?"),
                 L.T("Заблокировать")))
         {
             return;
@@ -234,7 +234,7 @@ public partial class UpdateViewModel : ObservableObject, IDisposable, ISectionOp
 
             if (File.Exists(backupFile))
             {
-                // Повторная блокировка не перезаписывает резерв: в нём состояние служб
+                // Повторная блокировка не перезаписывает бэкап: в нём состояние служб
                 // ДО первой блокировки. Перезапись уже-отключённым состоянием сделала бы
                 // «Вернуть обновления» невозвратимой.
                 _logger.Info("WU | block | reuse existing backup " + backupFile);
@@ -272,7 +272,7 @@ public partial class UpdateViewModel : ObservableObject, IDisposable, ISectionOp
             catch (OperationCanceledException)
             {
                 // Отмена посреди цикла могла оставить часть служб отключённой —
-                // но резерв цел, и «Вернуть обновления» восстановит исходное состояние.
+                // но бэкап цел, и «Вернуть обновления» восстановит исходное состояние.
                 _logger.Warn("WU | block cancelled mid-way; unblock available");
                 StatusText = L.T("Операция отменена. Часть служб могла остаться отключённой — используйте «Вернуть обновления».");
                 return;
@@ -303,7 +303,7 @@ public partial class UpdateViewModel : ObservableObject, IDisposable, ISectionOp
         var backupFile = GetBlockBackupPath();
         if (!File.Exists(backupFile))
         {
-            StatusText = L.T("Резерв служб не найден — блокировка не выполнялась из приложения.");
+            StatusText = L.T("Бэкап служб не найден — блокировка не выполнялась из приложения.");
             return;
         }
 
@@ -324,8 +324,8 @@ public partial class UpdateViewModel : ObservableObject, IDisposable, ISectionOp
                 : L.T("Ошибка восстановления (код {0}): {1}. Частично можно исправить через раздел «Службы Windows».", restore.Code, restore.Message);
             _logger.Info($"WU | unblock | rc={restore.Code}");
 
-            // Успешный возврат завершает цикл: следующий «Заблокировать» снимет свежий резерв.
-            // При частичном сбое резерв сохраняем — повторный возврат по нему ещё возможен.
+            // Успешный возврат завершает цикл: следующий «Заблокировать» снимет свежий бэкап.
+            // При частичном сбое бэкап сохраняем — повторный возврат по нему ещё возможен.
             if (restore.IsSuccess)
             {
                 _history.Enqueue(new HistoryEvent(

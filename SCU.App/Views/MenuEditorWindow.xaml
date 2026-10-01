@@ -11,7 +11,6 @@
         FontFamily="{DynamicResource AppFontFamily}"
         FontSize="14">
     <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis" />
     </Window.Resources>
 
     <Grid Margin="14">
@@ -113,12 +112,12 @@
                                                 <TextBox Grid.Column="1"
                                                          VerticalContentAlignment="Center"
                                                          Margin="0,0,10,0"
-                                                         Text="{Binding Title, UpdateSourceTrigger=LostFocus}" />
+                                                         Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" />
                                                 <ComboBox Grid.Column="2"
                                                           VerticalContentAlignment="Center"
                                                           Margin="0,0,10,0"
                                                           IsEditable="True"
-                                                          Text="{Binding Group, UpdateSourceTrigger=LostFocus}"
+                                                          Text="{Binding Group, UpdateSourceTrigger=PropertyChanged}"
                                                           ItemsSource="{Binding DataContext.GroupNames, RelativeSource={RelativeSource AncestorType=Window}}"
                                                           ToolTip="{DynamicResource S_MenuEditorMove}" />
                                                 <!-- Применение настроек карточки: активна, только

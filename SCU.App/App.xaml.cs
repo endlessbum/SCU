@@ -12,7 +12,7 @@ public partial class App : Application
     private Logger? _logger;
 
     // Один экземпляр приложения: два окна SCU одновременно правили бы реестр
-    // и службы, резервы перезаписывали бы друг друга.
+    // и службы, бэкапы перезаписывали бы друг друга.
     private static Mutex? _singleInstanceMutex;
 
     // Сигнальное событие «вторая копия запущена» — см. TryAcquireSingleInstanceMutex.
@@ -71,7 +71,10 @@ public partial class App : Application
         {
             base.OnStartup(e);
 
-            _logger = Logger.CreateForCurrentRun();
+            // П. №9 аудита: общий логгер на запуск — все потребители (инструменты
+            // AI, QuarantineService, ServiceManager) пишут в один файл вместо
+            // сирот SCU_<timestamp>.log на каждый конструктор.
+            _logger = Logger.CurrentRun;
             Environment.SetEnvironmentVariable("SCU_LOGFILE", _logger.FilePath);
             ThemeManager.LogWarningSink = message => _logger.Warn(message);
 

@@ -78,7 +78,7 @@ public partial class StartupViewModel : ObservableObject, IDisposable, ISectionO
 
     public string RestoreHint => HasRestoreManifest
         ? GetBackupDirectory()
-        : "манифест ещё не создавался";
+        : L.T("манифест ещё не создавался");
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
@@ -92,8 +92,12 @@ public partial class StartupViewModel : ObservableObject, IDisposable, ISectionO
                 return;
             }
 
-            var rights = IsAdmin ? "Права администратора есть" : "Без прав администратора — изменение недоступно";
-            StatusText = L.T("Загружено элементов: {0}. {1}.", Rows.Count, rights);
+            var status = L.T("Загружено элементов: {0}.", Rows.Count);
+            if (!IsAdmin)
+            {
+                status += " " + L.T("Без прав администратора — изменение недоступно") + ".";
+            }
+            StatusText = status;
             _logger.Info($"STARTUP | refresh | count={Rows.Count} | admin={IsAdmin}");
         }).ConfigureAwait(true);
     }

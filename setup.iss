@@ -68,8 +68,8 @@ Filename: "{app}\SCU.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: 
 Type: filesandordirs; Name: "{app}\logs"
 
 [Code]
-// Резервы, состояние и журналы живут в %AppData%\SCU и переживают удаление.
-// Деинсталлятор спрашивает, оставлять ли их (переустановка сохранит резервы).
+// Бэкапы, состояние и журналы живут в %AppData%\SCU и переживают удаление.
+// Деинсталлятор спрашивает, оставлять ли их (переустановка сохранит бэкапы).
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   UserDataDir: string;
@@ -79,9 +79,9 @@ begin
     UserDataDir := ExpandConstant('{userappdata}') + '\SCU';
     if DirExists(UserDataDir) then
       if MsgBox(
-           'Удалить также данные SCU (резервы, состояние, журналы)?' + #13#10 +
+           'Удалить также данные SCU (бэкапы, состояние, журналы)?' + #13#10 +
            UserDataDir + #13#10 + #13#10 +
-           'Если оставить, при переустановке прежние резервы и настройки сохранятся.',
+           'Если оставить, при переустановке прежние бэкапы и настройки сохранятся.',
            mbConfirmation, MB_YESNO) = IDYES then
         DelTree(UserDataDir, True, True, True);
   end;

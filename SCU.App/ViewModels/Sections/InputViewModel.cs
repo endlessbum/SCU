@@ -38,8 +38,13 @@ public partial class InputViewModel : ObservableObject, IDisposable, ISectionOpe
         _inputService = new InputService(logger, new RegistryHelper(logger));
         foreach (var option in _inputService.Switches)
         {
+            // Звёздочка у параметров, включение которых выключает системное
+            // поведение (см. сноску под списком во view).
+            var title = option.Id is "mouse-acceleration" or "sticky-keys"
+                ? option.Title + " *"
+                : option.Title;
             // OnMeansEnable: тумблер включён = функция работает.
-            Rows.Add(new SwitchRow(option.Id, option.Title, option.Description, false, onMeansEnable: true));
+            Rows.Add(new SwitchRow(option.Id, title, option.Description, false, onMeansEnable: true));
         }
     }
 

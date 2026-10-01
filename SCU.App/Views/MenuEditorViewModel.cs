@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -18,29 +19,48 @@ public sealed partial class MenuEditorSection : ObservableObject
     public MenuEditorSection(MainViewModel main, SectionItem section)
     {
         _main = main;
-        Section = section;
+        BindSection(section);
         IsCustom = section.IsCustom;
-        // Синхронизация при изменениях извне карточки (сброс меню, ApplyMenu).
-        section.PropertyChanged += (_, args) =>
-        {
-            if (args.PropertyName is nameof(SectionItem.Title) or nameof(SectionItem.GroupTitle))
-            {
-                RefreshSnapshot();
-                OnPropertyChanged(nameof(Title));
-                OnPropertyChanged(nameof(Group));
-                RefreshChangeState();
-            }
-        };
         RefreshSnapshot();
     }
 
     private readonly MainViewModel _main;
+    private SectionItem _section = null!;
 
-    public SectionItem Section { get; }
+    public SectionItem Section => _section;
 
     public bool IsCustom { get; }
 
-    public int Number => Section.Number;
+    public int Number => _section.Number;
+
+    // Синхронизация при изменениях извне карточки (сброс меню, ApplyMenu).
+    private void OnSectionPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(SectionItem.Title) or nameof(SectionItem.GroupTitle))
+        {
+            RefreshSnapshot();
+            OnPropertyChanged(nameof(Title));
+            OnPropertyChanged(nameof(Group));
+            RefreshChangeState();
+        }
+    }
+
+    // Пользовательские вкладки пересоздаются в ApplyMenu (новые SectionItem),
+    // поэтому подписка переносится на актуальный экземпляр по номеру.
+    private void BindSection(SectionItem section)
+    {
+        if (_section is not null)
+        {
+            _section.PropertyChanged -= OnSectionPropertyChanged;
+        }
+
+        _section = section;
+        section.PropertyChanged += OnSectionPropertyChanged;
+    }
+
+    private SectionItem FindCurrentSection() =>
+        _main.BuiltinSections.Concat(_main.Sections.Where(section => section.Number >= 100))
+            .FirstOrDefault(section => section.Number == _section.Number) ?? _section;
 
     // ===== Редактируемые значения (применяются кнопкой) =====
 
@@ -99,9 +119,17 @@ public sealed partial class MenuEditorSection : ObservableObject
 
     private void RefreshSnapshot()
     {
-        _originalTitle = _title = Section.Title;
-        _originalGroup = _group = Section.GroupTitle;
-        _originalIsVisible = _isVisible = _main.Menu.Hidden.All(number => number != Section.Number);
+        // Читаем фактическое состояние по номеру: после ApplyMenu удерживаемый
+        // SectionItem пользовательской вкладки мог быть пересоздан.
+        var current = FindCurrentSection();
+        if (!ReferenceEquals(current, _section))
+        {
+            BindSection(current);
+        }
+
+        _originalTitle = _title = current.Title;
+        _originalGroup = _group = current.GroupTitle;
+        _originalIsVisible = _isVisible = _main.Menu.Hidden.All(number => number != _section.Number);
     }
 
     private void RefreshChangeState()
@@ -113,6 +141,10 @@ public sealed partial class MenuEditorSection : ObservableObject
     // Применение настроек карточки: только изменённые поля уходят в MainViewModel
     // (и сохраняются в menu.json), снимок обновляется по фактическому состоянию.
     private bool CanApply() => HasChanges;
+
+    // Поднимается после применения настроек карточки: редактор перестраивает
+    // дерево (группы, пересозданные пользовательские вкладки).
+    internal event Action? Applied;
 
     [RelayCommand(CanExecute = nameof(CanApply))]
     private void Apply()
@@ -136,6 +168,7 @@ public sealed partial class MenuEditorSection : ObservableObject
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Group));
         RefreshChangeState();
+        Applied?.Invoke();
     }
 
     // Утилиты раздела: встроенные (удаление) или назначенные (удаление из вкладки).
@@ -229,6 +262,13 @@ public partial class MenuEditorViewModel : ObservableObject
             Groups.Add(new MenuEditorGroup(_main, group.Key, group));
         }
 
+        // После «Применить» карточка просит перестроить дерево: группы могли
+        // измениться, пользовательская вкладка пересоздана в ApplyMenu.
+        foreach (var card in Groups.SelectMany(group => group.Sections))
+        {
+            card.Applied += OnSectionApplied;
+        }
+
         OnPropertyChanged(nameof(ExistingGroupNames));
         OnPropertyChanged(nameof(GroupNames));
 
@@ -240,6 +280,8 @@ public partial class MenuEditorViewModel : ObservableObject
             ?? Groups.FirstOrDefault();
         NewSectionGroup = keepGroup;
     }
+
+    private void OnSectionApplied() => RebuildTree();
 
     // Существующие группы для выпадающих списков ComboBox'ов
     // (безгрупповые разделы — «Главная» — в подсказки не попадают).

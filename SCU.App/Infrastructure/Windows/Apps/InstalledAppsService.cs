@@ -7,6 +7,13 @@ using SCU.Common;
 
 namespace SCU.Infrastructure.Windows.Apps;
 
+// Итог подчистки хвостов деинсталляции (п. №12 аудита): async-метод не может
+// возвращать значения через out, поэтому — кортеж-запись.
+internal sealed record ResidualCleanupReport(
+    int Removed,
+    List<string> Failed,
+    List<string> SkippedDataFolders);
+
 // Установленное приложение из ARP-раздела реестра (Add/Remove Programs).
 // Показывается всё, у чего есть DisplayName, включая скрытые SystemComponent
 // записи — вкладка «Приложения» задумана как полный список программ системы.
@@ -478,9 +485,9 @@ public sealed class InstalledAppsService
         InstalledApp app,
         CancellationToken ct,
         Func<IReadOnlyList<string>, Task<bool>>? confirmDataCleanup = null) =>
-        Task.Run(() => UninstallCompletely(app, ct, confirmDataCleanup), CancellationToken.None);
+        Task.Run(() => UninstallCompletelyCore(app, ct, confirmDataCleanup), CancellationToken.None);
 
-    private Result UninstallCompletely(
+    private async Task<Result> UninstallCompletelyCore(
         InstalledApp app,
         CancellationToken ct,
         Func<IReadOnlyList<string>, Task<bool>>? confirmDataCleanup)
@@ -550,7 +557,10 @@ public sealed class InstalledAppsService
 
         // Хвосты: папка установки (только при подтверждённом ownership) и папки
         // данных, совпадающие по имени приложения — после явного подтверждения.
-        var removed = RemoveResidualFolders(app, fileName, confirmDataCleanup, out var failedFolders, out var skippedDataFolders);
+        var residual = await RemoveResidualFolders(app, fileName, confirmDataCleanup).ConfigureAwait(false);
+        var removed = residual.Removed;
+        var failedFolders = residual.Failed;
+        var skippedDataFolders = residual.SkippedDataFolders;
 
         var summary = $"Удаление «{app.DisplayName}» завершено"
             + (exited ? "." : " (деинсталлятор снят по таймауту).")
@@ -658,15 +668,16 @@ public sealed class InstalledAppsService
     // совпадающие по имени приложения (с пробелами и без) — имя владельцем не
     // является (п. 6 аудита), они удаляются только после явного подтверждения
     // пользователем списка объектов; confirmDataCleanup=null — не удаляются.
-    private int RemoveResidualFolders(
+    // П. №12 аудита: подтверждение очистки теперь await-ится по-настоящему
+    // (sync-over-async с GetResult() создавал риск дедлока). out-параметры
+    // заменены кортежем — async-методы не могут иметь out/ref.
+    private async Task<ResidualCleanupReport> RemoveResidualFolders(
         InstalledApp app,
         string uninstallerFileName,
-        Func<IReadOnlyList<string>, Task<bool>>? confirmDataCleanup,
-        out List<string> failed,
-        out List<string> skippedDataFolders)
+        Func<IReadOnlyList<string>, Task<bool>>? confirmDataCleanup)
     {
-        failed = [];
-        skippedDataFolders = [];
+        var failed = new List<string>();
+        var skippedDataFolders = new List<string>();
         var removed = 0;
         var failures = new List<string>();
 
@@ -723,13 +734,12 @@ public sealed class InstalledAppsService
 
             if (dataFolders.Count > 0)
             {
-                var approved = confirmDataCleanup is not null && confirmDataCleanup(dataFolders).GetAwaiter().GetResult();
+                var approved = confirmDataCleanup is not null && await confirmDataCleanup(dataFolders).ConfigureAwait(false);
                 if (!approved)
                 {
                     skippedDataFolders.AddRange(dataFolders.Select(folder => Path.GetFileName(folder) ?? folder));
                     _logger.Info($"APPS | residual data folders skipped (not confirmed) | count={dataFolders.Count}");
-                    failed = failures;
-                    return removed;
+                    return new ResidualCleanupReport(removed, failures, skippedDataFolders);
                 }
 
                 foreach (var directory in dataFolders)
@@ -742,8 +752,7 @@ public sealed class InstalledAppsService
             }
         }
 
-        failed = failures;
-        return removed;
+        return new ResidualCleanupReport(removed, failures, skippedDataFolders);
 
         bool TryDeleteResidual(string directory)
         {

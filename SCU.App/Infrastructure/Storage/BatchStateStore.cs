@@ -41,6 +41,7 @@ public sealed class BatchStateStore
         }
         catch (Exception exception)
         {
+            try { File.Delete(_path + ".tmp"); } catch { } // п. №15 аудита
             _logger.Warn("BATCH | state file corrupted: " + exception.Message);
             return null;
         }
@@ -57,6 +58,9 @@ public sealed class BatchStateStore
         }
         catch (Exception exception)
         {
+            // П. №15 аудита: остаток .tmp после сбоя — мусор и ложный
+            // «незавершённый файл» при следующем чтении.
+            try { File.Delete(_path + ".tmp"); } catch { /* .tmp мог не создаться */ }
             _logger.Warn("BATCH | save failed | " + exception.Message);
         }
     }

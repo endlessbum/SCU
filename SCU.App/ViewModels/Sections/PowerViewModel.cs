@@ -9,7 +9,7 @@ using SCU.Views.Controls;
 namespace SCU.ViewModels.Sections;
 
 // Раздел 8 «Питание, память и CPU» — аналог :PerfMenu из Utilities.bat.
-// Изменяющие операции: план (powercfg), гибернация (powercfg), быстрый запуск (реестр с резервом),
+// Изменяющие операции: план (powercfg), гибернация (powercfg), быстрый запуск (реестр с бэкапом),
 // файл подкачки (WMI+реестр), numproc/truncatememory (bcdedit с повторной проверкой).
 public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOperationCancellable
 {
@@ -766,7 +766,7 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
                 NewState: L.T("Фиксированный размер {0} МБ на всех перечисленных томах.", size),
                 Consequences: L.T("Автоматическое управление Windows будет отключено. Изменения вступят в силу после перезагрузки.")
                     + multiNote.Replace("\n\n", " ") + crashNote.Replace("\n\n", " "),
-                Rollback: L.T("Прежние настройки файла подкачки сохраняются в резерв автоматически."),
+                Rollback: L.T("Прежние настройки файла подкачки сохраняются в бэкап автоматически."),
                 ConfirmText: L.T("Установить"))))
         {
             return;
@@ -793,7 +793,7 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
                 CurrentState: L.T("Размер файла подкачки задан вручную."),
                 NewState: L.T("Управление размером передаётся Windows (System Managed)."),
                 Consequences: L.T("Фиксированные размеры будут сняты. Изменение вступит в силу после перезагрузки."),
-                Rollback: L.T("Прежние настройки файла подкачки сохраняются в резерв автоматически."),
+                Rollback: L.T("Прежние настройки файла подкачки сохраняются в бэкап автоматически."),
                 ConfirmText: L.T("Управляется Windows"))))
         {
             return;

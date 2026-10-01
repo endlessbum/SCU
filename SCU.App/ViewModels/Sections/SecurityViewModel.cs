@@ -81,7 +81,7 @@ public partial class SecurityViewModel : ObservableObject, IDisposable, ISection
         var standard = UacStandard;
         if (!standard && !_dialogs.Ask(
                 L.T("Ослабление UAC"),
-                L.T("Установить PromptOnSecureDesktop=0 и ConsentPromptBehaviorAdmin=0?\nЭто снижает защиту от повышения прав и считается опасной операцией.\nТекущие значения будут сохранены в резерв. Применяется после перезагрузки."),
+                L.T("Установить PromptOnSecureDesktop=0 и ConsentPromptBehaviorAdmin=0?\nЭто снижает защиту от повышения прав и считается опасной операцией.\nТекущие значения будут сохранены в бэкап. Применяется после перезагрузки."),
                 L.T("Ослабить")))
         {
             UacStandard = true;

@@ -23,8 +23,70 @@ public partial class DashboardView : UserControl
         SearchBox.PreviewKeyDown += OnSearchBoxKeyDown;
 
         ToggleCore.SizeChanged += (_, _) => UpdateToggleBlockOffset();
-        Loaded += (_, _) => HookHostScroll();
+        Loaded += (_, _) =>
+        {
+            HookHostScroll();
+            UpdateSearchFieldOffset();
+        };
         Unloaded += (_, _) => UnhookHostScroll();
+    }
+
+    // П. №7 UI-аудита: верхний отступ поля поиска раньше был константой 57.2,
+    // выведенной из метрик шрифта шапки раздела (26 + 14 pt). Константа разъедалась
+    // при смене шрифта/масштаба. Теперь измеряем реальной высотой строк тем же
+    // FormattedText, что рендерит WPF: title + 4 + описание — выравнивание с
+    // разделом, где шапка видима, сохраняется при любых настройках.
+    private void UpdateSearchFieldOffset()
+    {
+        const double gap = 4;
+        var offset = 57.2; // запасной вариант, если стили недоступны
+        if (TryMeasureLine("PageTitleText", out var titleHeight)
+            && TryMeasureLine("PageSubtitleText", out var subtitleHeight))
+        {
+            offset = Math.Round(titleHeight + gap + subtitleHeight, 1);
+        }
+
+        SearchHost.Margin = new Thickness(0, offset, 0, 0);
+    }
+
+    private bool TryMeasureLine(string styleKey, out double height)
+    {
+        height = 0;
+        if (TryFindResource(styleKey) is not Style style)
+        {
+            return false;
+        }
+
+        double? fontSize = null;
+        var weight = FontWeights.Normal;
+        foreach (var setter in style.Setters.OfType<Setter>())
+        {
+            if (setter.Property == TextBlock.FontSizeProperty && setter.Value is double size)
+            {
+                fontSize = size;
+            }
+            else if (setter.Property == TextBlock.FontWeightProperty && setter.Value is FontWeight fontWeight)
+            {
+                weight = fontWeight;
+            }
+        }
+
+        if (fontSize is not double concreteSize)
+        {
+            return false;
+        }
+
+        var typeface = new Typeface(FontFamily, FontStyles.Normal, weight, FontStretches.Normal);
+        var formatted = new FormattedText(
+            "Ag",
+            System.Globalization.CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight,
+            typeface,
+            concreteSize,
+            null, // цвет для измерения высоты строки не нужен
+            VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        height = formatted.Height;
+        return true;
     }
 
     private DashboardViewModel SearchVm() =>

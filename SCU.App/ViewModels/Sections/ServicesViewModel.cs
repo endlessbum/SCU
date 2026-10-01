@@ -67,7 +67,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
     private ServiceRowViewModel? selectedRow;
 
     public string BackupPathText => string.IsNullOrWhiteSpace(LastBackupPath)
-        ? "резерв ещё не создавался"
+        ? L.T("бэкап ещё не создавался")
         : LastBackupPath;
 
     public bool HasBackup => !string.IsNullOrWhiteSpace(LastBackupPath) && File.Exists(LastBackupPath);
@@ -93,8 +93,12 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
             }
 
             ApplyRows(result.Value);
-            var rights = IsAdmin ? L.T("Права администратора есть") : L.T("Без прав администратора — изменение недоступно");
-            StatusText = L.T("Загружено служб: {0}. {1}. Резерв: {2}.", Rows.Count, rights, BackupPathText);
+            var status = L.T("Загружено служб: {0}. Бэкап: {1}.", Rows.Count, BackupPathText);
+            if (!IsAdmin)
+            {
+                status += " " + L.T("Без прав администратора — изменение недоступно") + ".";
+            }
+            StatusText = status;
             _logger.Info($"SERVICES | refresh | count={Rows.Count} | admin={IsAdmin}");
         }).ConfigureAwait(true);
     }
@@ -102,7 +106,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
     [RelayCommand(CanExecute = nameof(CanBackup))]
     private async Task BackupAsync()
     {
-        await RunExclusiveAsync("резерв служб", ct => BackupCoreAsync(ct)).ConfigureAwait(true);
+        await RunExclusiveAsync("бэкап служб", ct => BackupCoreAsync(ct)).ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanRestore))]
@@ -112,11 +116,11 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
         {
             if (!HasBackup || string.IsNullOrWhiteSpace(LastBackupPath))
             {
-                StatusText = L.T("Нет файла резерва для отката.");
+                StatusText = L.T("Нет файла бэкапа для отката.");
                 return;
             }
 
-            StatusText = L.T("Восстановление служб из резерва…");
+            StatusText = L.T("Восстановление служб из бэкапа…");
             _logger.Info("SERVICES | restore | file=" + LastBackupPath);
             var result = await _runner.RunAsync(
                 "ServicesRestore",
@@ -174,7 +178,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
             else
             {
                 // Включение — напрямую через .NET. ServicesRestore здесь не годится:
-                // он возвращает исходное состояние из резерва, а исходно служба была выключена.
+                // он возвращает исходное состояние из бэкапа, а исходно служба была выключена.
                 var backupPath = HasBackup ? LastBackupPath : null;
                 result = await _serviceManager.SetEnabledAsync(row.Name, backupPath, ct).ConfigureAwait(true);
             }
@@ -221,7 +225,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
                     + "\n" + string.Join(", ", targets.Select(row => row.Name)),
                 NewState: L.T("Все перечисленные службы — состояние «Отключена»."),
                 Consequences: L.T("Отключённые службы перестают запускаться системой; зависящие от них программы могут потерять функциональность."),
-                Rollback: L.T("Резерв текущих состояний создаётся автоматически перед изменением; кнопка «Откатить» возвращает всё как было."),
+                Rollback: L.T("Бэкап текущих состояний создаётся автоматически перед изменением; кнопка «Откатить» возвращает всё как было."),
                 ConfirmText: L.T("Отключить все"))))
         {
             return;
@@ -229,7 +233,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
 
         await RunExclusiveAsync("отключение всех служб", async ct =>
         {
-            // Резерв — один раз перед массовыми изменениями (как перед одиночным тумблером).
+            // Бэкап — один раз перед массовыми изменениями (как перед одиночным тумблером).
             if (!_backupDoneThisSession)
             {
                 var backup = await BackupCoreAsync(ct).ConfigureAwait(true);
@@ -305,7 +309,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
     {
         if (!IsSCUAvailable)
         {
-            StatusText = L.T("SCU.ps1 недоступен, резерв не создан.");
+            StatusText = L.T("SCU.ps1 недоступен, бэкап не создан.");
             return false;
         }
 
@@ -313,7 +317,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, $"services_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.txt");
 
-        StatusText = L.T("Сохранение резерва служб…");
+        StatusText = L.T("Сохранение бэкапа служб…");
         _logger.Info("SERVICES | backup | file=" + path);
 
         var result = await _runner.RunAsync(
@@ -330,14 +334,14 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
         {
             LastBackupPath = path;
             _backupDoneThisSession = true;
-            StatusText = L.T("Резерв сохранён: {0}", path);
+            StatusText = L.T("Бэкап сохранён: {0}", path);
             _logger.Info("SERVICES | backup ok | file=" + path);
-            // П.2: хранятся только MaxFilesPerDirectory свежих резервов, старые удаляются.
+            // П.2: хранятся только MaxFilesPerDirectory свежих бэкапов, старые удаляются.
             BackupRetention.Enforce(directory, _logger);
             return true;
         }
 
-        StatusText = L.T("Резерв не сохранён (код {0}): {1}", result.Code, result.Message);
+        StatusText = L.T("Бэкап не сохранён (код {0}): {1}", result.Code, result.Message);
         _logger.Error($"SERVICES | backup rc={result.Code} | {result.Message}");
         return false;
     }

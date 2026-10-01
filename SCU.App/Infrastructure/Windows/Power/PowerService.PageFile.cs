@@ -11,7 +11,7 @@ namespace SCU.Infrastructure.Windows.Power;
 public sealed partial class PowerService
 {
     // Файл подкачки: отключение автозатем управления и фиксация размера (аналог :PFApply).
-    // Изменения применяются после перезагрузки. Прежние настройки сохраняются в резерв,
+    // Изменения применяются после перезагрузки. Прежние настройки сохраняются в бэкап,
     // путь берётся существующий (или системный диск) — не жёстко C:\.
     public async Task<Result> SetPageFileAsync(int sizeMb, CancellationToken ct = default)
     {
@@ -137,7 +137,7 @@ public sealed partial class PowerService
         }
     }
 
-    // Резерв перед КАЖДЫМ деструктивным изменением pagefile (не «один раз навсегда»).
+    // Бэкап перед КАЖДЫМ деструктивным изменением pagefile (не «один раз навсегда»).
     // JSON: original + timestamp; старый .txt не перезаписываем поверх без версии.
     private Result BackupPageFileSettings(bool automaticManaged)
     {
@@ -196,16 +196,16 @@ public sealed partial class PowerService
 
             if (!File.Exists(backupFile))
             {
-                return Result.Failure("Резерв файла подкачки не был создан.");
+                return Result.Failure("Бэкап файла подкачки не был создан.");
             }
 
             _logger.Info("PAGEFILE | backup -> " + backupFile);
-            return Result.Success("Резерв сохранён: " + Path.GetFileName(backupFile));
+            return Result.Success("Бэкап сохранён: " + Path.GetFileName(backupFile));
         }
         catch (Exception exception)
         {
             _logger.Error("PAGEFILE | backup failed | " + exception);
-            return Result.Failure("Не удалось сохранить резерв файла подкачки: " + exception.Message);
+            return Result.Failure("Не удалось сохранить бэкап файла подкачки: " + exception.Message);
         }
     }
 

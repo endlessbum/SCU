@@ -12,13 +12,30 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-            <ItemsControl Grid.Row="1" Margin="0" ItemsSource="{Binding Rows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <ContentControl Style="{StaticResource SwitchRowCard}" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <StackPanel Grid.Row="1" Margin="0">
+                <ItemsControl Margin="0" ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ContentControl Style="{StaticResource SwitchRowCard}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Сноска к карточкам со звёздочкой (ускорение мыши, залипание клавиш):
+                     ON у этих тумблеров означает отключение системного параметра. -->
+                <TextBlock Margin="0,2,0,0"
+                           Text="{DynamicResource S_InputAsteriskNote}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Rows.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
 
         <!-- Пустой список настроек -->
         <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,24,0,8">

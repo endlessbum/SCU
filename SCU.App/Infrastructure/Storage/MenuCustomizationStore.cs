@@ -74,6 +74,7 @@ public sealed class MenuCustomizationStore
         }
         catch (Exception exception)
         {
+            try { File.Delete(_path + ".tmp"); } catch { } // п. №15 аудита
             _logger.Warn("MENU | load failed | " + exception.Message);
             return MenuCustomization.Empty;
         }
@@ -90,6 +91,9 @@ public sealed class MenuCustomizationStore
         }
         catch (Exception exception)
         {
+            // П. №15 аудита: остаток .tmp после сбоя — мусор и ложный
+            // «незавершённый файл» при следующем чтении.
+            try { File.Delete(_path + ".tmp"); } catch { /* .tmp мог не создаться */ }
             _logger.Warn("MENU | save failed | " + exception.Message);
         }
     }

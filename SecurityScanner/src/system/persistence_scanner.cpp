@@ -244,12 +244,20 @@ std::wstring ExtractTaskCommand(const std::wstring& path)
         return {};
     }
 
-    // UTF-16 LE с BOM или без → wide; иначе — ANSI/UTF-8 байты в wide.
+    // UTF-16 LE с BOM → wide; UTF-16 LE без BOM распознаём по нулевым старшим
+    // байтам первых символов (XML задач начинается с '<'?xml…'), иначе ANSI/UTF-8.
+    // П. PAR-01: прежде без-BOM UTF-16 уходил в UTF-8-ветку и терялся.
     std::wstring wide;
-    if (buffer.size() >= 2 && static_cast<unsigned char>(buffer[0]) == 0xFF
-        && static_cast<unsigned char>(buffer[1]) == 0xFE) {
+    const bool utf16Bom = buffer.size() >= 2 && static_cast<unsigned char>(buffer[0]) == 0xFF
+                          && static_cast<unsigned char>(buffer[1]) == 0xFE;
+    const bool utf16NoBom = !utf16Bom && buffer.size() >= 2 && buffer.size() % 2 == 0
+                            && buffer[1] == 0 && buffer[0] != 0;
+    if (utf16Bom) {
         wide.assign(reinterpret_cast<const wchar_t*>(buffer.data() + 2),
                     (buffer.size() - 2) / sizeof(wchar_t));
+    } else if (utf16NoBom) {
+        wide.assign(reinterpret_cast<const wchar_t*>(buffer.data()),
+                    buffer.size() / sizeof(wchar_t));
     } else {
         const int wideLength = MultiByteToWideChar(CP_UTF8, 0, buffer.data(),
                                                    static_cast<int>(buffer.size()), nullptr, 0);
@@ -273,18 +281,17 @@ std::wstring ExtractTaskCommand(const std::wstring& path)
     return Trim(wide.substr(openTag + 9, closeTag - openTag - 9));
 }
 
-void EnumScheduledTasks(const std::function<void(const PersistenceEntry&)>& onEntry)
+// Рекурсивный обход задач (п. SCAN-04): вложенные папки Tasks — полноценный
+// источник автозапуска. Глубина ограничена, reparse-точки не разворачиваются.
+void WalkTasksFolder(const std::wstring& tasksRoot, const std::wstring& folder, int depth,
+                     const std::function<void(const PersistenceEntry&)>& onEntry)
 {
-    wchar_t systemDir[MAX_PATH]{};
-    if (GetSystemDirectoryW(systemDir, MAX_PATH) == 0) {
+    if (depth > 8) {
         return;
     }
-    const std::wstring tasksRoot = std::wstring(systemDir) + L"\\Tasks";
 
-    // Плоский обход верхних уровней: вложенные папки задач пропускаем в срезе
-    // (FindFirstFileEx без рекурсии), главного источника автозапуска это покрывает.
     WIN32_FIND_DATAW findData{};
-    HANDLE find = FindFirstFileExW((tasksRoot + L"\\*").c_str(), FindExInfoBasic, &findData,
+    HANDLE find = FindFirstFileExW((folder + L"\\*").c_str(), FindExInfoBasic, &findData,
                                    FindExSearchNameMatch, nullptr, 0);
     if (find == INVALID_HANDLE_VALUE) {
         return;
@@ -295,24 +302,42 @@ void EnumScheduledTasks(const std::function<void(const PersistenceEntry&)>& onEn
         if (name == L"." || name == L"..") {
             continue;
         }
-        if (findData.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) {
+        // Junction/symlink в дереве задач не разворачиваем: типичный источник
+        // зацикливания и обхода path-safety; непроверяемое пропускаем.
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
             continue;
         }
 
-        const std::wstring command = ExtractTaskCommand(tasksRoot + L"\\" + name);
+        const std::wstring path = folder + L"\\" + name;
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            WalkTasksFolder(tasksRoot, path, depth + 1, onEntry);
+            continue;
+        }
+
+        const std::wstring command = ExtractTaskCommand(path);
         if (command.empty()) {
             continue;
         }
 
         PersistenceEntry entry;
         entry.location = L"scheduled-tasks";
-        entry.name = name;
+        entry.name = path.substr(tasksRoot.size() + 1);
         entry.command = command;
         entry.targetPath = ResolveTarget(command);
         ExpandEnvironment(entry.targetPath);
         onEntry(entry);
     } while (FindNextFileW(find, &findData));
     FindClose(find);
+}
+
+void EnumScheduledTasks(const std::function<void(const PersistenceEntry&)>& onEntry)
+{
+    wchar_t systemDir[MAX_PATH]{};
+    if (GetSystemDirectoryW(systemDir, MAX_PATH) == 0) {
+        return;
+    }
+    const std::wstring tasksRoot = std::wstring(systemDir) + L"\\Tasks";
+    WalkTasksFolder(tasksRoot, tasksRoot, 0, onEntry);
 }
 
 } // namespace

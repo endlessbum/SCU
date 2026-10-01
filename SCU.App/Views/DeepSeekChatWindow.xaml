@@ -14,7 +14,6 @@
     <!-- Окно чата DeepSeek (раздел 24): слева история чатов, справа переписка.
          Оформление — те же темы/кисти/стили, что у основного окна SCU. -->
     <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <!-- Кнопка-глиф панели (плюс, удаление) -->
         <Style x:Key="ChatToolButton" TargetType="Button" BasedOn="{StaticResource SmallButton}">
             <Setter Property="Padding" Value="8,4" />

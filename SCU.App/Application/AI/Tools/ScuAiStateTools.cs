@@ -294,7 +294,7 @@ internal sealed class ScuGetServicesStateTool : IScuAiTool
     }
 }
 
-// 13) get_startup_state: сводка раздела «Автозагрузка» — элементы и резерв.
+// 13) get_startup_state: сводка раздела «Автозагрузка» — элементы и бэкап.
 internal sealed class ScuGetStartupStateTool : IScuAiTool
 {
     private readonly ScuAiToolDeps _deps;

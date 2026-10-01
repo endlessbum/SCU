@@ -124,8 +124,8 @@ public partial class PrivacyViewModel : ObservableObject, IDisposable, ISectionO
                 L.T("Отключение — {0}", row.Category.Title),
                 CurrentState: L.T("Категория «{0}» включена.", row.Category.Title),
                 NewState: L.T("Категория отключена соответствующими твиками реестра/планировщика."),
-                Consequences: row.Category.Description,
-                Rollback: L.T("Текущие значения реестра сохраняются в резерв; включение восстанавливает их."),
+                Consequences: L.T(row.Category.Description),
+                Rollback: L.T("Текущие значения реестра сохраняются в бэкап; включение восстанавливает их."),
                 ConfirmText: L.T("Отключить"))))
         {
             row.ForceState(!enable);
@@ -141,7 +141,7 @@ public partial class PrivacyViewModel : ObservableObject, IDisposable, ISectionO
                 if (row.Category.Id == "ceip")
                 {
                     StatusText = L.T(enable
-                        ? "Восстановление задач CEIP из резерва…"
+                        ? "Восстановление задач CEIP из бэкапа…"
                         : "Отключение задач CEIP (через SCU.ps1)…");
                     result = enable
                         ? await _privacyService.RestoreCeipTasksAsync(_runner, ct).ConfigureAwait(true)
@@ -153,7 +153,7 @@ public partial class PrivacyViewModel : ObservableObject, IDisposable, ISectionO
                     StatusText = result.IsSuccess
                         ? L.T(row.Category.Title) + L.T(actualCeip ? ": отключено. " : ": включено. ") + L.S(result.Message)
                         : L.T("{0}: ошибка (код {1}): {2}", L.T(row.Category.Title), result.Code, L.S(result.Message))
-                          + (result.Code == 2 ? " " + L.T("Резерв задач не создавался — включение недоступно.") : string.Empty);
+                          + (result.Code == 2 ? " " + L.T("Бэкап задач не создавался — включение недоступно.") : string.Empty);
                     _logger.Info($"PRIVACY | ceip | {(actualCeip ? "disabled" : "enabled")} | rc={result.Code}");
                     return;
                 }
@@ -220,7 +220,7 @@ public partial class PrivacyViewModel : ObservableObject, IDisposable, ISectionO
                     + "\n" + string.Join(", ", disabled.Select(row => L.T(row.Category.Title))),
                 NewState: L.T("Все перечисленные категории вернутся в рабочее состояние."),
                 Consequences: L.T("Отключённые SCU функции телеметрии/слежения снова активируются штатными параметрами Windows."),
-                Rollback: L.T("Значения восстанавливаются из резерва, а при его отсутствии — к заводским."),
+                Rollback: L.T("Значения восстанавливаются из бэкапа, а при его отсутствии — к заводским."),
                 ConfirmText: L.T("Включить все"))))
         {
             return;
@@ -330,7 +330,7 @@ public partial class PrivacyViewModel : ObservableObject, IDisposable, ISectionO
         public PrivacyService.Category Category { get; }
 
         public string ToolTipText =>
-            Category.Description + "\nОтключайте только те категории, последствия которых вам понятны; после операции исходные значения сохраняются в резерв.";
+            Category.Description + L.T("\nОтключайте только те категории, последствия которых вам понятны; после операции исходные значения сохраняются в бэкап.");
 
         public bool IsDisabled
         {
@@ -363,6 +363,6 @@ public partial class PrivacyViewModel : ObservableObject, IDisposable, ISectionO
 
         // Постоянное описание категории: не зависит от ON/OFF и не использует
         // запрещённые формулировки «Включить:» / «Отключить:».
-        public string ActionDescription => Category.Description ?? string.Empty;
+        public string ActionDescription => L.T(Category.Description ?? string.Empty);
     }
 }

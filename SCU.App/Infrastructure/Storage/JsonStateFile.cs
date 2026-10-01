@@ -207,6 +207,9 @@ internal sealed class JsonStateFile<T>
         }
         catch (Exception exception)
         {
+            // П. №15 аудита: остаток .tmp после сбоя — мусор и ложный
+            // «незавершённый файл» при следующем чтении.
+            try { File.Delete(_path + ".tmp"); } catch { /* .tmp мог не создаться */ }
             _logger.Warn($"{_label} | save failed | {exception.Message}");
         }
     }

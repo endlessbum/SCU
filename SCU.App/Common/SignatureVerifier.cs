@@ -22,6 +22,10 @@ public static class SignatureVerifier
     private const int TrustEProviderUnknown = unchecked((int)0x800B0001);
     private const int TrustENoSignature = unchecked((int)0x800B0100);
     private const int TrustEBadDigest = unchecked((int)0x80096010);
+    private const int UntrustedRoot = unchecked((int)0x800B0109);
+    private const int UntrustedChain = unchecked((int)0x800B010A);
+    private const int UntrustedTestRoot = unchecked((int)0x800B010D);
+    private const int UntrustedCa = unchecked((int)0x800B0112);
 
     public static Result VerifyMicrosoftSigned(string path, long minBytes = 262144)
     {
@@ -80,6 +84,42 @@ public static class SignatureVerifier
     // (ScannerCore): подтверждает Authenticode И совпадение хэша подписи с текущим
     // содержимым PE — сертификат, скопированный в подменённый файл, не пройдёт.
     public static Result VerifyAuthenticodeIntegrity(string path) => VerifyFileTrust(path);
+
+    // Коды "подпись валидна, но корень не в доверенных": это единственные
+    // отказы WinVerifyTrust, допустимые для пиннутого собственного бинаря.
+    // Самоподписанный сертификатrelease-цепочки (документ п. 49) не имеет
+    // доверенного корня по определению; C++-сторона pin-режима его принимает
+    // (main.cpp: GetSigningCertHash не требует доверенного корня), поэтому и
+    // C#-проверка обязана принимать — иначе ScannerCore собирался бы, но
+    // отвергался бы GUI (п. SEC-01 аудита). Дайджест-ошибки (TRUST_E_BAD_DIGEST)
+    // сюда не входят: подменённый файл со скопированным сертификатом отклоняется.
+    private static readonly int[] UntrustedRootOnlyCodes =
+    {
+        UntrustedRoot,      // CERT_E_UNTRUSTEDROOT 0x800B0109
+        UntrustedChain,     // CERT_E_CHAINING     0x800B010A
+        UntrustedTestRoot,  // CERT_E_UNTRUSTEDTESTROOT 0x800B010D
+        UntrustedCa         // CERT_E_UNTRUSTEDCA  0x800B0112
+    };
+
+    // Пин-проверка собственного бинаря: целостность (хэш подписи == содержимому)
+    // обязательна всегда; доверенная цепочка — нет (thumbprint сверяет вызывающий
+    // код). Возвращает успех и для полностью доверенной подписи, и для
+    // self-signed с валидным дайджестом.
+    public static Result VerifyPinnedBinaryIntegrity(string path)
+    {
+        var trust = VerifyFileTrust(path);
+        if (trust.IsSuccess)
+        {
+            return trust;
+        }
+
+        if (Array.IndexOf(UntrustedRootOnlyCodes, trust.Code) >= 0)
+        {
+            return Result.Success("authenticode digest ok; root not trusted (pinned binary)");
+        }
+
+        return trust;
+    }
 
     // Authenticode-проверка файла: 0 — подпись действительна и хэш совпадает.
     private static Result VerifyFileTrust(string path)

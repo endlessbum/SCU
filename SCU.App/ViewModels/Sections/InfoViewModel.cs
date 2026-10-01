@@ -49,8 +49,11 @@ public partial class InfoViewModel : ObservableObject, IDisposable
             }
             else
             {
-                // Используем общий текст, чтобы не зависеть от свойств класса Result
-                ErrorMessage = "Неизвестная ошибка при получении информации о системе.";
+                // Реальную причину сбоя сервис присылает в result.Message — показываем её,
+                // общий текст только если сообщение пустое.
+                ErrorMessage = string.IsNullOrWhiteSpace(result.Message)
+                    ? L.T("Неизвестная ошибка при получении информации о системе.")
+                    : L.T(result.Message);
                 _logger.Error("InfoViewModel: Ошибка загрузки SystemInfo");
             }
         }
@@ -60,7 +63,7 @@ public partial class InfoViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Внутренняя ошибка: {ex.Message}";
+            ErrorMessage = L.T("Внутренняя ошибка: {0}", ex.Message);
             _logger.Error($"InfoViewModel: Исключение при загрузке: {ex}");
         }
         finally

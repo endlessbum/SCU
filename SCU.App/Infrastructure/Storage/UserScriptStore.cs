@@ -82,6 +82,9 @@ public sealed class UserScriptStore
         }
         catch (Exception exception)
         {
+            // П. №15 аудита: остаток .tmp после сбоя — мусор и ложный
+            // «незавершённый файл» при следующем чтении.
+            try { File.Delete(_jsonPath + ".tmp"); } catch { /* .tmp мог не создаться */ }
             _logger.Warn("USCRIPT | save failed | " + exception.Message);
         }
     }

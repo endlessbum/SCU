@@ -3,7 +3,7 @@ namespace SCU.Models;
 // Событие истории операций (раздел «Состояние ПК», список «Последние события»).
 // Status — "ok"/"fail" (константы ниже; строка вместо enum — ради читаемого JSON).
 // Опциональные поля этапа 2: BytesFreed — реально измеренные байты очистки,
-// BackupId/SnapshotId — идентификаторы резерва/точки восстановления (заполняются
+// BackupId/SnapshotId — идентификаторы бэкапа/точки восстановления (заполняются
 // только когда источник отдаёт надёжный идентификатор; иначе остаются null).
 // Старые JSON-файлы читаются: System.Text.Json подставляет default для отсутствующих полей.
 public sealed record HistoryEvent(
@@ -17,5 +17,6 @@ public sealed record HistoryEvent(
     string? SnapshotId = null)
 {
     public const string StatusOk = "ok";
+    public const string StatusWarn = "warn";
     public const string StatusFail = "fail";
 }

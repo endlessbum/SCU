@@ -16,7 +16,10 @@ public sealed class WindowsUpdateDriverService
 
     // Результаты поиска живут до следующего поиска: установщик выбирает пакеты
     // по ключам UpdateID:Revision из последнего поиска.
-    private readonly Dictionary<string, object> _foundUpdates = [];
+    // П. №3 аудита: словарь заменяется ЦЕЛИКОМ одной ссылкой после успешного
+    // поиска. Прежде abandoned-задача по таймауту продолжала писать в общий
+    // Dictionary параллельно с повторным поиском — гонка и порча состояния.
+    private volatile IReadOnlyDictionary<string, object>? _foundUpdates;
 
     private readonly Logger _logger;
 
@@ -62,6 +65,10 @@ public sealed class WindowsUpdateDriverService
 
         progress?.Report(L.T("Поиск обновлений драйверов на серверах Windows Update…"));
         var search = Task.Run(() => (object)searcher.Search("IsInstalled=0 and IsHidden=0 and Type='Driver'"));
+        // Брошенная задача не должна остаться с ненаблюдаемым исключением (п. №3).
+        search.ContinueWith(
+            static faulted => _ = faulted.Exception,
+            TaskContinuationOptions.OnlyOnFaulted);
         var finished = Task.WhenAny(search, Task.Delay(SearchTimeout)).GetAwaiter().GetResult();
         if (finished != search)
         {
@@ -71,12 +78,13 @@ public sealed class WindowsUpdateDriverService
         dynamic searchResult = search.GetAwaiter().GetResult();
         dynamic updates = searchResult.Updates;
         var list = new List<DriverUpdateInfo>();
-        _foundUpdates.Clear();
+        // Сначала наполняем локальную копию, потом публикуем одну ссылкой.
+        var found = new Dictionary<string, object>();
         for (var i = 0; i < updates.Count; i++)
         {
             dynamic update = updates[i];
             var key = IdentityKey(update);
-            _foundUpdates[key] = update;
+            found[key] = update;
             list.Add(new DriverUpdateInfo(
                 key,
                 (string)(update.Title ?? string.Empty),
@@ -85,6 +93,7 @@ public sealed class WindowsUpdateDriverService
                 TryGetDate(update.DriverVerDate),
                 (long)update.MaxDownloadSize));
         }
+        _foundUpdates = found;
 
         _logger.Info($"DRV | WU search ok | {list.Count} driver updates");
         return list;
@@ -115,8 +124,9 @@ public sealed class WindowsUpdateDriverService
 
     private DriverInstallSummary InstallCore(IReadOnlyList<string> keys, IProgress<string>? progress, CancellationToken ct)
     {
+        var snapshot = _foundUpdates;
         var selected = keys
-            .Select(key => _foundUpdates.TryGetValue(key, out var update) ? update : null)
+            .Select(key => snapshot is not null && snapshot.TryGetValue(key, out var update) ? update : null)
             .Where(update => update is not null)
             .Cast<object>()
             .ToList();

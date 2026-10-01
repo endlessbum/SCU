@@ -1,5 +1,7 @@
 namespace SCU.Models;
 
+using SCU.Common;
+
 public class StartupItem
 {
     public int Index { get; set; }
@@ -8,7 +10,7 @@ public class StartupItem
     public string Command { get; set; } = string.Empty;
 
     public string ToolTipText =>
-        $"Источник: {Source}\nКоманда: {Command}";
+        L.T("Источник: {0}\nКоманда: {1}", Source, Command);
 
     public StartupItem() { }
 

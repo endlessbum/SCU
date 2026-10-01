@@ -753,16 +753,28 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                 }
                 else if (summary.Detections > 0)
                 {
-                    StatusText = L.T("Обнаружено проблем: {0}.", summary.Detections);
+                    // Пропуски файлов не должны прятаться за «обнаружено»:
+                    // неполный охват показываем рядом с числом детектов (п. SCAN-01).
+                    StatusText = summary.FilesSkipped > 0
+                        ? L.T("Обнаружено проблем: {0} (сканирование неполное, пропущено {1}).",
+                            summary.Detections, summary.FilesSkipped)
+                        : L.T("Обнаружено проблем: {0}.", summary.Detections);
                     AppNotificationCenter.Instance.Push(
                         L.T("Сканер: обнаружены угрозы"),
                         L.T("Проверка «{0}»: проблемных объектов — {1}.", path, summary.Detections),
                         AppNotificationKind.Danger);
                 }
+                else if (summary.FilesSkipped > 0)
+                {
+                    // П. SCAN-01/SCAN-06: skip по размеру/нечитаемости/архиву не даёт
+                    // права писать «не найдено» — coverage неполный.
+                    StatusText = L.T("Обнаружений не найдено, но сканирование неполное: пропущено {0}.",
+                        summary.FilesSkipped);
+                }
                 else
                 {
                     // «Не найдено» только при полном прохождении (документ п. 36/51):
-                    // ошибки и отмена уже обработаны выше.
+                    // ошибки, пропуски и отмена уже обработаны выше.
                     StatusText = L.T("На момент сканирования обнаружений не найдено.");
                 }
 
@@ -775,7 +787,10 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                     DateTime.Now,
                     L.T("Сканер"),
                     L.T(scanDirectory ? "Сканирование папки" : "Проверка файла"),
-                    summary.Errors > 0 ? HistoryEvent.StatusFail : HistoryEvent.StatusOk,
+                    // П. SCAN-01: неполное покрытие (пропуски) — не «успех без оговорок».
+                    summary.Errors > 0 ? HistoryEvent.StatusFail
+                        : summary.FilesSkipped > 0 ? HistoryEvent.StatusWarn
+                        : HistoryEvent.StatusOk,
                     L.T("Файлов: {0}, обнаружений: {1}", summary.FilesScanned, summary.Detections)));
             }
             else

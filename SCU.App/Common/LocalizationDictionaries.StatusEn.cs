@@ -18,27 +18,27 @@ internal static partial class LocalizationDictionaries
             "Content indexing was enabled on the selected drives (verified by reading attributes).",
         ["DISM и SFC выполнены успешно (оба кода 0)."] = "DISM and SFC completed successfully (both exit codes were 0).",
         ["Кэш Delivery Optimization очищен."] = "Delivery Optimization cache cleaned.",
-        ["Резерв TCP Global отсутствует — восстанавливать нечего."] = "No TCP Global backup exists — nothing to restore.",
-        ["Резерв TCP Global повреждён."] = "The TCP Global backup is corrupted.",
-        ["TCP Global не восстановлены; резерв сохранён."] = "TCP Global was not restored; the backup is preserved.",
-        ["TCP Global не подтверждены после восстановления; резерв сохранён."] = "TCP Global could not be verified after restore; the backup is preserved.",
+        ["Бэкап TCP Global отсутствует — восстанавливать нечего."] = "No TCP Global backup exists — nothing to restore.",
+        ["Бэкап TCP Global повреждён."] = "The TCP Global backup is corrupted.",
+        ["TCP Global не восстановлены; бэкап сохранён."] = "TCP Global was not restored; the backup is preserved.",
+        ["TCP Global не подтверждены после восстановления; бэкап сохранён."] = "TCP Global could not be verified after restore; the backup is preserved.",
         ["MTU должен быть в диапазоне 576..1500."] = "MTU must be in the 576..1500 range.",
-        ["Резерв MTU отсутствует — восстанавливать нечего."] = "No MTU backup exists — nothing to restore.",
-        ["MTU восстановлен не полностью; резерв сохранён."] = "MTU was not fully restored; the backup is preserved.",
-        ["MTU восстановлены из резерва."] = "MTU values restored from the backup.",
+        ["Бэкап MTU отсутствует — восстанавливать нечего."] = "No MTU backup exists — nothing to restore.",
+        ["MTU восстановлен не полностью; бэкап сохранён."] = "MTU was not fully restored; the backup is preserved.",
+        ["MTU восстановлены из бэкапа."] = "MTU values restored from the backup.",
         ["QoS override не применился."] = "The QoS override was not applied.",
-        ["Резерв QoS отсутствует — восстанавливать нечего."] = "No QoS backup exists — nothing to restore.",
-        ["Резерв свойств адаптеров отсутствует — восстанавливать нечего."] = "No adapter properties backup exists — nothing to restore.",
-        ["Резерв QoS повреждён: ожидается absent или present=<0..100>."] =
+        ["Бэкап QoS отсутствует — восстанавливать нечего."] = "No QoS backup exists — nothing to restore.",
+        ["Бэкап свойств адаптеров отсутствует — восстанавливать нечего."] = "No adapter properties backup exists — nothing to restore.",
+        ["Бэкап QoS повреждён: ожидается absent или present=<0..100>."] =
             "The QoS backup is corrupted: expected absent or present=<0..100>.",
         ["Режим NetBIOS должен быть 0, 1 или 2."] = "The NetBIOS mode must be 0, 1 or 2.",
         ["NetBIOS: один или несколько интерфейсов не изменены."] = "NetBIOS: one or more interfaces were not changed.",
         ["NetBIOS: проверка после изменения не прошла."] = "NetBIOS: verification after the change failed.",
-        ["Резерв NetBIOS отсутствует — восстанавливать нечего."] = "No NetBIOS backup exists — nothing to restore.",
-        ["NetBIOS не восстановлен; резерв сохранён."] = "NetBIOS was not restored; the backup is preserved.",
-        ["Резерв NetBIOS пуст — восстанавливать нечего (адаптеры не найдены)."] =
+        ["Бэкап NetBIOS отсутствует — восстанавливать нечего."] = "No NetBIOS backup exists — nothing to restore.",
+        ["NetBIOS не восстановлен; бэкап сохранён."] = "NetBIOS was not restored; the backup is preserved.",
+        ["Бэкап NetBIOS пуст — восстанавливать нечего (адаптеры не найдены)."] =
             "The NetBIOS backup is empty — nothing to restore (no adapters were found).",
-        ["NetBIOS восстановлен из резерва."] = "NetBIOS restored from the backup.",
+        ["NetBIOS восстановлен из бэкапа."] = "NetBIOS restored from the backup.",
         ["Кэш NetBIOS сброшен."] = "NetBIOS cache flushed.",
         ["Сброс кэша NetBIOS выполнен не полностью."] = "NetBIOS cache flush did not complete fully.",
         ["Кэш DNS очищен."] = "DNS cache flushed.",
@@ -52,11 +52,11 @@ internal static partial class LocalizationDictionaries
             "Gaming profile applied (Auto-Tuning=disabled, ECN=disabled, QoS=0%).",
         ["Сброс завершён: TCP Global, QoS, MTU и NetBIOS восстановлены."] =
             "Reset completed: TCP Global, QoS, MTU and NetBIOS were restored.",
-        ["Резерв уже существует."] = "Backup already exists.",
-        ["Резерв сохранён."] = "Backup saved.",
+        ["Бэкап уже существует."] = "Backup already exists.",
+        ["Бэкап сохранён."] = "Backup saved.",
         ["Все параметры применены и проверены."] = "All settings were applied and verified.",
-        ["Реестр восстановлен из резерва."] = "Registry restored from the backup.",
-        ["Файл резерва реестра не найден."] = "Registry backup file not found.",
+        ["Реестр восстановлен из бэкапа."] = "Registry restored from the backup.",
+        ["Файл бэкапа реестра не найден."] = "Registry backup file not found.",
         ["Параметры не применились: "] = "Settings were not applied: ",
         ["Службы обновления отключены"] = "update services are disabled",
         ["Службы обновления возвращены к исходному состоянию."] =
@@ -97,8 +97,8 @@ internal static partial class LocalizationDictionaries
             "Failed to open the registry key for page file configuration.",
         ["Настройка файла подкачки не подтвердилась чтением реестра."] =
             "Page file configuration was not verified by reading the registry.",
-        ["Резерв файла подкачки не был создан."] = "The page file backup was not created.",
-        ["Не удалось открыть раздел реестра для резервирования файла подкачки."] =
+        ["Бэкап файла подкачки не был создан."] = "The page file backup was not created.",
+        ["Не удалось открыть раздел реестра для бэкапирования файла подкачки."] =
             "Failed to open the registry key for backing up the page file settings.",
         ["BCD: ограничения не сняты после удаления."] = "BCD limits were not removed after deletion.",
         ["Ограничения CPU/ОЗУ в BCD отсутствуют (проверено чтением)."] =
@@ -110,11 +110,11 @@ internal static partial class LocalizationDictionaries
             "Automatic driver installation through Windows Update is disabled.",
         ["Не удалось сохранить исходный MTU — изменение отменено."] =
             "Failed to save the original MTU — change cancelled.",
-        ["Нет файла резерва для отката."] = "No backup file to restore from.",
+        ["Нет файла бэкапа для отката."] = "No backup file to restore from.",
         ["Задача отключена. "] = "Task disabled. ",
-        ["Резерв задач уже существует; задачи уже отключены."] =
+        ["Бэкап задач уже существует; задачи уже отключены."] =
             "The task backup already exists; the tasks are already disabled.",
-        ["Резерв задач CEIP не создавался — включение недоступно."] =
+        ["Бэкап задач CEIP не создавался — включение недоступно."] =
             "The CEIP task backup was not created — enabling is unavailable.",
         ["Задержка меню должна быть в диапазоне 0..1000 мс."] =
             "Menu delay must be in the 0..1000 ms range.",
@@ -122,9 +122,9 @@ internal static partial class LocalizationDictionaries
         ["Проводник перезапущен."] = "Explorer restarted.",
         ["Проводник не перезапустился — запустите его вручную."] =
             "Explorer did not restart — start it manually.",
-        ["Резерв панели задач не найден — сначала выполните очистку из текущего профиля."] =
+        ["Бэкап панели задач не найден — сначала выполните очистку из текущего профиля."] =
             "Taskbar backup not found — run cleanup from the current profile first.",
-        ["Резерв панели задач пуст."] = "Taskbar backup is empty.",
+        ["Бэкап панели задач пуст."] = "Taskbar backup is empty.",
         ["Не найден SCU.ps1"] = "SCU.ps1 was not found",
         ["Телеметрия и реклама"] = "Telemetry and advertising",
         ["Уведомления и советы"] = "Notifications and tips",

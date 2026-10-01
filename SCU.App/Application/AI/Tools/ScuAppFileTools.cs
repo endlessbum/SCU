@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SCU.Common;
 using SCU.Infrastructure.Logging;
 using SCU.Models.AI;
 
@@ -230,7 +231,7 @@ internal sealed class ScuReadAppFileTool : ScuAppFileToolBase
 // Общая база: фиксированный корень и разрешение относительных путей.
 internal abstract class ScuAppFileToolBase : IScuAiTool
 {
-    protected readonly Logger _logger = Logger.CreateForCurrentRun();
+    protected readonly Logger _logger = Logger.CurrentRun;
 
     protected ScuAppFileToolBase(string root)
     {
@@ -273,6 +274,20 @@ internal abstract class ScuAppFileToolBase : IScuAiTool
 
         var full = Path.GetFullPath(Path.Combine(Root, relative));
         if (!full.StartsWith(Root, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ScuAiPathException(
+                ScuAiErrorCode.PermissionDenied,
+                "Файлы вне папки установки SCU недоступны.",
+                null);
+        }
+
+        // П. №13 аудита: GetFullPath не разворачивает reparse-точки — junction/
+        // symlink, подброшенный внутрь папки установки, давал бы читать файлы
+        // снаружи корня. Проверяем финальный (после разворота) путь по
+        // ближайшему существующему предку; полностью несуществующий путь
+        // проверку не проходит — корректный «не найден» отдаст сам инструмент.
+        if (PathSafety.TryResolveFinalPath(full, out var resolved)
+            && !resolved.StartsWith(Root, StringComparison.OrdinalIgnoreCase))
         {
             throw new ScuAiPathException(
                 ScuAiErrorCode.PermissionDenied,

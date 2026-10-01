@@ -103,7 +103,7 @@ public sealed class ScuHelpIndexBuilder
         11 => "ввод input мышь mouse клавиатур keyboard game bar dvr game mode edge игры",
         12 => "обслужив maintenance dism sfc целостн integrity winsxs restore point дамп dump",
         13 => "безопасн uac контроль учётных защит admin",
-        15 => "задач задач планировщ scheduler task резерв backup",
+        15 => "задач задач планировщ scheduler task бэкап backup",
         16 => "обновл update windows update драйвер driver пауза pause блок block",
         18 => "история history лог журнал операции",
         19 => "приложен apps установленн installed programs uninstall",

@@ -61,7 +61,7 @@ inline constexpr const char* kEngineVersion = "0.1.0";
 // Версия эвристик: изменение порогов/сигналов PE/скриптового анализа должно
 // сопровождаться подъёмом версии — иначе дисковый кэш вернёт устаревшие
 // вердикты, посчитанные старыми эвристиками.
-inline constexpr const char* kHeuristicVersion = "1";
+inline constexpr const char* kHeuristicVersion = "2";
 
 const char* VerdictToString(Verdict verdict);
 

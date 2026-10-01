@@ -10,7 +10,6 @@
              Drop="OnDrop"
              DragOver="OnDragOver">
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis" />
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -133,7 +132,7 @@
                                      Minimum="0"
                                      Maximum="100"
                                      Foreground="{DynamicResource AccentFillBrush}"
-                                     Background="{DynamicResource ControlStrokeBrush}"
+                                     Background="{DynamicResource AccentTintBrush}"
                                      Value="{Binding ScanProgressPercent, Mode=OneWay}" />
                         <TextBlock Grid.Column="1"
                                    Margin="12,0,0,0"

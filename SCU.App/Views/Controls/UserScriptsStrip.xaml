@@ -26,7 +26,7 @@
                                 <controls:InfoGlyph Margin="6,0,0,0"
                                                     VerticalAlignment="Center"
                                                     InfoText="{Binding Tooltip}">
-                                    <controls:InfoGlyph.Visibility>
+                                    <controls:InfoGlyph.Style>
                                         <Style TargetType="controls:InfoGlyph">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                             <Style.Triggers>
@@ -35,7 +35,7 @@
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
-                                    </controls:InfoGlyph.Visibility>
+                                    </controls:InfoGlyph.Style>
                                 </controls:InfoGlyph>
                             </StackPanel>
                             <TextBlock Style="{StaticResource RowActionText}"

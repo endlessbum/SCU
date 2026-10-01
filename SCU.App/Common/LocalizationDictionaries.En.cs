@@ -11,7 +11,6 @@ internal static partial class LocalizationDictionaries
     internal static readonly Dictionary<string, string> En = new()
     {
         // ===================== Статусы (общие) =====================
-        ["Отмена операции…"] = "Cancelling the operation…",
         ["Операция отменена."] = "Operation cancelled.",
         ["Операция отменена. Состояние служб восстановлено."] = "Operation cancelled. Service state restored.",
         ["Состояние обновлено."] = "State refreshed.",
@@ -50,11 +49,11 @@ internal static partial class LocalizationDictionaries
         ["Восстановить"] = "Restore",
         ["Чтение параметров интерфейса…"] = "Reading interface settings…",
         ["Ослабление UAC"] = "Weakening UAC",
-        ["Установить PromptOnSecureDesktop=0 и ConsentPromptBehaviorAdmin=0?\nЭто снижает защиту от повышения прав и считается опасной операцией.\nТекущие значения будут сохранены в резерв. Применяется после перезагрузки."] = "Set PromptOnSecureDesktop=0 and ConsentPromptBehaviorAdmin=0?\nThis reduces elevation protection and is considered a dangerous operation.\nCurrent values will be saved to a backup. Applies after reboot.",
+        ["Установить PromptOnSecureDesktop=0 и ConsentPromptBehaviorAdmin=0?\nЭто снижает защиту от повышения прав и считается опасной операцией.\nТекущие значения будут сохранены в бэкап. Применяется после перезагрузки."] = "Set PromptOnSecureDesktop=0 and ConsentPromptBehaviorAdmin=0?\nThis reduces elevation protection and is considered a dangerous operation.\nCurrent values will be saved to a backup. Applies after reboot.",
         ["Чтение параметров UAC…"] = "Reading UAC settings…",
         ["Загружено элементов: {0}. {1}."] = "Loaded entries: {0}. {1}.",
         ["SCU.ps1 недоступен."] = "SCU.ps1 is unavailable.",
-        ["SCU.ps1 недоступен, резерв не создан."] = "SCU.ps1 is unavailable; no backup was created.",
+        ["SCU.ps1 недоступен, бэкап не создан."] = "SCU.ps1 is unavailable; no backup was created.",
         ["Корзина очищена; отдельные системные или занятые элементы пропущены."] = "Recycle Bin cleaned; some system or busy items were skipped.",
         ["Корзина не очищена (код {0}): {1}"] = "Recycle Bin was not cleaned (code {0}): {1}",
         ["Выберите операцию очистки."] = "Choose a cleanup operation.",
@@ -79,13 +78,11 @@ internal static partial class LocalizationDictionaries
         ["Одновременно может работать только одна копия приложения."] =
             "Only one copy of the application can run at a time.",
         ["Фоновая запись и DVR"] = "Background recording and DVR",
-        ["{0:0.0} МБ"] = "{0:0.0} MB",
         ["Общий поиск…"] = "Universal search…",
         // ===================== Бэнчмарк (раздел 20) =====================
         ["Проверка системы…"] = "Scanning the system…",
         ["Проверка завершена."] = "Check completed.",
         ["Ещё не проверялось — запустите первую проверку."] = "Not checked yet — run the first check.",
-        ["Последняя проверка: {0}"] = "Last check: {0}",
         ["Проверено: {0} из {1} · Покрытие: {2}%"] = "Verified: {0} of {1} · Coverage: {2}%",
         ["Не удалось прочитать: {0}"] = "Failed to read: {0}",
         ["Не удалось удалить: {0}"] = "Failed to remove: {0}",
@@ -121,7 +118,6 @@ internal static partial class LocalizationDictionaries
         ["Без названия"] = "Untitled",
         ["Создание точки восстановления…"] = "Creating a restore point…",
         ["Обновление драйверов SCU"] = "SCU driver update",
-        ["Точка восстановления"] = "Restore point",
         ["Не удалось создать точку восстановления: {0}\nПродолжить установку без неё?"] = "Could not create a restore point: {0}\nContinue without it?",
         ["Продолжить"] = "Continue",
         ["Установка отменена."] = "Installation canceled.",
@@ -132,10 +128,7 @@ internal static partial class LocalizationDictionaries
         ["Обновление драйверов ({0})"] = "Driver update ({0})",
         ["Драйверы обновлены"] = "Drivers updated",
         ["Драйверы: частичная ошибка"] = "Drivers: partial failure",
-        ["Разрешение установки драйверов через Windows Update…"] = "Allowing driver installation via Windows Update…",
         ["Запрет авто-драйверов через Windows Update…"] = "Disabling automatic drivers via Windows Update…",
-        ["Драйверы снова устанавливаются через Windows Update."] = "Drivers are installed via Windows Update again.",
-        ["Авто-установка драйверов через Windows Update запрещена."] = "Automatic driver installation via Windows Update is disabled.",
         ["Папка для экспорта драйверов"] = "Folder for driver export",
         ["Экспорт пакетов драйверов…"] = "Exporting driver packages…",
         ["Не удалось создать папку: {0}"] = "Could not create the folder: {0}",
@@ -226,9 +219,9 @@ internal static partial class LocalizationDictionaries
         ["Отключение учёта времени доступа…"] = "Disabling last-access timestamp updates…",
         ["Включение prefetcher…"] = "Enabling the prefetcher…",
         ["Отключение prefetcher…"] = "Disabling the prefetcher…",
-        ["Восстановление задач CEIP из резерва…"] = "Restoring CEIP tasks from the backup…",
+        ["Восстановление задач CEIP из бэкапа…"] = "Restoring CEIP tasks from the backup…",
         ["Отключение задач CEIP (через SCU.ps1)…"] = "Disabling CEIP tasks (via SCU.ps1)…",
-        ["Резерв задач не создавался — включение недоступно."] = "No task backup was created — enabling is unavailable.",
+        ["Бэкап задач не создавался — включение недоступно."] = "No task backup was created — enabling is unavailable.",
         ["Ошибка восстановления (код {0}): {1}. Частично можно исправить через раздел «Службы Windows»."] = "Restore failed (code {0}): {1}. Some changes can be fixed from the «Windows Services» section.",
         ["UAC на стандартном уровне Windows."] = "UAC is at the standard Windows level.",
         ["UAC ослаблен (подтверждения выведены с безопасного рабочего стола)."] = "UAC is weakened (confirmations are shown without the secure desktop).",
@@ -245,7 +238,6 @@ internal static partial class LocalizationDictionaries
         ["Включение стандартного уровня UAC…"] = "Enabling the standard UAC level…",
         ["Ослабление UAC…"] = "Weakening UAC…",
         ["Не удалось прочитать службы: {0}"] = "Failed to read services: {0}",
-        ["Ошибка: {0}"] = "Error: {0}",
         ["Можно удалить"] = "Safe to remove",
         ["Системное приложение"] = "System application",
         ["Системный компонент. Удалять не рекомендуется: могут перестать работать зависящие от него программы и компоненты. При необходимости его можно установить заново."] = "System component. Removal is not recommended: dependent programs and components may stop working. It can be reinstalled if needed.",
@@ -324,36 +316,34 @@ internal static partial class LocalizationDictionaries
 
         // ===================== Приватность =====================
         ["Включение категорий приватности"] = "Enabling privacy categories",
-        ["Все категории ниже будут включены (вернутся в рабочее состояние):\n{0}\n\nЗначения восстанавливаются из резерва, а при его отсутствии — к заводским."] =
-            "All categories below will be enabled (restored to working state):\n{0}\n\nValues are restored from the backup, or to factory defaults if no backup exists.",
+        ["Все категории ниже будут выключены:"] =
+            "All categories below will be disabled:",
         ["Включить все"] = "Enable all",
         ["Все категории включены."] = "All categories are enabled.",
         ["Включение категорий: часть операций не удалась — {0}"] = "Enabling categories: some operations failed — {0}",
         ["Включение: "] = "Enabling: ",
         ["Отключение — {0}"] = "Disabling — {0}",
-        ["Отключить «{0}»?\n{1}\nТекущие значения реестра будут сохранены в резерв."] = "Disable «{0}»?\n{1}\nThe current registry values will be saved to a backup.",
+        ["Отключить «{0}»?\n{1}\nТекущие значения реестра будут сохранены в бэкап."] = "Disable «{0}»?\n{1}\nThe current registry values will be saved to a backup.",
         ["Отключить"] = "Disable",
         ["Отключить: "] = "Disable: ",
         ["{0}: ошибка (код {1}): {2}"] = "{0}: error (code {1}): {2}",
 
         // ===================== Службы =====================
         ["Чтение статусов служб…"] = "Reading service states…",
-        ["Сохранение резерва служб…"] = "Saving the services backup…",
-        ["Восстановление служб из резерва…"] = "Restoring services from the backup…",
+        ["Сохранение бэкапа служб…"] = "Saving the services backup…",
+        ["Восстановление служб из бэкапа…"] = "Restoring services from the backup…",
         ["Отключение службы {0}…"] = "Disabling service {0}…",
         ["Отключение всех служб"] = "Disabling all services",
-        ["Будут отключены все службы из списка ({0}):\n{1}\n\nРезерв текущих состояний будет создан автоматически, «Откатить» вернёт всё как было. Продолжить?"] =
+        ["Будут отключены все службы из списка ({0}):\n{1}\n\nБэкап текущих состояний будет создан автоматически, «Откатить» вернёт всё как было. Продолжить?"] =
             "All services from the list will be disabled ({0}):\n{1}\n\nA backup of the current states will be created automatically; «Restore» will bring everything back. Continue?",
         ["Отключить все"] = "Disable all",
         ["Все службы отключены."] = "All services are disabled.",
         ["Отключение служб: часть операций не удалась — {0}"] = "Disabling services: some operations failed — {0}",
         ["Список служб ещё не загружен."] = "The services list has not been loaded yet.",
         ["Не удалось прочитать службы: "] = "Failed to read services: ",
-        ["Загружено служб: {0}. {1}. Резерв: {2}."] = "Loaded services: {0}. {1}. Backup: {2}.",
+        ["Загружено служб: {0}. {1}. Бэкап: {2}."] = "Loaded services: {0}. {1}. Backup: {2}.",
         ["Нет службы"] = "No service",
         ["Работает"] = "Running",
-        ["Остановлена"] = "Stopped",
-        ["Отключена"] = "Disabled",
         ["Включить"] = "Enable",
         ["Включить: "] = "Enable: ",
 
@@ -455,19 +445,19 @@ internal static partial class LocalizationDictionaries
         ["Восстановление сохранённых MTU…"] = "Restoring saved MTU values…",
         ["Восстановление исходного QoS override…"] = "Restoring the original QoS override…",
         ["Применение игрового профиля…"] = "Applying the gaming profile…",
-        ["Откат игрового профиля из резерва…"] = "Restoring the gaming profile from the backup…",
+        ["Откат игрового профиля из бэкапа…"] = "Restoring the gaming profile from the backup…",
         ["Игровой профиль отключён: {0}"] = "Gaming profile disabled: {0}",
-        ["Восстановление свойств сетевых адаптеров из резерва…"] = "Restoring network adapter properties from the backup…",
+        ["Восстановление свойств сетевых адаптеров из бэкапа…"] = "Restoring network adapter properties from the backup…",
         ["Цель MTU: {0}"] = "MTU target: {0}",
-        ["Восстановление всех параметров из резервов…"] = "Restoring all settings from backups…",
+        ["Восстановление всех параметров из бэкапов…"] = "Restoring all settings from backups…",
         ["Профиль для игр"] = "Gaming profile",
-        ["Будут применены: Auto-Tuning=disabled, ECN=disabled, QoS override=0%.\nПрофиль не гарантирует снижение пинга; исходные значения сохраняются в резерв.\nПродолжить?"] = "The following will be applied: Auto-Tuning=disabled, ECN=disabled, QoS override=0%.\nThe profile does not guarantee lower ping; the original values are saved to a backup.\nContinue?",
+        ["Будут применены: Auto-Tuning=disabled, ECN=disabled, QoS override=0%.\nПрофиль не гарантирует снижение пинга; исходные значения сохраняются в бэкап.\nПродолжить?"] = "The following will be applied: Auto-Tuning=disabled, ECN=disabled, QoS override=0%.\nThe profile does not guarantee lower ping; the original values are saved to a backup.\nContinue?",
         ["Применить профиль"] = "Apply profile",
         ["Сброс сетевых параметров"] = "Network settings reset",
-        ["Восстановить TCP Global, QoS override, MTU и NetBIOS из сохранённых резервов?"] = "Restore TCP Global, QoS override, MTU and NetBIOS from the saved backups?",
+        ["Восстановить TCP Global, QoS override, MTU и NetBIOS из сохранённых бэкапов?"] = "Restore TCP Global, QoS override, MTU and NetBIOS from the saved backups?",
         ["Восстановить всё"] = "Restore everything",
         ["Применить"] = "Apply",
-        ["Исходные режимы сохраняются в резерв."] = "The original modes are saved to a backup.",
+        ["Исходные режимы сохраняются в бэкап."] = "The original modes are saved to a backup.",
         ["netsh: MTU {0} для «{1}»…"] = "netsh: MTU {0} for «{1}»…",
         ["netsh: {0}={1}…"] = "netsh: {0}={1}…",
         ["WMI SetTcpipNetbios mode={0}…"] = "WMI SetTcpipNetbios mode={0}…",
@@ -517,10 +507,10 @@ internal static partial class LocalizationDictionaries
         ["Пауза снята."] = "Pause removed.",
         ["Сохранение состояния служб…"] = "Saving the services state…",
         ["Блокировка обновлений Windows"] = "Blocking Windows Update",
-        ["Состояние служб wuauserv, UsoSvc, WaaSMedicSvc, DoSvc, BITS будет сохранено в резерв,\nзатем службы переведены в «Отключена».\nWindows перестанет ставить обновления до команды «Вернуть обновления».\nРекомендуется создать точку восстановления (раздел «Поиск и целостность»). Заблокировать?"] = "The state of wuauserv, UsoSvc, WaaSMedicSvc, DoSvc and BITS will be saved to a backup,\nthen the services will be set to «Disabled».\nWindows will stop installing updates until you press «Unblock updates».\nCreating a restore point first (the «Search & Integrity» section) is recommended. Block?",
+        ["Состояние служб wuauserv, UsoSvc, WaaSMedicSvc, DoSvc, BITS будет сохранено в бэкап,\nзатем службы переведены в «Отключена».\nWindows перестанет ставить обновления до команды «Вернуть обновления».\nРекомендуется создать точку восстановления (раздел «Поиск и целостность»). Заблокировать?"] = "The state of wuauserv, UsoSvc, WaaSMedicSvc, DoSvc and BITS will be saved to a backup,\nthen the services will be set to «Disabled».\nWindows will stop installing updates until you press «Unblock updates».\nCreating a restore point first (the «Search & Integrity» section) is recommended. Block?",
         ["Заблокировать"] = "Block",
         ["Обновления заблокированы. Вернуть — кнопкой «Вернуть обновления»."] = "Updates are blocked. Use «Unblock updates» to revert.",
-        ["Резерв служб не найден — блокировка не выполнялась из приложения."] = "The services backup was not found — blocking was not performed by the app.",
+        ["Бэкап служб не найден — блокировка не выполнялась из приложения."] = "The services backup was not found — blocking was not performed by the app.",
         ["Блокировка отменена: не удалось сохранить состояние служб (код {0})."] = "Blocking cancelled: failed to save the services state (code {0}).",
         ["Драйверы снова устанавливаются через Windows Update."] = "Drivers are installed via Windows Update again.",
         ["Авто-установка драйверов через Windows Update запрещена."] = "Automatic driver installation via Windows Update is disabled.",
@@ -532,14 +522,36 @@ internal static partial class LocalizationDictionaries
 
         // ===================== Задачи =====================
         ["Чтение задач планировщика…"] = "Reading scheduled tasks…",
-        ["Сохранение резерва задач…"] = "Saving the tasks backup…",
-        ["Восстановление задач из резерва…"] = "Restoring tasks from the backup…",
+        ["Сохранение бэкапа задач…"] = "Saving the tasks backup…",
+        ["Восстановление задач из бэкапа…"] = "Restoring tasks from the backup…",
         ["Список задач ещё не загружен."] = "The tasks list has not been loaded yet.",
         ["Не удалось прочитать задачи: "] = "Failed to read tasks: ",
         ["Задача отключена. "] = "Task disabled. ",
-        ["Резерв не сохранён (код {0}): {1}"] = "Backup not saved (code {0}): {1}",
-        ["Нет файла резерва для отката."] = "No backup file to restore from.",
-        ["резерв ещё не создавался"] = "no backup has been created yet",
+        ["Бэкап не сохранён (код {0}): {1}"] = "Backup not saved (code {0}): {1}",
+        ["Нет файла бэкапа для отката."] = "No backup file to restore from.",
+        ["бэкап ещё не создавался"] = "no backup has been created yet",
+        ["манифест ещё не создавался"] = "no manifest has been created yet",
+        ["Полный путь: {0}"] = "Full path: {0}",
+        ["Источник: {0}\nКоманда: {1}"] = "Source: {0}\nCommand: {1}",
+        ["Пакеты: {0}"] = "Packages: {0}",
+        ["Удаление необратимо в рамках этой утилиты.\nПереустановка возможна только средствами Windows/Store/winget."] =
+            "Removal is irreversible within this utility.\nReinstallation is only possible via Windows/Store/winget.",
+        ["Удаление изменяет состав установленных компонентов; перед операцией приложение показывает подтверждение."] =
+            "Removal changes the set of installed components; the app shows a confirmation before the operation.",
+        ["\nОтключайте только те категории, последствия которых вам понятны; после операции исходные значения сохраняются в бэкап."] =
+            "\nOnly disable categories whose consequences you understand; the original values are saved to a backup after the operation.",
+        ["Дамп памяти (MEMORY.DMP)"] = "Memory dump (MEMORY.DMP)",
+        ["DiagTrack, AllowTelemetry, CEIP, рекламный ID, советы и контент."] =
+            "DiagTrack, AllowTelemetry, CEIP, advertising ID, tips and content.",
+        ["Тосты, центр уведомлений, советы и предложения Windows."] =
+            "Toasts, notification center, Windows tips and suggestions.",
+        ["Глобальный запрет фоновой активности UWP и служба embeddedmode."] =
+            "Global block of UWP background activity and the embeddedmode service.",
+        ["Policy-отключение Copilot и анализа данных AI."] =
+            "Policy-based disabling of Copilot and AI data analysis.",
+        ["DODownloadMode=0 и служба DoSvc."] = "DODownloadMode=0 and the DoSvc service.",
+        ["Отключение задач Compatibility Appraiser, Consolidator, QueueReporting и др."] =
+            "Disables the Compatibility Appraiser, Consolidator, QueueReporting and other tasks.",
         ["Отключение задачи"] = "Disabling a task",
         ["Отключить задачу «{0}»?\nПуть: {1}"] = "Disable the task «{0}»?\nPath: {1}",
         ["Нет задачи"] = "No task",
@@ -580,12 +592,10 @@ internal static partial class LocalizationDictionaries
 
         // ===================== Прочее =====================
         ["Без прав администратора — изменение недоступно"] = "no administrator rights — changes are unavailable",
-        ["Права администратора есть"] = "administrator rights are available",
-        ["Резерв сохранён: "] = "Backup saved: ",
+        ["Бэкап сохранён: "] = "Backup saved: ",
         ["да"] = "yes",
         ["есть"] = "yes",
         ["нет"] = "no",
-        ["нет — изменяющие операции недоступны"] = "no — modifying operations are unavailable",
         ["установлено"] = "installed",
         ["отсутствует"] = "missing",
         ["отключено"] = "disabled",
@@ -608,7 +618,7 @@ internal static partial class LocalizationDictionaries
             "Restart explorer.exe?\nThe taskbar and open Explorer windows will disappear for a few seconds.",
         ["Удалить закреплённые значки и настройки панели задач?\nПроводник будет перезапущен. Вернуть их можно кнопкой «Восстановить панель задач»."] =
             "Remove pinned icons and taskbar settings?\nExplorer will be restarted. They can be restored with the «Restore taskbar» button.",
-        ["Восстановить закрепления и настройки панели задач из резерва\n(снимок на момент последней очистки)? Проводник будет перезапущен."] =
+        ["Восстановить закрепления и настройки панели задач из бэкапа\n(снимок на момент последней очистки)? Проводник будет перезапущен."] =
             "Restore taskbar pinning and settings from the backup\n(a snapshot from the last cleanup)? Explorer will be restarted.",
         ["ВНИМАНИЕ: операция помечена как НЕОБРАТИМАЯ в рамках этой утилиты."] =
             "WARNING: the operation is marked as IRREVERSIBLE within this utility.",
@@ -627,7 +637,6 @@ internal static partial class LocalizationDictionaries
         ["Состояние ПК"] = "PC Status",
         ["Сводка состояния ПК, рекомендации и недавние события"] = "PC state summary, recommendations and recent events",
         ["Состояние системы: OK"] = "System state: OK",
-        ["Требуют внимания: {0}"] = "Needs attention: {0}",
         ["Проверка не выполнялась"] = "No scan has been run yet",
         ["Последняя проверка: {0}"] = "Last scan: {0}",
         ["Проверка ПК"] = "PC scan",
@@ -642,7 +651,6 @@ internal static partial class LocalizationDictionaries
         ["Задачи"] = "Tasks",
         ["Сеть"] = "Network",
         ["Питание"] = "Power",
-        ["UAC"] = "UAC",
         ["Приватность"] = "Privacy",
         ["Обновления"] = "Updates",
         ["Диск {0}: свободно {1:0.0} ГБ из {2:0.0} ГБ"] = "Drive {0}: {1:0.0} GB free of {2:0.0} GB",
@@ -660,7 +668,6 @@ internal static partial class LocalizationDictionaries
         ["Штатный режим обновлений"] = "Updates run normally",
 
         // Рекомендации
-        ["Мало свободного места на системном диске"] = "Low free space on the system drive",
         ["На диске {0} свободно {1:0.0} ГБ из {2:0.0} ГБ{3}. Освободить место можно в разделе очистки."] =
             "Drive {0} has {1:0.0} GB free of {2:0.0} GB{3}. Free up space in the cleanup section.",
         [" (занято {0:0.0}%)"] = " ({0:0.0}% used)",
@@ -750,9 +757,12 @@ internal static partial class LocalizationDictionaries
 
         // События истории (автозагрузка, точка восстановления)
         ["Элемент автозагрузки: {0}"] = "Startup entry: {0}",
-        ["Резервная копия"] = "Backup",
-        ["Резерв: {0}"] = "Backup: {0}",
+        ["Бэкап"] = "Backup",
+        ["Бэкап: {0}"] = "Backup: {0}",
         ["Ошибка"] = "Error",
+        ["Неизвестная ошибка при получении информации о системе."] =
+            "Unknown error while getting system information.",
+        ["Внутренняя ошибка: {0}"] = "Internal error: {0}",
 
         // ===================== Профиль (§33.8) =====================
         ["Профиль"] = "Profile",
@@ -920,6 +930,19 @@ internal static partial class LocalizationDictionaries
         ["Предупреждения"] = "Warnings",
         ["Информация"] = "Information",
         ["Проблем не найдено"] = "No problems found",
+        // П. SCAN-01: честные заголовки результата сканирования.
+        ["Сканирование прервано. Частичный результат сохранён."] =
+            "Scan was cancelled. Partial results are kept.",
+        ["Сканирование завершено с ошибками: часть файлов не проверена."] =
+            "Scan finished with errors: some files were not checked.",
+        ["Обнаружено проблем: {0}."] = "Problems found: {0}.",
+        ["Обнаружено проблем: {0} (сканирование неполное, пропущено {1})."] =
+            "Problems found: {0} (scan incomplete, {1} skipped).",
+        ["Обнаружений не найдено, но сканирование неполное: пропущено {0}."] =
+            "No detections, but the scan is incomplete: {0} skipped.",
+        ["На момент сканирования обнаружений не найдено."] =
+            "No detections were found during the scan.",
+        ["Неполное"] = "Incomplete",
         ["Требуют внимания: {0}"] = "Require attention: {0}",
         ["Диагностика ещё не выполнялась"] = "Diagnostics have not been run yet",
         ["Проверено: {0}"] = "Checked: {0}",
@@ -1067,7 +1090,6 @@ internal static partial class LocalizationDictionaries
         ["С отключённой защитой система открыта для вредоносного ПО."] =
             "With protection off, the system is open to malware.",
         ["Защита в реальном времени включена"] = "Real-time protection is on",
-        ["Защита отключена"] = "Protection is off",
         ["Открыть «Безопасность Windows»"] = "Open «Windows Security»",
         ["Антивирусное ПО не зарегистрировано"] = "No antivirus product registered",
         ["Центр безопасности Windows не сообщает ни об одном антивирусном продукте."] =
