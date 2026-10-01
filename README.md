@@ -1,6 +1,6 @@
 # SCU — Safecleanup
 
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F92%20detections-brightgreen?logo=virustotal)](https://www.virustotal.com/gui/url/333ded8049c8a1599af1b3981d68845ab1bd8ea9a92f3c93f2d6d3af8a0e9aa6?nocache=1)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F92%20detections-brightgreen?logo=virustotal)](https://www.virustotal.com/gui/url/a9416c9d8d47920b994f3e8fac1d888850546200e9b99e8268ebd03d431da9bd?nocache=1)
 
 <p align="center">
   <img src="docs/images/scu-logo.png" alt="SCU" width="520">
