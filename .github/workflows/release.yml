@@ -36,9 +36,14 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      # Production-сборка подписывается настоящим сертификатом; пин подписи
-      # ScannerCore остаётся на месте (thumbprint.txt в git не хранится —
-      # файл передаётся на машине издателя).
+      # thumbprint.txt ОТСКЖИВАЕТСЯ в git (аудит 3 run #13): если его не удалить,
+      # пин вшивается в ScannerCore, C#-раннер требует подписанный exe — в CI он
+      # не подписан, и все Suite=Integration тесты падают. Как в ci.yml: на CI
+      # всегда dev-режим пиннинга; production-подпись остаётся на машине издателя.
+      - name: Remove signing pin (dev mode on CI)
+        run: Remove-Item SecurityScanner/signing/thumbprint.txt -ErrorAction SilentlyContinue
+        shell: pwsh
+
       - name: Build ScannerCore (cmake)
         run: |
           cmake -S SecurityScanner -B SecurityScanner/build -A x64
