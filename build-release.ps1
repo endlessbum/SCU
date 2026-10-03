@@ -121,6 +121,9 @@ $isscc = Find-Tool 'ISCC.exe' @('C:\Program Files (x86)\Inno Setup 6', 'C:\Progr
 if (-not $isscc) { throw 'ISCC.exe не найден (Inno Setup 6)' }
 
 $isccArgs = @((Join-Path $root 'setup.iss'))
+# Версия строго из трёх частей (3.1.2, не 3.1.2.0): FileVersion четырёхчастный,
+# в имени установщика и свойствах приложения — семантическая версия.
+$isccArgs += "/DAppVersion=$binVersionShort"
 if ($signingEnabled) {
     # ISCC не принимает команды с пробелами через /S надёжно — генерируем
     # wrapper без пробелов в пути; Inno вызывает его с именем файла подписания.
