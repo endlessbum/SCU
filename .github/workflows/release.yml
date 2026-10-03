@@ -88,6 +88,12 @@ jobs:
           [IO.File]::WriteAllBytes($path, $pfx)
           $cert = Import-PfxCertificate -FilePath $path -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString $env:WINDOWS_CERT_PASSWORD -AsPlainText -Force)
           Write-Host "Imported certificate: $($cert.Thumbprint)"
+          # Self-signed: публичная часть обязана попасть в доверенные корни,
+          # иначе signtool verify /pa не строит цепочку до доверенного корня.
+          $cerPath = Join-Path $env:RUNNER_TEMP "scu-signing.cer"
+          [IO.File]::WriteAllBytes($cerPath, $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+          Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
+          Write-Host "Trusted root installed: $($cert.Subject)"
           "SIGN_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
