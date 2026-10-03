@@ -97,10 +97,10 @@ jobs:
           $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
             Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
           if (-not $signtool) { Write-Host "::error::signtool не найден"; exit 1 }
-          & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /n "SCU" SecurityScanner/out/Release/ScannerCore.exe
+          & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /n "SCU Code Signing" SecurityScanner/out/Release/ScannerCore.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
           Get-ChildItem publish/app -Filter *.exe -Recurse | ForEach-Object {
-            & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /n "SCU" $_.FullName
+            & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /n "SCU Code Signing" $_.FullName
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
         shell: pwsh
