@@ -50,6 +50,10 @@ public partial class App : Application
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
 
+        // Цвет заставки читается ДО её создания (п. 3 запроса): логотип красится
+        // в тот же цвет, что задан настройкой «Цвет иконки приложения».
+        ThemeManager.SetIconAccent(ThemeManager.LoadIconAccent());
+
         // Заставка показывается до любой тяжёлой работы: резко, без анимации появления.
         var splash = new SplashWindow();
         splash.Show();
@@ -111,12 +115,16 @@ public partial class App : Application
             ThemeManager.StartSystemThemeWatcher();
 
             // Данные всех вкладок собираются, пока главное окно ещё не показано;
-            // на экране остаётся заставка.
-            await window.InitializeDataAsync().ConfigureAwait(true);
+            // на экране заставка с индикатором загрузки (0% — левый край логотипа,
+            // 100% — правый). Прогресс — доля завершённых разделов.
+            var progress = new Progress<double>(p => splash.SetProgress(p));
+            await window.InitializeDataAsync(progress).ConfigureAwait(true);
 
+            // Все данные собраны: индикатор пропадает, окно запускается сразу,
+            // логотип гаснет через 2 секунды после исчезновения индикатора.
+            splash.HideProgressIndicator();
             window.Show();
-            // Окно уже на экране — только теперь заставка начинает гаснуть.
-            splash.CloseAfterFade();
+            splash.CloseAfterFade(TimeSpan.FromSeconds(2));
 
             // Бэнчмарк запускается автоматически при старте, в фоне — стартовые
             // данные разделов уже собраны, окно отзывчиво во время сканирования.

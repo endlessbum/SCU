@@ -58,10 +58,12 @@ public partial class MainWindow : Window
         // было подписано — стартовая покраска выполняется явно.
         ThemeManager.IconAccentChanged += OnIconAccentChanged;
         RefreshAccentIcons();
+        UpdateDesktopShortcutIcons();
 
         // Подсказка поиска «Главной» открыла раздел — вокруг найденной карточки
         // пробегает пунктирный контур, чтобы настройку было легко найти глазами.
-        _sectionHighlight = new Views.Controls.SectionHighlight(this, _viewModel, SidebarList, ContentScroll);
+        _sectionHighlight = new Views.Controls.SectionHighlight(
+            this, _viewModel, SidebarList, ContentScroll, UserScriptsStripHost);
         _viewModel.SectionHighlightRequested += _sectionHighlight.OnSectionHighlightRequested;
 
         // Navigation host: подписка на смену раздела + начальный раздел.
@@ -198,7 +200,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnIconAccentChanged() => RefreshAccentIcons();
+    private void OnIconAccentChanged()
+    {
+        RefreshAccentIcons();
+        UpdateDesktopShortcutIcons();
+    }
 
     // Значок окна в системном заголовке, на панели задач и в Alt+Tab красится
     // акцентом (Window.Icon — системная кнопка и меню сами его показывают).
@@ -206,6 +212,17 @@ public partial class MainWindow : Window
     {
         Icon = AccentIconManager.GetWindowIcon(ThemeManager.CurrentIconAccentColor);
     }
+
+    // Ярлыки в системе (рабочий стол, меню «Пуск») перепривязываются на окрашенную
+    // иконку выбранного пресета: иконку exe в рантайме менять нельзя. COM-доступ
+    // к .lnk и уведомление оболочки идут в фоне. Стартовый вызов переносит ярлык
+    // инсталлятора (иконка exe) на цвет из настроек. От темы иконка не зависит —
+    // при смене темы ярлыки не трогаются.
+    private void UpdateDesktopShortcutIcons() =>
+        TaskRunner.RunAndForget(
+            Task.Run(() => DesktopIconService.Apply(ThemeManager.IconAccent, _logger)),
+            _logger,
+            "desktop icon refresh");
 
     // Журнал скрыт: нижняя строка сетки схлопывается, splitter убирается —
     // сайдбар и контент занимают всю высоту окна.
@@ -280,15 +297,19 @@ public partial class MainWindow : Window
         Topmost = true;
         Topmost = false;
         Focus();
+        // Окно знакомства при первом запуске: после отрисовки главного окна
+        // (BeginInvoke), чтобы размывался уже видимый интерфейс.
+        Dispatcher.BeginInvoke(() => Views.OnboardingWindow.ShowOnce(this));
     }
 
     // Первичная загрузка данных всех вкладок. Вызывается из App до первого показа
-    // окна: заставка держится на экране, пока данные не собраны.
-    public async Task InitializeDataAsync()
+    // окна: заставка с индикатором держится на экране, пока данные не собраны.
+    // progress — доля завершённых разделов (0..100) для индикатора на заставке.
+    public async Task InitializeDataAsync(IProgress<double>? progress = null)
     {
         try
         {
-            await _viewModel.InitializeAsync().ConfigureAwait(true);
+            await _viewModel.InitializeAsync(progress).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -367,7 +388,7 @@ public partial class MainWindow : Window
         var viewModel = _viewModel;
         FrameworkElement view = number switch
         {
-            0 => new Views.Sections.DashboardView { DataContext = viewModel.Dashboard },
+            0 => CreateDashboardView(viewModel),
             1 => new Views.Sections.InfoView { DataContext = viewModel.Info },
             2 => new Views.Sections.ComponentsView { DataContext = viewModel.Components },
             3 => new Views.Sections.CleanupView { DataContext = viewModel.Cleanup },
@@ -400,6 +421,17 @@ public partial class MainWindow : Window
         };
 
         _sectionViews[number] = view;
+        return view;
+    }
+
+    // «Главная»: фабрика закреплённых карточек замыкается на MainViewModel —
+    // логика (ленивая инициализация раздела-владельца, warn на неизвестный id)
+    // живёт в PinnedCardFactory и покрыта тестами.
+    private Views.Sections.DashboardView CreateDashboardView(MainViewModel viewModel)
+    {
+        var view = new Views.Sections.DashboardView { DataContext = viewModel.Dashboard };
+        view.SetPinnedCardFactory(cardId =>
+            Views.Cards.PinnedCardFactory.Create(cardId, viewModel, _logger));
         return view;
     }
 

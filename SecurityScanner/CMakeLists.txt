@@ -60,6 +60,7 @@ endif()
 add_executable(ScannerCore
     src/main.cpp
     src/core/types.cpp
+    src/core/path_util.cpp
     src/core/scanner.cpp
     src/core/allowlist.cpp
     src/core/database.cpp

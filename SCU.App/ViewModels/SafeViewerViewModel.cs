@@ -246,6 +246,11 @@ public partial class SafeViewerViewModel : ObservableObject
         }
     }
 
+    // Поколение фоновой hash-задачи (аудит 3, п. 8): открытие нового файла
+    // отменяет предыдущий подсчёт; спиннер снимает только актуальная задача.
+    private int _hashGeneration;
+    private CancellationTokenSource? _hashCts;
+
     private void StartHash(string path, long length)
     {
         // SHA-256 считаем фоном и только для разумных размеров — просмотр
@@ -256,34 +261,64 @@ public partial class SafeViewerViewModel : ObservableObject
             return;
         }
 
+        // Предыдущий подсчёт (другой файл) больше не актуален: отменяем и
+        // фиксируем новое поколение — его завершение не снимет спиннер за нас.
+        _hashCts?.Cancel();
+        _hashCts?.Dispose();
+        _hashCts = new CancellationTokenSource();
+        var cancellationToken = _hashCts.Token;
+        var generation = ++_hashGeneration;
+
         IsHashComputing = true;
         Task.Run(async () =>
         {
+            string? message = null;
             try
             {
                 using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
                     FileShare.ReadWrite | FileShare.Delete);
-                var hash = await SHA256.HashDataAsync(stream);
+                var hash = await SHA256.HashDataAsync(stream, cancellationToken);
                 var hex = Convert.ToHexString(hash).ToLowerInvariant();
 
                 Application.Current?.Dispatcher.BeginInvoke(() =>
                 {
-                    if (_currentFile == path)
+                    if (_currentFile == path && generation == _hashGeneration)
                     {
                         InfoText += " · SHA-256: " + hex;
                     }
-
-                    IsHashComputing = false;
                 });
+                return;
             }
-            catch (IOException)
+            catch (OperationCanceledException)
             {
-                Application.Current?.Dispatcher.BeginInvoke(() =>
-                {
-                    InfoText += " · " + L.T("SHA-256: — (файл не читается)");
-                    IsHashComputing = false;
-                });
+                return; // файл сменился — результат не нужен
             }
+            catch (Exception exception) when (exception is IOException
+                or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                message = "SHA-256: — (файл не читается)";
+            }
+            catch (Exception exception)
+            {
+                // Аудит п. 10: faulted Task больше не остаётся необработанным.
+                message = "SHA-256: — (ошибка вычисления)";
+                Logger.CurrentRun.Error("SAFEVIEWER | hash failed | " + exception.Message);
+            }
+
+            Application.Current?.Dispatcher.BeginInvoke(() =>
+            {
+                if (_currentFile == path && generation == _hashGeneration && message is not null)
+                {
+                    InfoText += " · " + L.T(message);
+                }
+
+                // Спиннер снимает только актуальное поколение: завершение
+                // устаревшего подсчёта не гасит индикатор нового (аудит 3, п. 8).
+                if (generation == _hashGeneration)
+                {
+                    IsHashComputing = false;
+                }
+            });
         });
     }
 

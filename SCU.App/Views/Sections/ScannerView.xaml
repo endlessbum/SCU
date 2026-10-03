@@ -82,34 +82,62 @@
                                    Style="{StaticResource CaptionText}"
                                    Text="{Binding DatabaseInfoText}" />
                     </StackPanel>
+                    <!-- Основные действия всегда видны, редкие — в меню «Дополнительно»
+                         (аудит п. 15.1): панель не разваливается на узком окне. -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button Content="{DynamicResource S_ScannerScanFile}"
                                 Command="{Binding ScanFileCommand}" />
-                        <Button Margin="8,0,0,0"
-                                Content="{DynamicResource S_ScannerViewFile}"
-                                Command="{Binding ViewFileCommand}"
-                                Style="{StaticResource SmallButton}"
-                                ToolTipService.ShowOnDisabled="True" />
-                        <Button Margin="8,0,0,0"
-                                Content="{DynamicResource S_ScannerViewFolder}"
-                                Command="{Binding ViewFolderCommand}"
-                                Style="{StaticResource SmallButton}"
-                                ToolTipService.ShowOnDisabled="True" />
-                        <Button Margin="8,0,0,0"
-                                Content="{DynamicResource S_ScannerInstallDb}"
-                                Command="{Binding InstallDatabasePackageCommand}"
-                                Style="{StaticResource SmallButton}"
-                                ToolTipService.ShowOnDisabled="True" />
-                        <Button Margin="8,0,0,0"
-                                Content="{DynamicResource S_ScannerUpdateOnline}"
-                                Command="{Binding UpdateDatabaseOnlineCommand}"
-                                Style="{StaticResource SmallButton}"
-                                ToolTipService.ShowOnDisabled="True" />
                         <Button Margin="8,0,0,0"
                                 Content="{DynamicResource S_ScannerCancel}"
                                 Command="{Binding CancelCommand}"
                                 Style="{StaticResource SmallButton}"
                                 ToolTipService.ShowOnDisabled="True" />
+                        <Button x:Name="MoreButton"
+                                Margin="8,0,0,0"
+                                Content="{DynamicResource S_ScannerMore}"
+                                Style="{StaticResource SmallButton}"
+                                Click="OnMoreClick" />
+                        <Popup x:Name="MorePopup"
+                               PlacementTarget="{Binding ElementName=MoreButton}"
+                               Placement="Bottom"
+                               StaysOpen="False"
+                               AllowsTransparency="True"
+                               VerticalOffset="4">
+                            <Border Style="{StaticResource SectionCard}"
+                                    MinWidth="230"
+                                    Margin="8"
+                                    Padding="8">
+                                <StackPanel>
+                                    <Button HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Left"
+                                            Content="{DynamicResource S_ScannerViewFile}"
+                                            Command="{Binding ViewFileCommand}"
+                                            Style="{StaticResource SmallButton}"
+                                            Click="OnMoreItemClick" />
+                                    <Button Margin="0,4,0,0"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Left"
+                                            Content="{DynamicResource S_ScannerViewFolder}"
+                                            Command="{Binding ViewFolderCommand}"
+                                            Style="{StaticResource SmallButton}"
+                                            Click="OnMoreItemClick" />
+                                    <Button Margin="0,4,0,0"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Left"
+                                            Content="{DynamicResource S_ScannerInstallDb}"
+                                            Command="{Binding InstallDatabasePackageCommand}"
+                                            Style="{StaticResource SmallButton}"
+                                            Click="OnMoreItemClick" />
+                                    <Button Margin="0,4,0,0"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Left"
+                                            Content="{DynamicResource S_ScannerUpdateOnline}"
+                                            Command="{Binding UpdateDatabaseOnlineCommand}"
+                                            Style="{StaticResource SmallButton}"
+                                            Click="OnMoreItemClick" />
+                                </StackPanel>
+                            </Border>
+                        </Popup>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -118,6 +146,38 @@
         <!-- Без собственного ScrollViewer: страница прокручивается общим
              ContentScroll главного окна, вложенный viewer не получал колесо мыши. -->
         <StackPanel Grid.Row="1" Margin="0,12,0,0">
+                <!-- Бейдж исхода: полностью/частично/ошибка/прервано (аудит п. 15.2). -->
+                <Border HorizontalAlignment="Left"
+                        Padding="10,3"
+                        CornerRadius="8"
+                        Background="{DynamicResource SubtleFillSecondaryBrush}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
+                            <Setter Property="BorderThickness" Value="1" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding OutcomeBadgeKind}" Value="None">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding OutcomeBadgeKind}" Value="Clean">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding OutcomeBadgeKind}" Value="Partial">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource WarnBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding OutcomeBadgeKind}" Value="Threats">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding OutcomeBadgeKind}" Value="Failed">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Style="{StaticResource CaptionText}" Text="{Binding OutcomeBadge}" />
+                </Border>
+
                 <TextBlock Style="{StaticResource SectionStatusText}" Text="{Binding StatusText}" TextWrapping="Wrap" />
 
                 <!-- Прогресс сканирования: процент по файлам+объёму и оценка времени -->

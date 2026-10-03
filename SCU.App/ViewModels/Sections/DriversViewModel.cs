@@ -41,6 +41,18 @@ public partial class DriversViewModel : ObservableObject, IDisposable, ISectionO
     [NotifyPropertyChangedFor(nameof(IsInteractive))]
     private bool _isBusy;
 
+    // Экспорт идёт без глобального оверлея: спиннер стоит прямо у кнопки,
+    // поэтому IsBusy (по нему гасится весь экран) при экспорте не поднимается.
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SearchUpdatesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallUpdateCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallAllCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ToggleDriverUpdatesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
+    private bool _isExporting;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsInteractive))]
     [NotifyPropertyChangedFor(nameof(ReadOnlyHint))]
@@ -114,11 +126,12 @@ public partial class DriversViewModel : ObservableObject, IDisposable, ISectionO
     {
     }
 
-    private bool CanRefresh() => !IsBusy;
-    private bool CanSearch() => !IsBusy;
-    private bool CanModify() => !IsBusy && IsAdmin;
-    private bool CanCancel() => IsBusy;
-    private bool CanToggleDriverUpdates() => !IsBusy;
+    private bool CanRefresh() => !IsBusy && !IsExporting;
+    private bool CanSearch() => !IsBusy && !IsExporting;
+    private bool CanModify() => !IsBusy && !IsExporting && IsAdmin;
+    private bool CanCancel() => IsBusy || IsExporting;
+    private bool CanToggleDriverUpdates() => !IsBusy && !IsExporting;
+    private bool CanExport() => !IsBusy && !IsExporting && IsAdmin;
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
@@ -352,7 +365,7 @@ public partial class DriversViewModel : ObservableObject, IDisposable, ISectionO
         }).ConfigureAwait(true);
     }
 
-    [RelayCommand(CanExecute = nameof(CanModify))]
+    [RelayCommand(CanExecute = nameof(CanExport))]
     private async Task ExportAsync()
     {
         var targetDirectory = _filePicker.PickOpenFolder(L.T("Папка для экспорта драйверов"));
@@ -361,10 +374,15 @@ public partial class DriversViewModel : ObservableObject, IDisposable, ISectionO
             return;
         }
 
-        await RunExclusiveAsync("экспорт драйверов", async ct =>
+        // Свой CTS и IsExporting вместо IsBusy: пнputil пишет статус в карточку,
+        // спиннер крутится у кнопки — экран целиком не затемняется.
+        _operationCts?.Dispose();
+        _operationCts = new CancellationTokenSource();
+        IsExporting = true;
+        try
         {
             var result = await _exportService.ExportAsync(
-                targetDirectory, new Progress<string>(text => StatusText = text), ct).ConfigureAwait(true);
+                targetDirectory, new Progress<string>(text => StatusText = text), _operationCts.Token).ConfigureAwait(true);
             if (result.IsSuccess)
             {
                 StatusText = L.T("Экспортировано пакетов: {0} → {1}", result.Value, targetDirectory);
@@ -379,7 +397,21 @@ public partial class DriversViewModel : ObservableObject, IDisposable, ISectionO
             {
                 StatusText = L.T("Ошибка: {0}", result.Message);
             }
-        }).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = L.T("Операция отменена.");
+            _logger.Warn("CANCEL | экспорт драйверов");
+        }
+        catch (Exception exception)
+        {
+            StatusText = L.T("Ошибка: {0}", exception.Message);
+            _logger.Error("DRV | экспорт драйверов | " + exception);
+        }
+        finally
+        {
+            IsExporting = false;
+        }
     }
 
     [RelayCommand]

@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using System.Management;
+using System.Runtime.InteropServices;
 using SCU.Common;
 using SCU.Models;
 
@@ -7,6 +8,9 @@ namespace SCU.Infrastructure.Windows.SystemState;
 
 public sealed class SystemInfoService
 {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint GetFirmwareEnvironmentVariableW(
+        string name, string guid, IntPtr buffer, uint size);
     public async Task<Result<SystemInfo>> GetAsync(CancellationToken ct = default)
     {
         try
@@ -66,6 +70,31 @@ public sealed class SystemInfoService
                 fields.Add(new InfoRow("ОЗУ (система)", FormatBytes(ram)));
                 ramTotalBytes = ram;
             }
+        });
+
+        // BIOS: режим прошивки — из реестра (PEFirmwareType: 1 = Legacy, 2 = UEFI;
+        // в WMI его нет), версия — SMBIOSBIOSVersion из Win32_BIOS.
+        fields.Add(new InfoRow("Режим BIOS", ReadFirmwareMode()));
+        ForEach("SELECT SMBIOSBIOSVersion FROM Win32_BIOS", ct, bios =>
+        {
+            var version = ReadString(bios, "SMBIOSBIOSVersion");
+            fields.Add(new InfoRow("Версия BIOS", string.IsNullOrWhiteSpace(version) ? "—" : version));
+        });
+
+        // Материнская плата: Product — модель, Version — ревизия платы.
+        ForEach("SELECT Manufacturer, Product, Version FROM Win32_BaseBoard", ct, board =>
+        {
+            var product = ReadString(board, "Product");
+            var manufacturer = ReadString(board, "Manufacturer");
+            var model = product switch
+            {
+                var p when !string.IsNullOrWhiteSpace(p) => p,
+                var m when !string.IsNullOrWhiteSpace(m) => m,
+                _ => "—"
+            };
+            fields.Add(new InfoRow("Модель материнской платы", model));
+            var boardVersion = ReadString(board, "Version");
+            fields.Add(new InfoRow("Версия материнской платы", string.IsNullOrWhiteSpace(boardVersion) ? "—" : boardVersion));
         });
 
         var cpuNames = new List<string>();
@@ -139,6 +168,28 @@ public sealed class SystemInfoService
             var ram = ReadUInt64(gpu, "AdapterRAM");
             video.Add(ram > 0 ? $"{name} ({FormatBytes(ram)})" : name);
         });
+
+        // IP-адрес: IPv4/IPv6 включённых адаптеров (пустые и loopback-адреса прочь).
+        var addresses = new List<string>();
+        ForEach("SELECT IPAddress FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled = TRUE", ct, cfg =>
+        {
+            try
+            {
+                if (cfg["IPAddress"] is not string[] ips)
+                {
+                    return;
+                }
+
+                addresses.AddRange(ips.Where(ip => !string.IsNullOrWhiteSpace(ip)));
+            }
+            catch
+            {
+                // Не массив/пусто — адаптер без адресов пропускаем.
+            }
+        });
+
+        var ipField = addresses.Distinct().ToList();
+        fields.Add(new InfoRow("IP-адрес", ipField.Count > 0 ? string.Join(", ", ipField) : "—"));
 
         ForEach("SELECT Name, MACAddress, PhysicalAdapter FROM Win32_NetworkAdapter", ct, nic =>
         {
@@ -229,6 +280,38 @@ public sealed class SystemInfoService
     {
         var dt = ReadCimDateTime(obj, name);
         return dt is null ? "—" : dt.Value.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture);
+    }
+
+    // Режим прошивки: 1) реестр PEFirmwareType (1 = Legacy, 2 = UEFI) — есть не
+    // на всех сборках; 2) зонд GetFirmwareEnvironmentVariableW — на Legacy BIOS
+    // всегда ERROR_INVALID_FUNCTION, на UEFI — успех или иной код ошибки.
+    private static string ReadFirmwareMode()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control");
+            if (key?.GetValue("PEFirmwareType") is int type)
+            {
+                return type == 2 ? "UEFI" : "Legacy (BIOS)";
+            }
+        }
+        catch
+        {
+            // Ключа нет — определяем через API ниже.
+        }
+
+        try
+        {
+            GetFirmwareEnvironmentVariableW(
+                string.Empty, "{00000000-0000-0000-0000-000000000000}", IntPtr.Zero, 0);
+            return Marshal.GetLastWin32Error() == 1 /* ERROR_INVALID_FUNCTION */
+                ? "Legacy (BIOS)"
+                : "UEFI";
+        }
+        catch
+        {
+            return "—";
+        }
     }
 
     private static DateTime? ReadCimDateTime(ManagementBaseObject obj, string name)

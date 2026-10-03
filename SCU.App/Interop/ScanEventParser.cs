@@ -24,7 +24,7 @@ public static class ScanEventParser
         try
         {
             var document = JsonDocument.Parse(line);
-            using var _ = document;
+            using var parsed = document;
             if (!document.RootElement.TryGetProperty("event", out var kindElement)
                 || kindElement.ValueKind != JsonValueKind.String)
             {
@@ -75,7 +75,12 @@ public static class ScanEventParser
 
                 case "finished":
                     scanEvent.Kind = ScanEventKind.Finished;
-                    scanEvent.Result = root.Deserialize<ScanResultDto>(Options);
+                    // finished без payload результата ({"event":"finished"}, обрыв
+                    // протокола) — НЕ «пустой чистый скан» (аудит 3, п. 2): Result
+                    // остаётся null, раннер обязан классифицировать прогон как Failed.
+                    scanEvent.Result = root.TryGetProperty("summary", out _)
+                        ? root.Deserialize<ScanResultDto>(Options)
+                        : null;
                     break;
 
                 default:

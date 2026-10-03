@@ -35,7 +35,11 @@ struct Detection {
 
 struct ScanStats {
     unsigned long long filesScanned = 0;
+    // Ограничение покрытия (файл больше лимита, непроверяемый архив и т.п.):
+    // exit code остаётся 0, но GUI считает прогон Partial по filesSkipped > 0.
     unsigned long long filesSkipped = 0;
+    // Техническая ошибка (обход каталога, хеширование, запись при извлечении
+    // из архива): exit code 1, GUI считает прогон Partial.
     unsigned long long errors = 0;
     unsigned long long detections = 0;
 };

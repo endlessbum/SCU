@@ -181,12 +181,19 @@ public partial class ScuAiAssistantViewModel : ObservableObject
     }
 
     // «Отмена» в карточке подтверждения: план удаляется из store — модель не
-    // сможет его применить, даже если попытается (п. 9 ТЗ).
+    // сможет его применить, даже если попытается (п. 9 ТЗ). Пока apply уже идёт
+    // (аудит 3, п. 5), отмена отклоняется: мутация завершает жизненный цикл сама.
     [RelayCommand]
     private void CancelPlan(string planId)
     {
+        if (!_assistant.CancelPlan(planId))
+        {
+            Messages.Add(new ScuAiChatMessage(
+                "assistant", L.T("Изменение уже применяется — отменить его нельзя."), ScuAiMessageKind.ToolError));
+            return;
+        }
+
         MarkPlanCard(planId, applied: false, cancelled: true);
-        _assistant.CancelPlan(planId);
         Messages.Add(new ScuAiChatMessage(
             "assistant", L.T("Изменение отменено — настройки не затронуты."), ScuAiMessageKind.Text));
     }

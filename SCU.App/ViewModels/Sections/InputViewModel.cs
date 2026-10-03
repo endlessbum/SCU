@@ -46,7 +46,26 @@ public partial class InputViewModel : ObservableObject, IDisposable, ISectionOpe
             // OnMeansEnable: тумблер включён = функция работает.
             Rows.Add(new SwitchRow(option.Id, title, option.Description, false, onMeansEnable: true));
         }
+
+        // Закрепление на «Главной» (скрепка в SwitchRowCard): 5 тумблеров ввода
+        // из ТЗ; «Ускорение запуска Edge» не подлежит.
+        foreach (var row in Rows)
+        {
+            if (PinnableSwitchIds.Contains(row.Id))
+            {
+                row.PinCardId = "input." + row.Id;
+            }
+        }
     }
+
+    private static readonly HashSet<string> PinnableSwitchIds = new(StringComparer.Ordinal)
+    {
+        "mouse-acceleration",
+        "sticky-keys",
+        "game-bar",
+        "game-dvr",
+        "game-mode",
+    };
 
     public ObservableCollection<SwitchRow> Rows { get; } = [];
 
@@ -62,11 +81,27 @@ public partial class InputViewModel : ObservableObject, IDisposable, ISectionOpe
         {
             if (states.TryGetValue(row.Id, out var state))
             {
-                row.ForceState(state);
+                ApplyReadState(row, state);
             }
         }
 
         StatusText = L.T("Состояние обновлено.");
+    }
+
+    // Применение прочитанного состояния. null — сбой чтения: тумблер остаётся
+    // на последнем известном значении, но помечается «?» — иначе сбой выглядел
+    // бы как конкретное «включено/выключено».
+    private static void ApplyReadState(SwitchRow row, bool? state)
+    {
+        if (state is { } isOn)
+        {
+            row.ForceState(isOn);
+            row.StateUnknown = false;
+        }
+        else
+        {
+            row.StateUnknown = true;
+        }
     }
 
     public bool IsInteractive => !IsBusy && IsAdmin;
@@ -100,16 +135,16 @@ public partial class InputViewModel : ObservableObject, IDisposable, ISectionOpe
             {
                 var result = await TaskRunner.RunBlocking(() => _inputService.SetSwitch(option, on), ct).ConfigureAwait(true);
                 var actual = await TaskRunner.RunBlocking(() => _inputService.IsSwitchOn(option), ct).ConfigureAwait(true);
-                row.ForceState(actual);
+                ApplyReadState(row, actual);
                 StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
-                _logger.Info($"INPUT | {option.Id} | {(actual ? "on" : "off")} | rc={result.Code}");
+                _logger.Info($"INPUT | {option.Id} | {(actual is null ? "unknown" : actual == true ? "on" : "off")} | rc={result.Code}");
             }
             catch (OperationCanceledException)
             {
                 // Ресинк затронутой строки на пути отмены: чтение без токена, best-effort.
                 try
                 {
-                    row.ForceState(await TaskRunner.RunBlocking(() => _inputService.IsSwitchOn(option), CancellationToken.None).ConfigureAwait(true));
+                    ApplyReadState(row, await TaskRunner.RunBlocking(() => _inputService.IsSwitchOn(option), CancellationToken.None).ConfigureAwait(true));
                 }
                 catch
                 {
@@ -146,7 +181,7 @@ public partial class InputViewModel : ObservableObject, IDisposable, ISectionOpe
                 }
 
                 var state = await TaskRunner.RunBlocking(() => _inputService.IsSwitchOn(option), ct).ConfigureAwait(true);
-                row.ForceState(state);
+                ApplyReadState(row, state);
             }
         }).ConfigureAwait(true);
     }
@@ -166,7 +201,7 @@ public partial class InputViewModel : ObservableObject, IDisposable, ISectionOpe
                 }
 
                 var state = await TaskRunner.RunBlocking(() => _inputService.IsSwitchOn(option), ct).ConfigureAwait(true);
-                row.ForceState(state);
+                ApplyReadState(row, state);
             }
 
             StatusText = L.T("Состояние обновлено.");

@@ -287,8 +287,7 @@
         </Border>
 
         <!-- Глобальное затемнение при прогрузке/обновлении открытой вкладки:
-             тот же SearchScrimBrush на всё окно (как при активации поиска),
-             крупный акцентный спиннер по центру. Не блокирует ввод. -->
+             SearchScrimBrush на всё окно, крупный акцентный спиннер по центру. Не блокирует ввод. -->
         <Grid Grid.Row="0" Grid.RowSpan="3"
               Panel.ZIndex="80"
               IsHitTestVisible="False">
@@ -316,27 +315,5 @@
                                    HorizontalAlignment="Right"
                                    VerticalAlignment="Top"
                                    Panel.ZIndex="90" />
-
-        <!-- Затемнение фона при активном поиске на «Главной» или в «Приложениях»:
-             слегка темнее всё приложение, акцент остаётся на поле поиска
-             (и подсказках на «Главной»: Popup живёт в отдельном окне и затемнения
-             не касается). Пропускает мышь — не мешает работе с интерфейсом. -->
-        <Border Grid.Row="0" Grid.RowSpan="3">
-            <Border.Style>
-                <Style TargetType="Border">
-                    <Setter Property="Background" Value="{DynamicResource SearchScrimBrush}" />
-                    <Setter Property="IsHitTestVisible" Value="False" />
-                    <Setter Property="Visibility" Value="Collapsed" />
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding Dashboard.IsSearchActive}" Value="True">
-                            <Setter Property="Visibility" Value="Visible" />
-                        </DataTrigger>
-                        <DataTrigger Binding="{Binding Apps.IsSearchActive}" Value="True">
-                            <Setter Property="Visibility" Value="Visible" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </Border.Style>
-        </Border>
     </Grid>
 </Window>

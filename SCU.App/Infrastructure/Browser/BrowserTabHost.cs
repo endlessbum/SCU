@@ -139,6 +139,17 @@ public sealed class BrowserTabHost : IDisposable
 
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
+        // Пользовательская ссылка на странице — в новую вкладку (продуктовое
+        // решение «каждая ссылка — отдельная вкладка»). Клики по ссылкам приходят
+        // с IsUserInitiated=true; адресная строка, назад/вперёд, перезагрузка и
+        // редиректы инициируются кодом (false) и остаются в текущей вкладке.
+        if (e.IsUserInitiated && BrowserNavigationPolicy.Evaluate(e.Uri) == BrowserNavigationDecision.Allow)
+        {
+            e.Cancel = true;
+            _ = _viewModel.OpenTab(e.Uri);
+            return;
+        }
+
         var decision = BrowserNavigationPolicy.Evaluate(e.Uri);
         switch (decision)
         {

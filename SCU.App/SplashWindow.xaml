@@ -11,11 +11,28 @@
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         SizeToContent="WidthAndHeight">
-    <!-- Заставка стартового экрана: 1774×887 px (соотношение 2:1), отображается 640×320 —
-         компактный центр экрана без заметной потери резкости. Клики проходят сквозь
-         изображение в окно, которое появится под заставкой. -->
-    <Image Source="Assets/SCU.png"
-           Width="640" Height="320"
-           IsHitTestVisible="False"
-           RenderOptions.BitmapScalingMode="HighQuality" />
+    <!-- Заставка стартового экрана: 1774×887 px (2:1), отображается 320×160
+         (уменьшена вдвое по запросу). Цвет знака перекрашивается из
+         AccentIconManager в цвет настройки «Цвет иконки приложения».
+         Под логотипом — индикатор загрузки в том же цвете: 0% — левый край
+         логотипа, 100% — правый; без цифр, скрывается при 100%. -->
+    <StackPanel IsHitTestVisible="False">
+        <Image x:Name="Logo"
+               Source="Assets/SCU.png"
+               Width="320" Height="160"
+               IsHitTestVisible="False"
+               RenderOptions.BitmapScalingMode="HighQuality" />
+        <Border x:Name="ProgressTrack"
+                Width="320" Height="4"
+                Margin="0,12,0,0"
+                CornerRadius="2"
+                HorizontalAlignment="Center">
+            <Grid>
+                <Rectangle x:Name="ProgressFill"
+                           HorizontalAlignment="Left"
+                           Width="0"
+                           RadiusX="2" RadiusY="2" />
+            </Grid>
+        </Border>
+    </StackPanel>
 </Window>

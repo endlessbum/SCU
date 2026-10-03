@@ -32,6 +32,9 @@ public sealed partial class UserScriptCardViewModel : ObservableObject
 
     public UserScriptData Data => _data;
 
+    // Id закрепления карточки скрипта на «Главной» — как у оригинала в MainViewModel.
+    public string PinCardId => "uscript." + Id;
+
     [ObservableProperty]
     private bool _isRunning;
 

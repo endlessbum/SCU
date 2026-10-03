@@ -22,38 +22,54 @@
                     ToolTip="{DynamicResource S_PrivacyEnableAllHint}" />
             <controls:InfoGlyph Margin="6,0,0,8" VerticalAlignment="Center" InfoText="{DynamicResource I_PrivacyEnableAll}" />
         </WrapPanel>
-            <ItemsControl Grid.Row="1" Margin="0" ItemsSource="{Binding Rows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource SectionCard}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                                    <TextBlock Style="{StaticResource RowHeaderText}"
-                                               TextTrimming="CharacterEllipsis"
-                                               Text="{Binding Category.Title}" />
-                                    <TextBlock Style="{StaticResource RowActionText}"
-                                               Foreground="{DynamicResource SecondaryTextBrush}"
-                                               Text="{Binding ActionDescription}" />
-                                </StackPanel>
-                                <ToggleButton Grid.Column="1"
-                                              VerticalAlignment="Center"
-                                              Style="{StaticResource SystemToggleSwitch}"
-                                              AutomationProperties.Name="{Binding Category.Title}"
-                                              IsChecked="{Binding IsEnabled, Mode=TwoWay}"
-                                              IsEnabled="{Binding DataContext.IsInteractive, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                              Command="{Binding DataContext.ToggleCategoryCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                              CommandParameter="{Binding}"
-                                              ToolTip="{DynamicResource S_PrivacyToggleTip}"
-                                              ToolTipService.ShowOnDisabled="True" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <StackPanel Grid.Row="1">
+                <ItemsControl Margin="0" ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource SectionCard}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding Category.Title}" />
+                                        <TextBlock Style="{StaticResource RowActionText}"
+                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   Text="{Binding ActionDescription}" />
+                                    </StackPanel>
+                                    <ToggleButton Grid.Column="1"
+                                                  VerticalAlignment="Center"
+                                                  Style="{StaticResource SystemToggleSwitch}"
+                                                  AutomationProperties.Name="{Binding Category.Title}"
+                                                  IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                  IsEnabled="{Binding DataContext.IsInteractive, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                  Command="{Binding DataContext.ToggleCategoryCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                  CommandParameter="{Binding}"
+                                                  ToolTip="{DynamicResource S_PrivacyToggleTip}"
+                                                  ToolTipService.ShowOnDisabled="True" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Сноска как во вкладке ввода: у части тумблеров ON = параметр отключён -->
+                <TextBlock Margin="0,2,0,0"
+                           Text="{DynamicResource S_PrivacyAsteriskNote}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Rows.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
 
         <!-- Пустой список категорий -->
         <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,24,0,8">

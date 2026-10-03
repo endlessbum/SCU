@@ -1,0 +1,49 @@
+<UserControl x:Class="SCU.Views.Cards.NetworkNetBiosCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Border Style="{StaticResource SectionCard}">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetNetBiosTitle}" />
+                <controls:InfoGlyph x:Name="NetBiosInfoGlyph" VerticalAlignment="Center" />
+                <controls:PinGlyph CardId="net.netbios" />
+            </StackPanel>
+            <!-- П.13: строка с актуальными режимами удалена — состояние видно по подсветке кнопки -->
+            <WrapPanel Margin="0,8,0,0">
+                <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                    <Button Content="{DynamicResource S_NetNetBiosDisable}"
+                            Command="{Binding NetBiosDisableCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveNetBiosKey}" Value="disable">
+                                        <Setter Property="Tag" Value="accent" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                    <Button Content="{DynamicResource S_NetNetBiosDhcp}"
+                            Command="{Binding NetBiosDhcpCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveNetBiosKey}" Value="dhcp">
+                                        <Setter Property="Tag" Value="accent" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                    <Button Content="{DynamicResource S_NetNetBiosFlush}"
+                            Command="{Binding FlushNetBiosCacheCommand}" />
+                </StackPanel>
+            </WrapPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

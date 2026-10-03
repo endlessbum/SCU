@@ -98,7 +98,10 @@ public sealed class QuarantineService
     public string Root => _root;
 
     // Путь к изолированному объекту (для безопасного просмотра карантинного файла).
-    public string GetObjectPath(string id) => Path.Combine(_objectsDir, id + ".qtn");
+    // Id приходит из внешних метаданных — невалидный даёт пустой путь, а не выход
+    // за пределы objects/ (аудит п. 4).
+    public string GetObjectPath(string id) =>
+        IsValidQuarantineId(id) ? Path.Combine(_objectsDir, id + ".qtn") : string.Empty;
 
     // Изоляция файла: копия в objects/ с обезличенным именем + метаданные,
     // после успешной записи метаданных оригинал удаляется. Возврат false,
@@ -119,41 +122,56 @@ public sealed class QuarantineService
 
         try
         {
-            File.Copy(source, objectPath, overwrite: false);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // Нечитаемый источник (отказ в доступе) даёт UnauthorizedAccessException ещё
-            // до удаления оригинала — возвращаем ошибку вместо падения команды UI.
-            error = exception.Message;
-            return false;
-        }
-
-        try
-        {
-            // Проверка фиксации: размер копии совпадает с оригиналом.
-            if (new FileInfo(objectPath).Length != new FileInfo(source).Length)
+            // Снимок источника (аудит п. 8, TOCTOU): хэндл с FileShare.Read
+            // блокирует запись/замену исходника до конца сверки копии. Хэш
+            // источника снимается до копирования и сверяется с хэшем копии —
+            // между «сканер увидел файл» и «карантин зафиксировал объект»
+            // содержимое не может измениться незамеченным.
+            string? sourceSha;
+            using (var sourceStream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
-                File.Delete(objectPath);
-                error = "Размер копии не совпал с оригиналом.";
-                return false;
+                sourceSha = ComputeSha256(sourceStream);
+                if (sourceSha is null)
+                {
+                    error = "Исходный файл не читается.";
+                    return false;
+                }
+
+                File.Copy(source, objectPath, overwrite: false);
+
+                // Проверка фиксации: размер и хэш копии совпадают с оригиналом.
+                if (new FileInfo(objectPath).Length != sourceStream.Length)
+                {
+                    File.Delete(objectPath);
+                    error = "Размер копии не совпал с оригиналом.";
+                    return false;
+                }
+
+                var objectSha = ComputeSha256(objectPath);
+                if (objectSha is null
+                    || !string.Equals(objectSha, sourceSha, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Delete(objectPath);
+                    error = "Хэш копии не совпал с оригиналом.";
+                    return false;
+                }
+
+                var item = new QuarantineItem
+                {
+                    Id = id,
+                    OriginalPath = source,
+                    Sha256 = detection.Sha256,
+                    ObjectSha256 = objectSha,
+                    Verdict = detection.Verdict,
+                    RuleId = detection.RuleId,
+                    Description = detection.Description,
+                    QuarantinedAt = DateTime.Now,
+                    SizeBytes = new FileInfo(objectPath).Length,
+                };
+                File.WriteAllText(metadataPath, JsonSerializer.Serialize(item, JsonOptions));
             }
 
-            var item = new QuarantineItem
-            {
-                Id = id,
-                OriginalPath = source,
-                Sha256 = detection.Sha256,
-                ObjectSha256 = ComputeSha256(objectPath) ?? string.Empty,
-                Verdict = detection.Verdict,
-                RuleId = detection.RuleId,
-                Description = detection.Description,
-                QuarantinedAt = DateTime.Now,
-                SizeBytes = new FileInfo(objectPath).Length,
-            };
-            File.WriteAllText(metadataPath, JsonSerializer.Serialize(item, JsonOptions));
-
-            // Метаданные записаны — оригинал можно удалять.
+            // Метаданные записаны, сверка пройдена — оригинал можно удалять.
             File.Delete(source);
             return true;
         }
@@ -176,9 +194,15 @@ public sealed class QuarantineService
         }
     }
 
+    // Количество записей, пропущенных последним List() из-за нечитаемых
+    // метаданных (аудит 2, п. 29): пользователь видит, что записи скрыты,
+    // а не «карантин пуст».
+    public int CorruptedMetadataCount { get; private set; }
+
     public IReadOnlyList<QuarantineItem> List()
     {
         var items = new List<QuarantineItem>();
+        var corrupted = 0;
         foreach (var metadataPath in Directory.EnumerateFiles(_metadataDir, "*.json"))
         {
             try
@@ -190,15 +214,22 @@ public sealed class QuarantineService
                     items.Add(item);
                 }
             }
-            catch (IOException)
+            catch (IOException exception)
             {
-                // Повреждённый файл метаданных не должен ронять список.
+                // Повреждённый файл метаданных не должен ронять список, но и
+                // молча скрывать запись тоже нельзя.
+                corrupted++;
+                _logger.Warn("QUARANTINE | metadata unreadable | " + metadataPath
+                             + " | " + exception.Message);
             }
             catch (JsonException)
             {
+                corrupted++;
+                _logger.Warn("QUARANTINE | metadata corrupt | " + metadataPath);
             }
         }
 
+        CorruptedMetadataCount = corrupted;
         return items.OrderByDescending(item => item.QuarantinedAt).ToList();
     }
 
@@ -207,6 +238,13 @@ public sealed class QuarantineService
     public bool Restore(QuarantineItem item, out string error)
     {
         error = string.Empty;
+        // Id из внешних метаданных не превращается в путь без проверки.
+        if (!IsValidQuarantineId(item.Id))
+        {
+            error = "Метаданные повреждены: некорректный идентификатор объекта.";
+            return false;
+        }
+
         var objectPath = ObjectPath(item.Id);
         if (!File.Exists(objectPath))
         {
@@ -222,9 +260,10 @@ public sealed class QuarantineService
             return false;
         }
 
-        // Целостность: хэш объекта сверяется с вычисленным при изоляции. Пустой
-        // ObjectSha256 — старые метаданные без проверки (Sha256 детекции сверять
-        // нельзя: у членов архива объектом является контейнер с другим хэшем).
+        // Целостность: хэш объекта сверяется с вычисленным при изоляции.
+        // Легаси-метаданные без ObjectSha256 (аудит 2, п. 26) больше не
+        // восстанавливаются вслепую: текущий хэш объекта фиксируется в
+        // метаданных (миграция), и все последующие восстановления проверяются.
         if (item.ObjectSha256.Length > 0)
         {
             var actualSha = ComputeSha256(objectPath);
@@ -232,6 +271,26 @@ public sealed class QuarantineService
                 || !string.Equals(actualSha, item.ObjectSha256, StringComparison.OrdinalIgnoreCase))
             {
                 error = "Хэш объекта не совпадает с записанным — файл повреждён или подменён.";
+                return false;
+            }
+        }
+        else
+        {
+            var migratedSha = ComputeSha256(objectPath);
+            if (migratedSha is null)
+            {
+                error = "Объект карантина не читается.";
+                return false;
+            }
+
+            item.ObjectSha256 = migratedSha;
+            try
+            {
+                File.WriteAllText(MetadataPath(item.Id), JsonSerializer.Serialize(item, JsonOptions));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                error = "Не удалось зафиксировать хэш объекта в метаданных: " + exception.Message;
                 return false;
             }
         }
@@ -285,6 +344,12 @@ public sealed class QuarantineService
     public bool DeletePermanently(QuarantineItem item, out string error)
     {
         error = string.Empty;
+        if (!IsValidQuarantineId(item.Id))
+        {
+            error = "Метаданные повреждены: некорректный идентификатор объекта.";
+            return false;
+        }
+
         try
         {
             var objectPath = ObjectPath(item.Id);
@@ -308,22 +373,51 @@ public sealed class QuarantineService
         }
     }
 
-    private string ObjectPath(string id) => Path.Combine(_objectsDir, id + ".qtn");
+    // Единственная граница допустимых id (аудит п. 4): только нормализованный
+    // GUID "N" — 32 hex-символа без разделителей. Значение Id читается из JSON
+    // метаданных (внешняя граница доверия) и больше нигде не превращается в
+    // часть пути напрямую.
+    internal static bool IsValidQuarantineId(string? id) =>
+        !string.IsNullOrEmpty(id) && Guid.TryParseExact(id, "N", out _);
 
-    private string MetadataPath(string id) => Path.Combine(_metadataDir, id + ".json");
+    private string ObjectPath(string id) => SafeChildPath(_objectsDir, id + ".qtn");
+
+    private string MetadataPath(string id) => SafeChildPath(_metadataDir, id + ".json");
+
+    // Defense-in-depth: собранный путь обязан остаться внутри ожидаемого каталога
+    // (Path.Combine с "N"-GUID уже безопасен; проверка ловит рассинхрон границы).
+    private string SafeChildPath(string directory, string fileName)
+    {
+        var candidate = Path.Combine(directory, fileName);
+        return PathSafety.IsUnderDirectoryOrEqual(Path.GetFullPath(candidate), directory)
+            ? candidate
+            : throw new IOException("Путь карантина вышел за пределы каталога: " + fileName);
+    }
 
     private static string? ComputeSha256(string path)
     {
         try
         {
             using var stream = File.OpenRead(path);
-            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
+            return ComputeSha256(stream);
         }
         catch (IOException)
         {
             return null;
         }
         catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ComputeSha256(Stream stream)
+    {
+        try
+        {
+            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
+        }
+        catch (IOException)
         {
             return null;
         }

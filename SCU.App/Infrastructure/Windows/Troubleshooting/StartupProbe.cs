@@ -26,6 +26,13 @@ public sealed class StartupProbe : DiagnosticProbe
             Registry.LocalMachine, @"Software\Microsoft\Windows\CurrentVersion\Run", "HKLM Run"));
         entries.AddRange(ReadRunKey(
             Registry.LocalMachine, @"Software\Microsoft\Windows\CurrentVersion\RunOnce", "HKLM RunOnce"));
+        // 32-битные Run-ключи. На 32-битной ОС ключа WOW6432Node нет — ReadRunKey вернёт пусто.
+        // Упакованные StartupTask сюда не добавляем: у них нет пути к exe,
+        // а проверка этого зонда — «исполняемый файл не существует».
+        entries.AddRange(ReadRunKey(
+            Registry.LocalMachine, @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run", "HKLM Run (32)"));
+        entries.AddRange(ReadRunKey(
+            Registry.LocalMachine, @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce", "HKLM RunOnce (32)"));
         entries.AddRange(ReadStartupFolder(
             Environment.GetFolderPath(Environment.SpecialFolder.Startup), "Папка автозагрузки (пользователь)"));
         entries.AddRange(ReadStartupFolder(

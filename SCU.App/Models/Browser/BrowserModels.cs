@@ -95,6 +95,9 @@ public sealed class BrowserDownloadItem : ObservableObject
     public const string StateChecking = "Checking";
     public const string StateThreat = "Threat";
     public const string StateAborted = "Aborted";
+    // Скан загрузки прошёл, но покрытие неполное (аудит п. 15.3): «не найдено,
+    // но проверено не всё» ≠ чистый результат.
+    public const string StatePartial = "ScanPartial";
 
     private string _stateKey;
     private long _bytesReceived;
@@ -140,6 +143,7 @@ public sealed class BrowserDownloadItem : ObservableObject
         StateChecking => "Проверяется",
         StateThreat => "Угроза",
         StateAborted => "Прервано",
+        StatePartial => "Проверено частично",
         _ => "Ошибка загрузки",
     });
 

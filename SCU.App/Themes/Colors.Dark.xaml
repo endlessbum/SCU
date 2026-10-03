@@ -97,6 +97,9 @@
     <SolidColorBrush x:Key="OnDangerTextBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="SwitchKnobBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="SwitchKnobOffBrush" Color="#FFFFFFFF" />
-    <!-- Трек тумблера в OFF: полупрозрачный серый iOS (#787880). -->
+    <!-- Трек тумблера в OFF: полупрозрачный серый iOS (#787880).
+         Hover: трек должен темнеть; серый здесь светлее фона, поэтому затемняется
+         сам оттенок (а не альфа — её рост высветлил бы трек на тёмном фоне). -->
     <SolidColorBrush x:Key="SwitchTrackOffBrush" Color="#66787880" />
+    <SolidColorBrush x:Key="SwitchTrackOffHoverBrush" Color="#6E64646C" />
 </ResourceDictionary>

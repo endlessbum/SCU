@@ -117,26 +117,6 @@ public partial class BrowserWindow : Window, IBrowserHostBridge
         }
     }
 
-    // Геометрия глобуса для тулбара: окружность + меридиан + экватор.
-    // Цвет — DynamicResource-кисть AccentFillBrush в XAML (обновляется с акцентом).
-    public Geometry GlobeData
-    {
-        get
-        {
-            var geometry = new GeometryGroup
-            {
-                Children =
-                {
-                    new EllipseGeometry(new Point(11, 11), 9, 9),
-                    new EllipseGeometry(new Point(11, 11), 4.05, 9),
-                    new LineGeometry(new Point(2, 11), new Point(20, 11)),
-                },
-            };
-            geometry.Freeze();
-            return geometry;
-        }
-    }
-
     // ===================== IBrowserHostBridge =====================
 
     public async Task<bool> InitializeAsync(BrowserViewModel viewModel, BrowserTabModel firstTab)

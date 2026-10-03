@@ -14,6 +14,12 @@ namespace scan {
 
 enum class Verdict;
 
+// Активный каталог базы (аудит 2, п. 16): generations/<id> из current.json —
+// единый атомарный commit-поинтер установки пакета. Файл указателя отсутствует
+// или бит → легаси-раскладка (hashes.txt прямо в databaseDir). id из указателя
+// валидируется по белому списку символов — подмена на "..\.." не проходит.
+std::wstring ResolveDatabaseDir(const std::wstring& databaseDir);
+
 class HashDatabase {
 public:
     HashDatabase();
@@ -21,12 +27,12 @@ public:
     bool Lookup(const std::string& sha256Hex, Verdict& verdict, std::wstring& name) const;
     bool IsEmpty() const { return entries_.empty(); }
 
-    // Database freshness (п. 32): версия/дата из db-version.json рядом с hashes.txt.
+    // Database freshness (п. 32): версия/дата из db-version.json активной базы.
     const std::wstring& Version() const { return version_; }
     const std::wstring& Date() const { return date_; }
 
 private:
-    void LoadVersionInfo();
+    void LoadVersionInfo(const std::wstring& activeDir);
     void LoadEntries(std::ifstream& file);
 
     struct Entry {

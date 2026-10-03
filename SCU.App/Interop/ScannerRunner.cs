@@ -75,7 +75,8 @@ public sealed class ScannerRunner
     }
 
     // Разобранное состояние одного запуска сканера (stdout-события).
-    private sealed class RunContext
+    // internal — для регрессионных тестов протокола (SCU.Tests).
+    internal sealed class RunContext
     {
         public ScanResultDto? Result { get; set; }
         public bool HadProtocolError { get; set; }
@@ -126,13 +127,13 @@ public sealed class ScannerRunner
         }
 
         // Событие finished — единственный источник итога (документ п. 6: 14 шагов).
+        // Outcome считается единым маппером (аудит п. 14): Partial (errors/skipped > 0)
+        // никогда не попадает в ветку Clean, потребители ветвляются по Outcome.
         if (context.Result is not null)
         {
-            return Result<ScanResultDto>.Success(
-                context.Result,
-                context.Result.Summary.Detections > 0
-                    ? $"Обнаружений: {context.Result.Summary.Detections}"
-                    : "Обнаружений не найдено.");
+            var scanResult = context.Result;
+            scanResult.Outcome = ScanOutcomeMapper.Map(scanResult);
+            return Result<ScanResultDto>.Success(scanResult, DescribeOutcome(scanResult));
         }
 
         // Без finished — сканер упал до отчёта: ошибка ≠ Clean (документ п. 36).
@@ -301,7 +302,22 @@ public sealed class ScannerRunner
         return null;
     }
 
-    private void HandleEventLine(ScanEvent scanEvent, RunContext context)
+    // Краткое описание исхода для лога/истории; пользовательские тексты
+    // статусов строятся во ViewModel по Outcome.
+    private static string DescribeOutcome(ScanResultDto result)
+    {
+        return result.Outcome switch
+        {
+            ScanOutcome.Threats => $"Обнаружений: {result.Summary.Detections}",
+            ScanOutcome.Partial => result.Summary.Detections > 0
+                ? $"Обнаружений: {result.Summary.Detections} (сканирование неполное)"
+                : "Сканирование неполное: часть файлов не проверена.",
+            ScanOutcome.Cancelled => "Сканирование прервано.",
+            _ => "Обнаружений не найдено.",
+        };
+    }
+
+    internal void HandleEventLine(ScanEvent scanEvent, RunContext context)
     {
         switch (scanEvent.Kind)
         {
@@ -323,7 +339,18 @@ public sealed class ScannerRunner
                 context.UpdateEntries = scanEvent.UpdateEntries;
                 break;
             case ScanEventKind.Finished:
-                context.Result = scanEvent.Result ?? new ScanResultDto();
+                // finished без result (обрыв/повреждение протокола) — не «чистый
+                // скан» (аудит 3, п. 2): Result остаётся null, RunScanAsync вернёт
+                // Failed, а не Clean с нулевыми счётчиками.
+                if (scanEvent.Result is null)
+                {
+                    context.HadProtocolError = true;
+                    _logger.Error("SCAN | protocol | finished without result payload");
+                }
+                else
+                {
+                    context.Result = scanEvent.Result;
+                }
                 break;
         }
     }

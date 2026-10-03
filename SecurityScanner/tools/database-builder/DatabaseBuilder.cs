@@ -20,7 +20,8 @@
 // строгая схема ValidateHashesSchema в ScannerCore принимает его без правок.
 //
 // Формат пакета (ZIP): hashes.txt (sha256<TAB>verdict<TAB>name), hashes.txt.sig
-// (ECDSA P-256 подпись SHA-256(hashes.txt), r||s 64 байта), db-version.json.
+// (ECDSA P-256 подпись SHA-256(hashes.txt || db-version.json), r||s 64 байта),
+// db-version.json — все три члена обязательны и входят в подписанный payload.
 
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -255,13 +256,9 @@ static int RunBuild(string[] args)
     using var ecdsa = ECDsa.Create();
     ecdsa.ImportFromPem(File.ReadAllText(keyPath));
 
-    var signature = ecdsa.SignData(hashesBytes, HashAlgorithmName.SHA256);
-    if (signature.Length != 64)
-    {
-        Console.Error.WriteLine($"build: unexpected signature length {signature.Length}");
-        return 2;
-    }
-
+    // db-version.json строится ДО подписи: подписывается составной дайджест
+    // hashes.txt || db-version.json (аудит п. 11 — метаданные версии
+    // integrity-protected наравне с базой).
     var dbVersionJson = new StringBuilder()
         .Append("{\n")
         .Append("  \"version\": \"").Append(version).Append("\",\n")
@@ -269,12 +266,24 @@ static int RunBuild(string[] args)
         .Append("  \"entries\": ").Append(entries).Append("\n")
         .Append("}\n")
         .ToString();
+    var versionBytes = Encoding.UTF8.GetBytes(dbVersionJson);
+
+    var payload = new byte[hashesBytes.Length + versionBytes.Length];
+    hashesBytes.CopyTo(payload, 0);
+    versionBytes.CopyTo(payload, hashesBytes.Length);
+
+    var signature = ecdsa.SignData(payload, HashAlgorithmName.SHA256);
+    if (signature.Length != 64)
+    {
+        Console.Error.WriteLine($"build: unexpected signature length {signature.Length}");
+        return 2;
+    }
 
     using var stream = File.Create(outputPath);
     using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
     WriteEntry(zip, "hashes.txt", hashesBytes);
     WriteEntry(zip, "hashes.txt.sig", signature);
-    WriteEntry(zip, "db-version.json", Encoding.UTF8.GetBytes(dbVersionJson));
+    WriteEntry(zip, "db-version.json", versionBytes);
 
     Console.WriteLine($"package written: {outputPath} ({entries} entries, version {version})");
     return 0;

@@ -62,6 +62,25 @@ foreach ($required in @('ScannerCore.exe', 'security\database\hashes.txt', 'SCU.
     }
 }
 
+# Единый источник версии (аудит 2, п. 24): версия бинарника обязана совпадать
+# с release-метаданными, иначе релиз уходит с расхождением binary/metadata.
+# FileVersion четырёхчастный (3.1.2.0) — сравниваем первые три части.
+$binVersion = (Get-Item (Join-Path $publishDir 'SCU.exe')).VersionInfo.FileVersion
+$binVersionShort = ($binVersion -split '\.')[0..2] -join '.'
+$payloadPath = Join-Path $root 'build\release-payload.json'
+if (Test-Path $payloadPath) {
+    try { $payload = Get-Content $payloadPath -Raw | ConvertFrom-Json } catch { $payload = $null }
+    if ($payload -and $payload.tag_name -and $payload.tag_name -ne "v$binVersionShort") {
+        throw "version mismatch: binary=$binVersionShort, release-payload=$($payload.tag_name). Обновите build\release-payload.json."
+    }
+    # Changelog обязан соответствовать версии релиза (аудит 3, п. 11): заголовок
+    # «Что нового в X» прошлой версии в payload текущей версии — блокер.
+    if ($payload -and $payload.body -and $payload.body -notmatch "в\s+$binVersionShort") {
+        throw "release body stale: нет заголовка для $binVersionShort. Обновите changelog в build\release-payload.json."
+    }
+}
+Write-Host "version: $binVersionShort"
+
 Write-Host '=== 3. Подпись бинарей ==='
 $signingEnabled = -not $SkipSign -and (Test-Path $thumbprintFile)
 if ($signingEnabled) {
@@ -140,14 +159,23 @@ if ($signingEnabled) {
 
 $manifestPath = Join-Path $root 'publish\SHA256SUMS.txt'
 if (Test-Path (Split-Path $manifestPath)) {
-    $manifest = Get-ChildItem -Path (Join-Path $root 'publish') -Recurse -File |
-        Where-Object { $_.Name -ne 'SHA256SUMS.txt' }
+    $publishRoot = Join-Path $root 'publish'
+    $manifest = Get-ChildItem -Path $publishRoot -Recurse -File |
+        Where-Object { $_.FullName -ne $manifestPath }
+    # Относительные пути вместо basename (аудит 2, п. 25): файлы в подпапках
+    # не дают коллизий ключей, манифест верифицируем по каждому пути.
+    $entries = [System.Collections.Generic.Dictionary[string, string]]::new()
     $lines = foreach ($file in $manifest) {
+        $relative = $file.FullName.Substring($publishRoot.Length + 1).Replace('\', '/')
         $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash
-        "$hash  $($file.Name)"
+        if ($entries.ContainsKey($relative)) {
+            throw "manifest: duplicate relative path '$relative'"
+        }
+        $entries[$relative] = $hash
+        "$hash  $relative"
     }
     $lines | Set-Content -Path $manifestPath -Encoding ASCII
-    Write-Host "manifest: $manifestPath"
+    Write-Host "manifest: $manifestPath ($($entries.Count) files)"
 }
 
 Write-Host ''

@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:controls="clr-namespace:SCU.Views.Controls"
+             xmlns:cards="clr-namespace:SCU.Views.Cards"
              mc:Ignorable="d"
              d:DesignHeight="420" d:DesignWidth="860">
     <Grid>
@@ -300,66 +301,7 @@
             </Border>
 
             <!-- Добавить свой скрипт: указание файла, проверка, мастер размещения -->
-            <Border Style="{StaticResource SectionCard}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Style="{StaticResource RowHeaderText}"
-                                       Text="{DynamicResource S_ScriptCardTitle}" />
-                            <!-- Информер ⓘ: поддерживаемые расширения -->
-                            <controls:InfoGlyph Margin="6,0,0,0"
-                                                VerticalAlignment="Center"
-                                                InfoText="{DynamicResource S_ScriptCardExtensions}" />
-                        </StackPanel>
-                        <TextBlock Style="{StaticResource RowActionText}"
-                                   Text="{DynamicResource S_ScriptCardDesc}" />
-                        <TextBlock Margin="0,4,0,0"
-                                   TextTrimming="CharacterEllipsis"
-                                   Text="{Binding SelectedScriptPath}">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
-                                    <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding SelectedScriptPath}" Value="">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <!-- Неактивна, пока не добавлен первый скрипт -->
-                        <Button Style="{StaticResource SmallButton}"
-                                Margin="0,0,8,0"
-                                Content="{DynamicResource S_ScriptInstalled}"
-                                IsEnabled="{Binding HasInstalledScripts}"
-                                Command="{Binding ShowInstalledScriptsCommand}" />
-                        <Button Style="{StaticResource SmallButton}"
-                                Margin="0,0,8,0"
-                                Content="{DynamicResource S_ScriptPick}"
-                                Command="{Binding PickScriptCommand}" />
-                        <Control VerticalAlignment="Center" Margin="0,0,8,0">
-                            <Control.Style>
-                                <Style TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsValidatingScript}" Value="True">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Control.Style>
-                        </Control>
-                        <Button Content="{DynamicResource S_ScriptAdd}"
-                                Command="{Binding AddScriptCommand}" />
-                    </StackPanel>
-                </Grid>
-            </Border>
+            <cards:SettingsAddScriptCard />
 
             <!-- Редактирование меню: кастомизация вкладок и утилит -->
             <Border Style="{StaticResource SectionCard}">
@@ -382,6 +324,51 @@
                             Style="{StaticResource SmallButton}"
                             Content="{DynamicResource S_MenuEditorOpen}"
                             Click="OnOpenMenuEditorClick" />
+                </Grid>
+            </Border>
+
+            <!-- Повторный показ окна знакомства (при первом запуске окно
+                 открывается само; здесь — по кнопке) -->
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                   Text="{DynamicResource S_OnboardingTitle}" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_OnboardingDesc}" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource SmallButton}"
+                            Content="{DynamicResource S_OnboardingOpen}"
+                            Click="OnOnboardingClick" />
+                </Grid>
+            </Border>
+
+            <!-- Бэкапы: все сохранённые копии настроек с разделом, временем и назначением -->
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                   Text="{DynamicResource S_BackupsTitle}" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_BackupsDesc}" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource SmallButton}"
+                            Content="{DynamicResource S_BackupsOpen}"
+                            Click="OnBackupsClick" />
                 </Grid>
             </Border>
 

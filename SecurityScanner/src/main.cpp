@@ -5,6 +5,7 @@
 #include "core/allowlist.h"
 #include "core/database.h"
 #include "core/database_package.h"
+#include "core/path_util.h"
 #include "core/scanner.h"
 #include "core/types.h"
 #include "ipc/event_writer.h"
@@ -83,13 +84,12 @@ scan::ScanOptions ParseArgs(int argc, wchar_t** argv, int& exitCode)
 // Dev-режим (пин пустой): Authenticode warn-only по --dev-unsigned-ok.
 bool SelfIntegrityCheck(const scan::ScanOptions& options, scan::EventWriter& events)
 {
-    wchar_t selfPath[MAX_PATH]{};
-    if (GetModuleFileNameW(nullptr, selfPath, MAX_PATH) == 0) {
+    // Динамический путь (аудит п. 9): длинный путь установки не усекается.
+    const std::wstring selfPathStr = scan::GetModulePathDynamic();
+    if (selfPathStr.empty()) {
         events.Error(L"integrity: cannot resolve own executable path");
         return false;
     }
-
-    const std::wstring selfPathStr = selfPath;
     if (kSigningCertSha1[0] != '\0') {
         std::string actualThumbprint;
         if (!scan::SignatureVerifier::GetSigningCertHash(selfPathStr, actualThumbprint)) {
@@ -142,11 +142,8 @@ int HandleUpdate(int argc, wchar_t** argv, scan::EventWriter& events, bool devUn
         return kExitFatal;
     }
 
-    wchar_t selfPath[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, selfPath, MAX_PATH);
-    std::wstring directory(selfPath);
-    const size_t slash = directory.find_last_of(L'\\');
-    const std::wstring databaseDir = (slash == std::wstring::npos ? directory : directory.substr(0, slash))
+    // Динамический путь (аудит п. 9) + единая логика выделения каталога.
+    const std::wstring databaseDir = scan::DirectoryOf(scan::GetModulePathDynamic())
                                      + L"\\security\\database";
 
     scan::DatabaseUpdateResult result;

@@ -4,6 +4,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:cards="clr-namespace:SCU.Views.Cards"
              mc:Ignorable="d"
              d:DesignHeight="560" d:DesignWidth="860">
     <Grid>
@@ -14,40 +15,9 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Style="{StaticResource SectionCard}">
-            <StackPanel>
-                    <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_WuServicesTitle}" />
-                <TextBlock Style="{StaticResource CardIntroText}"
-                           Text="{DynamicResource S_WuServicesDesc}" />
-                <WrapPanel>
-                    <Button Content="{DynamicResource S_WuBlock}"
-                            Margin="0,0,8,8"
-                            Style="{StaticResource DangerButton}"
-                            Command="{Binding BlockUpdatesCommand}" />
-                    <Button Content="{DynamicResource S_WuUnblock}"
-                            Margin="0,0,8,8"
-                            Command="{Binding UnblockUpdatesCommand}" />
-                </WrapPanel>
-            </StackPanel>
-        </Border>
+        <cards:UpdateServicesCard Grid.Row="0" />
 
-        <Border Grid.Row="1" Style="{StaticResource SectionCard}">
-            <StackPanel>
-                    <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_WuPauseTitle}" />
-                <TextBlock Style="{StaticResource CardIntroText}"
-                           Text="{DynamicResource S_WuPauseDesc}" />
-                <WrapPanel>
-                    <Button Content="{DynamicResource S_WuPause7}"
-                            Margin="0,0,8,8"
-                            Command="{Binding PauseUpdatesCommand}" />
-                    <Button Content="{DynamicResource S_WuUnpause}"
-                            Margin="0,0,8,8"
-                            Command="{Binding UnpauseCommand}" />
-                </WrapPanel>
-                <TextBlock Style="{StaticResource SectionStatusText}"
-                           Text="{Binding PauseInfoText}" />
-            </StackPanel>
-        </Border>
+        <cards:UpdatePauseCard Grid.Row="1" />
 
         <Border Grid.Row="2" Style="{StaticResource SectionCard}">
             <Grid>

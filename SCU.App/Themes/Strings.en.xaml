@@ -25,7 +25,7 @@
     <sys:String x:Key="S_Section06_Title">Windows Services</sys:String>
     <sys:String x:Key="S_Section06_Desc">Status and management of selected services</sys:String>
     <sys:String x:Key="S_Section07_Title">Startup</sys:String>
-    <sys:String x:Key="S_Section07_Desc">Run/RunOnce and Startup folders</sys:String>
+    <sys:String x:Key="S_Section07_Desc">Run/RunOnce, Startup folders and StartupTask</sys:String>
     <sys:String x:Key="S_Section08_Title">Power, Memory, CPU</sys:String>
     <sys:String x:Key="S_Section08_Desc">PowerCfg, page file and BCD</sys:String>
     <sys:String x:Key="S_Section09_Title">Network</sys:String>
@@ -46,6 +46,7 @@
     <sys:String x:Key="S_ScannerScanDesc">ScannerCore on-demand scanner: signatures, PE analysis, hash database. Runs alongside Defender, not instead of it.</sys:String>
     <sys:String x:Key="S_ScannerScanFile">Choose file…</sys:String>
     <sys:String x:Key="S_ScannerCancel">Cancel</sys:String>
+    <sys:String x:Key="S_ScannerMore">More ▾</sys:String>
     <sys:String x:Key="S_ScannerQuarantine">Quarantine</sys:String>
     <sys:String x:Key="S_ScannerQuarantineTitle">Quarantine</sys:String>
     <sys:String x:Key="S_ScannerRestore">Restore</sys:String>
@@ -187,7 +188,7 @@
     <sys:String x:Key="S_PowerPageFile16">Fixed size 4096 MB</sys:String>
     <sys:String x:Key="S_PowerPageFile32">Fixed size 2048 MB</sys:String>
     <sys:String x:Key="S_PowerCpuTitle">CPU and RAM limits (bcdedit)</sys:String>
-    <sys:String x:Key="S_PowerCpuClear">Remove numproc / truncatememory limits</sys:String>
+    <sys:String x:Key="S_PowerCpuClear">Remove limits</sys:String>
 
     <sys:String x:Key="S_NetAdapterProfileTitle">Network adapter profile</sys:String>
     <sys:String x:Key="S_NetAdapterProfileDesc">Universal balanced profile for physical NICs. Unsupported driver properties are skipped; other adapter settings are left unchanged.</sys:String>
@@ -285,6 +286,7 @@
     <sys:String x:Key="S_Install">Install</sys:String>
 
     <sys:String x:Key="S_Backup">Backup</sys:String>
+    <sys:String x:Key="S_Refresh">Refresh</sys:String>
     <sys:String x:Key="S_Rollback">Restore</sys:String>
     <sys:String x:Key="S_TasksDisableAll">Disable all</sys:String>
     <sys:String x:Key="S_SettingsLog">Journal</sys:String>
@@ -342,6 +344,7 @@
     <sys:String x:Key="S_EmptyStateStartup">No startup apps</sys:String>
     <!-- Input: footnote for asterisked cards (mouse acceleration, sticky keys) -->
     <sys:String x:Key="S_InputAsteriskNote">* Enabling disables the setting</sys:String>
+<sys:String x:Key="S_PrivacyAsteriskNote">* Enabling disables the setting</sys:String>
 
     <!-- ===================== Dashboard: one-click apply switch ===================== -->
     <sys:String x:Key="D_BatchTitle">Apply optimization</sys:String>
@@ -609,6 +612,9 @@
     <sys:String x:Key="S_MenuEditorTitle">Menu editor</sys:String>
     <sys:String x:Key="S_MenuEditorCardDesc">Show or hide tabs, rename, move between groups, custom tabs and utilities.</sys:String>
     <sys:String x:Key="S_MenuEditorOpen">Open editor</sys:String>
+    <sys:String x:Key="S_OnboardingTitle">Welcome tour</sys:String>
+    <sys:String x:Key="S_OnboardingDesc">How to use the utilities and the main features of the app.</sys:String>
+    <sys:String x:Key="S_OnboardingOpen">Show tour</sys:String>
     <sys:String x:Key="S_MenuEditorNewTitle">Name:</sys:String>
     <sys:String x:Key="S_MenuEditorNewGroup">Tab group</sys:String>
     <sys:String x:Key="S_MenuEditorAdd">Add</sys:String>
@@ -644,4 +650,10 @@
     <sys:String x:Key="S_InstalledScriptsHint">«View» — read-only; «Edit» — edit with save and apply; «Delete» removes the script and its card.</sys:String>
     <sys:String x:Key="S_ScriptView">View</sys:String>
     <sys:String x:Key="S_ScriptEdit">Edit</sys:String>
+    <sys:String x:Key="S_BackupsTitle">Backups</sys:String>
+    <sys:String x:Key="S_BackupsDesc">All saved backups: section, creation time and purpose of each.</sys:String>
+    <sys:String x:Key="S_BackupsOpen">View</sys:String>
+    <sys:String x:Key="S_BackupsEmpty">No backups yet — they will appear after the first changes in sections.</sys:String>
+    <sys:String x:Key="S_BackupsHint">Up to 10 newest backups per section are kept, older ones are removed automatically.</sys:String>
+    <sys:String x:Key="S_BackupsClose">Close</sys:String>
 </ResourceDictionary>

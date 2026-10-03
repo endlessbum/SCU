@@ -63,7 +63,7 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
     private ScheduledTaskInfo? selectedRow;
 
     public string BackupPathText => string.IsNullOrWhiteSpace(LastBackupPath)
-        ? L.T("бэкап ещё не создавался")
+        ? L.T("ещё не создавался")
         : LastBackupPath;
 
     public bool HasBackup => !string.IsNullOrWhiteSpace(LastBackupPath) && File.Exists(LastBackupPath);
@@ -107,8 +107,8 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
                 return;
             }
 
-            // П.19: без фразы о правах администратора; путь бэкапа — с новой строки.
-            StatusText = L.T("Загружено задач: {0}.", Rows.Count) + "\n" + L.T("Бэкап: {0}", BackupPathText);
+            // П.19: без фразы о правах администратора; бэкап — в той же строке.
+            StatusText = L.T("Загружено задач: {0}.", Rows.Count) + " " + L.T("Бэкап: {0}", BackupPathText);
             _logger.Info($"TASKS | refresh | count={Rows.Count} | admin={IsAdmin}");
         }).ConfigureAwait(true);
     }

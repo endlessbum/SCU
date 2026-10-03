@@ -38,6 +38,11 @@ public sealed class BatchUtility
     // (поиск разворачивает запрос и по словарю синонимов, и по этим словам).
     public string Keywords { get; init; } = string.Empty;
 
+    // false — шапочная кнопка раздела («Бэкап», «Откатить», «Сбросить»): у неё
+    // нет карточки, и поиск «Главной» её не находит (ни в подсказках, ни в
+    // фильтре списка). В реестре и пакете выключателя остаётся.
+    public bool ShowInSearch { get; init; } = true;
+
     // Проверка «можно ли применить прямо сейчас»: true — целевое состояние ещё
     // не достигнуто (показывается в «К применению»), false — уже применено,
     // null — для кнопок-операций проверить нельзя (очистки, DISM, бэкапы…).
@@ -66,12 +71,23 @@ public sealed partial class BatchUtilityRow : ObservableObject
         {
             OnPropertyChanged(nameof(Title));
             OnPropertyChanged(nameof(TargetText));
+            OnPropertyChanged(nameof(SearchText));
         };
     }
 
-    public BatchUtility Utility { get; }
+    // internal set — для переиспользования строки при обновлении поисковых строк
+    // скриптов (SetScriptSearchRows): BatchUtility иммутабелен, а пересоздание
+    // строки копило бы мёртвые подписки на L.LanguageChanged.
+    public BatchUtility Utility { get; internal set; }
 
     public string Title => Utility.ResolveTitle();
+
+    // Строка для поиска: заголовок + ключевые слова. Пересчитывается при смене
+    // языка (подписка в конструкторе) и подстановке нового Utility скрипту.
+    public string SearchText => Utility.ResolveTitle() + " " + Utility.Keywords;
+
+    // Из поиска исключаются шапочные кнопки разделов (см. BatchUtility.ShowInSearch).
+    public bool ShowInSearch => Utility.ShowInSearch;
 
     // Целевое состояние тумблерной утилиты («вкл.»/«выкл.») или пустая строка у кнопок.
     public string TargetText => Utility.TargetText is null

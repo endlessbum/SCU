@@ -5,13 +5,15 @@ using SCU.Common;
 namespace SCU.Infrastructure.Windows.Tweaks;
 
 // Один переключатель раздела Input — та же модель, что UiSwitchOption.
+// ReadState: null — состояние не прочитано (сбой чтения реестра), чтобы
+// тумблер не показывал сбой как конкретное «включено/выключено».
 public sealed record InputSwitchOption(
     string Id,
     string Title,
     string Description,
     IReadOnlyList<RegistryTweak> OnTweaks,
     IReadOnlyList<RegistryTweak> OffTweaks,
-    Func<bool>? ReadState = null,
+    Func<bool?>? ReadState = null,
     Func<bool, Result>? ApplyState = null);
 
 // Раздел 11 «Ввод, браузер и игры» — аналог :InpMenu из Utilities.bat:
@@ -72,7 +74,7 @@ public sealed class InputService
                     SZ(RegistryHive.CurrentUser, Mouse, "MouseThreshold1", "0"),
                     SZ(RegistryHive.CurrentUser, Mouse, "MouseThreshold2", "0")
                 ],
-                () => ReadString(RegistryHive.CurrentUser, Mouse, "MouseSpeed", "1") != "0",
+                () => NotEqual(ReadString(RegistryHive.CurrentUser, Mouse, "MouseSpeed", "1"), "0"),
                 on => ApplyMouse(on)),
 
             new InputSwitchOption(
@@ -89,7 +91,7 @@ public sealed class InputService
                     SZ(RegistryHive.CurrentUser, KeyboardResponse, "Flags", "122"),
                     SZ(RegistryHive.CurrentUser, ToggleKeys, "Flags", "58")
                 ],
-                () => ReadString(RegistryHive.CurrentUser, StickyKeys, "Flags", "510") != "506"),
+                () => NotEqual(ReadString(RegistryHive.CurrentUser, StickyKeys, "Flags", "510"), "506")),
 
             new InputSwitchOption(
                 "edge-startup-boost",
@@ -100,8 +102,9 @@ public sealed class InputService
                     T(RegistryHive.LocalMachine, EdgePolicies, "StartupBoostEnabled", 0),
                     T(RegistryHive.LocalMachine, EdgePolicies, "BackgroundModeEnabled", 0)
                 ],
-                () => ReadDword(RegistryHive.LocalMachine, EdgePolicies, "StartupBoostEnabled", 0) != 0
-                    || ReadDword(RegistryHive.LocalMachine, EdgePolicies, "BackgroundModeEnabled", 0) != 0,
+                () => AnyNonZero(
+                    ReadDword(RegistryHive.LocalMachine, EdgePolicies, "StartupBoostEnabled", 0),
+                    ReadDword(RegistryHive.LocalMachine, EdgePolicies, "BackgroundModeEnabled", 0)),
                 on => ApplyEdgeBoost(on)),
 
             new InputSwitchOption(
@@ -120,7 +123,7 @@ public sealed class InputService
                     T(RegistryHive.CurrentUser, GameBar, "UseNexusForGameBarEnabled", 0),
                     T(RegistryHive.LocalMachine, GameDvrPolicies, "AllowGameDVR", 0)
                 ],
-                () => ReadDword(RegistryHive.CurrentUser, GameConfigStore, "GameDVR_Enabled", 1) == 1),
+                () => ReadDword(RegistryHive.CurrentUser, GameConfigStore, "GameDVR_Enabled", 1) is 1),
 
             new InputSwitchOption(
                 "game-dvr",
@@ -140,7 +143,7 @@ public sealed class InputService
                     T(RegistryHive.CurrentUser, GameConfigStore, "GameDVR_HonorUserFSEBehaviorMode", 1),
                     T(RegistryHive.CurrentUser, GameConfigStore, "GameDVR_DXGIHonorFSEWindowsCompatible", 1)
                 ],
-                () => ReadDword(RegistryHive.CurrentUser, GameDvr, "AppCaptureEnabled", 1) == 1),
+                () => ReadDword(RegistryHive.CurrentUser, GameDvr, "AppCaptureEnabled", 1) is 1),
 
             new InputSwitchOption(
                 "game-mode",
@@ -154,13 +157,15 @@ public sealed class InputService
                     T(RegistryHive.CurrentUser, GameBar, "AutoGameModeEnabled", 0),
                     T(RegistryHive.CurrentUser, GameBar, "AllowAutoGameMode", 0)
                 ],
-                () => ReadDword(RegistryHive.CurrentUser, GameBar, "AutoGameModeEnabled", 1) == 1)
+                () => ReadDword(RegistryHive.CurrentUser, GameBar, "AutoGameModeEnabled", 1) is 1)
         ];
     }
 
     public InputSwitchOption? Find(string id) => Switches.FirstOrDefault(s => s.Id == id);
 
-    public bool IsSwitchOn(InputSwitchOption option) =>
+    // null — состояние не прочитано (сбой чтения): вызывающий код обязан
+    // показать «неизвестно», а не трактовать как «выключено».
+    public bool? IsSwitchOn(InputSwitchOption option) =>
         option.ReadState?.Invoke() ?? _registry.IsApplied(option.OnTweaks);
 
     public Result SetSwitch(InputSwitchOption option, bool on)
@@ -255,22 +260,26 @@ public sealed class InputService
     private static RegistryTweak SZ(RegistryHive hive, string subKey, string name, string value) =>
         new(hive, subKey, name, RegistryValueKind.String, value, null);
 
-    private static int ReadDword(RegistryHive hive, string subKey, string name, int fallback)
+    // Значение DWORD. Отсутствующий параметр или раздел — легальный дефолт
+    // (для policy-ключей это «твик не применён»), поэтому возвращается fallback.
+    // null — чтение не удалось (отказ в доступе и т.п.): сбой не должен
+    // выглядеть как конкретное состояние.
+    private static int? ReadDword(RegistryHive hive, string subKey, string name, int fallback)
     {
         try
         {
             using var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
             using var key = baseKey.OpenSubKey(subKey);
             var raw = key?.GetValue(name);
-            return raw is int intValue ? intValue : Convert.ToInt32(raw ?? fallback);
+            return raw is null ? fallback : Convert.ToInt32(raw);
         }
         catch
         {
-            return fallback;
+            return null;
         }
     }
 
-    private static string ReadString(RegistryHive hive, string subKey, string name, string fallback)
+    private static string? ReadString(RegistryHive hive, string subKey, string name, string fallback)
     {
         try
         {
@@ -280,9 +289,16 @@ public sealed class InputService
         }
         catch
         {
-            return fallback;
+            return null;
         }
     }
+
+    // null-безопасные композиции значений чтения: любой нечитаемый компонент
+    // делает нечитаемым всё состояние.
+    private static bool? NotEqual(string? actual, string value) => actual is null ? null : actual != value;
+
+    private static bool? AnyNonZero(params int?[] values) =>
+        values.Any(v => v is null) ? null : values.Any(v => v != 0);
 
     private string BackupPath(string fileName) => Path.Combine(_backupDirectory, fileName);
 }

@@ -4,6 +4,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:SCU.Views.Controls"
              mc:Ignorable="d"
              d:DesignHeight="520" d:DesignWidth="860">
     <Grid>
@@ -16,7 +17,10 @@
                 <ItemsControl Margin="0" ItemsSource="{Binding Rows}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <ContentControl Style="{StaticResource SwitchRowCard}" />
+                            <!-- PinCard.CardId задаёт скрепке id закрепления; пусто у
+                                 непинируемых строк — глиф скрыт триггером стиля. -->
+                            <ContentControl Style="{StaticResource SwitchRowCard}"
+                                            controls:PinCard.CardId="{Binding PinCardId}" />
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

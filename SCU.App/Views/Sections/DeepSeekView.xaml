@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:cards="clr-namespace:SCU.Views.Cards"
              mc:Ignorable="d"
              d:DesignHeight="300" d:DesignWidth="860">
 
@@ -252,25 +253,6 @@
         <!-- Карточка 3: SCU AI Assistant — агентный режим с tools (п. 27 ТЗ).
              Доступен только при подключённом API; провайдер без tool calling
              работает в режиме текстовой справки (п. 26 ТЗ). -->
-        <Border Style="{StaticResource SectionCard}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource RowHeaderText}"
-                               Text="{DynamicResource S_ScuAiTitle}" />
-                    <TextBlock Style="{StaticResource RowActionText}"
-                               TextWrapping="Wrap"
-                               Text="{DynamicResource S_ScuAiCardDesc}" />
-                </StackPanel>
-                <Button Grid.Column="1"
-                        Content="{DynamicResource S_ScuAiOpen}"
-                        Command="{Binding OpenAiAssistantCommand}"
-                        ToolTipService.ShowOnDisabled="True"
-                        IsEnabled="{Binding IsConnected}" />
-            </Grid>
-        </Border>
+        <cards:ScuAiCard />
     </StackPanel>
 </UserControl>

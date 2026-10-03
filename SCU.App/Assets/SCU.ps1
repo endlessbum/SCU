@@ -273,7 +273,9 @@ switch ($Action.ToLowerInvariant()) {
             @{ Hive = 'HKCU'; Path = 'Software\Microsoft\Windows\CurrentVersion\Run'; Label = 'HKCU Run' },
             @{ Hive = 'HKLM'; Path = 'Software\Microsoft\Windows\CurrentVersion\Run'; Label = 'HKLM Run' },
             @{ Hive = 'HKCU'; Path = 'Software\Microsoft\Windows\CurrentVersion\RunOnce'; Label = 'HKCU RunOnce' },
-            @{ Hive = 'HKLM'; Path = 'Software\Microsoft\Windows\CurrentVersion\RunOnce'; Label = 'HKLM RunOnce' }
+            @{ Hive = 'HKLM'; Path = 'Software\Microsoft\Windows\CurrentVersion\RunOnce'; Label = 'HKLM RunOnce' },
+            @{ Hive = 'HKLM'; Path = 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'; Label = 'HKLM Run (32)' },
+            @{ Hive = 'HKLM'; Path = 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce'; Label = 'HKLM RunOnce (32)' }
         )
         foreach ($p in $paths) {
             $psPath = if ($p.Hive -eq 'HKCU') { 'HKCU:\' + $p.Path } else { 'HKLM:\' + $p.Path }
@@ -297,6 +299,19 @@ switch ($Action.ToLowerInvariant()) {
                     ForEach-Object {
                         $items.Add([pscustomobject]@{ Source = $f.Label; Name = $_.Name; Cmd = $_.FullName })
                     }
+            }
+        }
+        # UWP/упакованные StartupTask — источник, который Диспетчер задач показывает
+        # как «приложения» автозагрузки (State: 1=отключено пользователем, 2=включено,
+        # 3/4=политика). State=0 (задача ни разу не включалась) не показываем.
+        $saRoot = 'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData'
+        if (Test-Path $saRoot) {
+            foreach ($pkgKey in (Get-ChildItem -Path $saRoot -ErrorAction SilentlyContinue)) {
+                foreach ($taskKey in (Get-ChildItem -Path $pkgKey.PSPath -ErrorAction SilentlyContinue)) {
+                    $state = $taskKey.GetValue('State')
+                    if ($state -isnot [int] -or $state -eq 0) { continue }
+                    $items.Add([pscustomobject]@{ Source = 'StartupTask'; Name = $pkgKey.PSChildName; Cmd = ($taskKey.PSChildName + ' (State=' + $state + ')') })
+                }
             }
         }
         $lines = New-Object System.Collections.Generic.List[string]
@@ -338,12 +353,32 @@ switch ($Action.ToLowerInvariant()) {
         $entry = $null
         if ($src -match '^HKCU |^HKLM ') {
             $hive = if ($src -like 'HKCU*') { 'HKCU' } else { 'HKLM' }
-            $sub = if ($src -like '*RunOnce') { 'Software\Microsoft\Windows\CurrentVersion\RunOnce' } else { 'Software\Microsoft\Windows\CurrentVersion\Run' }
+            $sub = switch -Wildcard ($src) {
+                '*RunOnce (32)' { 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce' }
+                '*Run (32)'     { 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run' }
+                '*RunOnce'      { 'Software\Microsoft\Windows\CurrentVersion\RunOnce' }
+                default         { 'Software\Microsoft\Windows\CurrentVersion\Run' }
+            }
             $psPath = $hive + ':\' + $sub
             $key = Get-Item -Path $psPath -ErrorAction Stop
             $kind = $key.GetValueKind($name).ToString(); $val = $key.GetValue($name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $entry = [pscustomobject]@{ type = 'reg'; hive = $hive; subkey = $sub; name = $name; kind = $kind; value = $val; src = $src }
             Remove-ItemProperty -Path $psPath -Name $name -Force -ErrorAction Stop
             Write-Line ('OK: removed from ' + $src + ': ' +$name)
+        }
+        elseif ($src -eq 'StartupTask') {
+            # Отключение упакованной задачи: State=1 («отключено пользователем»),
+            # старое значение пишем в манифест — startuprestore вернёт его как есть.
+            $taskId = ($cmd -replace ' \(State=\d+\)$', '')
+            $sub = 'Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\' + $name + '\' + $taskId
+            $psPath = 'HKCU:\' + $sub
+            if (-not (Test-Path $psPath)) { throw ('StartupTask key not found: ' + $name + '\' + $taskId) }
+            $key = Get-Item -Path $psPath -ErrorAction Stop
+            $kind = $key.GetValueKind('State').ToString()
+            $val = $key.GetValue('State')
+            if ($val -isnot [int]) { throw ('StartupTask State not found: ' + $name + '\' + $taskId) }
+            $entry = [pscustomobject]@{ type = 'reg'; hive = 'HKCU'; subkey = $sub; name = 'State'; kind = $kind; value = $val; src = $src }
+            New-ItemProperty -Path $psPath -Name 'State' -Value 1 -PropertyType DWord -Force -ErrorAction Stop | Out-Null
+            Write-Line ('OK: startup task disabled: ' + $name + '\' + $taskId)
         }
         else {
             try {

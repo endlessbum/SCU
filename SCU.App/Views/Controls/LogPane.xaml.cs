@@ -16,11 +16,15 @@ public partial class LogPane : UserControl
     private readonly FlowDocument _document;
     private INotifyCollectionChanged? _observed;
     private bool _scrollPending;
+    private bool _autoScroll = true;
+    private bool _initialScrollPending;
+    private double _lastVerticalOffset;
 
     public LogPane()
     {
         _document = new FlowDocument(_paragraph);
         InitializeComponent();
+        LogTextBox.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(OnScrollChanged));
         ConfigureDocument();
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
@@ -215,9 +219,17 @@ public partial class LogPane : UserControl
         // MessageBox из вложенного pump диспетчера.
         try
         {
-            // Пользователь, ушедший прокруткой в историю, не выдёргивается к хвосту
-            // каждой новой строкой; вернулся к низу — автопрокрутка продолжается.
-            if (force || IsAtBottom())
+            if (force)
+            {
+                _autoScroll = true;
+                _lastVerticalOffset = 0;
+                // ScrollToEnd здесь (Loaded/DataContextChanged) часто попадает до вёрстки
+                // документа — прокручивается пустой абзац, журнал остаётся наверху.
+                // Реальный вызов откладываем до первого ScrollChanged с готовыми метриками.
+                _initialScrollPending = true;
+            }
+
+            if (_autoScroll)
             {
                 LogTextBox.ScrollToEnd();
             }
@@ -228,9 +240,30 @@ public partial class LogPane : UserControl
         }
     }
 
-    private bool IsAtBottom()
+    // Единственный момент с достоверными метриками прокрутки: ScrollChanged приходит
+    // уже после вёрстки. Здесь же отслеживаем «прикреплённость» к хвосту вместо разовой
+    // проверки IsAtBottom: если начальная прокрутка не удалась, журнал наверху, хвост
+    // далёк — и разовая проверка навсегда запрещала бы автопрокрутку новых строк.
+    private void OnScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        var tail = LogTextBox.ExtentHeight - LogTextBox.VerticalOffset - LogTextBox.ViewportHeight;
-        return tail < 8 || double.IsNaN(tail);
+        var atBottom = LogTextBox.VerticalOffset + LogTextBox.ViewportHeight >= LogTextBox.ExtentHeight - 1;
+        // Пользователь открепился только смещением вверх: рост ExtentHeight от новых
+        // строк и клампинг offset при обрезке головы offset вверх не смещают.
+        if (LogTextBox.VerticalOffset < _lastVerticalOffset - 0.5 && !atBottom)
+        {
+            _autoScroll = false;
+        }
+        else if (atBottom)
+        {
+            _autoScroll = true;
+        }
+
+        _lastVerticalOffset = LogTextBox.VerticalOffset;
+
+        if (_initialScrollPending && LogTextBox.ExtentHeight > 0)
+        {
+            _initialScrollPending = false;
+            LogTextBox.ScrollToEnd();
+        }
     }
 }

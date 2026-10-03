@@ -140,14 +140,21 @@ public partial class ScannerCoreIntegrationTests
     [Fact]
     public async Task ScannerCore_SignedDb_BeatsTamperedCleanCache()
     {
-        var scannerPath = FindScannerCore();
         var keyPath = FindDatabaseSigningKey();
-        if (scannerPath is null || keyPath is null)
+        if (FindScannerCore() is null || keyPath is null)
         {
             ReportSkip();
             return;
         }
 
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
         var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -173,6 +180,7 @@ public partial class ScannerCoreIntegrationTests
         {
             TryDeleteCache();
             Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
         }
     }
 
@@ -181,14 +189,21 @@ public partial class ScannerCoreIntegrationTests
     [Fact]
     public async Task ScannerCore_DbVersionChange_InvalidatesCache()
     {
-        var scannerPath = FindScannerCore();
         var keyPath = FindDatabaseSigningKey();
-        if (scannerPath is null || keyPath is null)
+        if (FindScannerCore() is null || keyPath is null)
         {
             ReportSkip();
             return;
         }
 
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
         var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -215,6 +230,7 @@ public partial class ScannerCoreIntegrationTests
         {
             TryDeleteCache();
             Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
         }
     }
 
@@ -382,14 +398,21 @@ public partial class ScannerCoreIntegrationTests
     [MemberData(nameof(MalformedHashesCases))]
     public async Task ScannerCore_RejectsMalformedHashesFile(string _, string hashesContent)
     {
-        var scannerPath = FindScannerCore();
         var keyPath = FindDatabaseSigningKey();
-        if (scannerPath is null || keyPath is null)
+        if (FindScannerCore() is null || keyPath is null)
         {
             ReportSkip();
             return;
         }
 
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
         var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -416,6 +439,7 @@ public partial class ScannerCoreIntegrationTests
         finally
         {
             Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
         }
     }
     // П. 11 аудита: пакет, подписанный чужим ключом, отклоняется — подпись
@@ -423,13 +447,20 @@ public partial class ScannerCoreIntegrationTests
     [Fact]
     public async Task ScannerCore_RejectsPackageSignedWithWrongKey()
     {
-        var scannerPath = FindScannerCore();
-        if (scannerPath is null)
+        if (FindScannerCore() is null)
         {
             ReportSkip();
             return;
         }
 
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
         var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -468,6 +499,7 @@ public partial class ScannerCoreIntegrationTests
         finally
         {
             Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
         }
     }
 
@@ -522,21 +554,27 @@ public partial class ScannerCoreIntegrationTests
     [Fact]
     public async Task ScannerCore_CorruptedDatabaseOnDisk_FailsClosed()
     {
-        var scannerPath = FindScannerCore();
-        if (scannerPath is null)
+        if (FindScannerCore() is null)
         {
             ReportSkip();
             return;
         }
 
-        var databaseFile = Path.Combine(
-            Path.GetDirectoryName(scannerPath)!, "security", "database", "hashes.txt");
-        if (!File.Exists(databaseFile))
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
         {
-            Assert.Fail("security/database/hashes.txt не найден рядом со ScannerCore — установите пакет базы.");
+            ReportSkip();
+            return;
         }
 
-        var backup = await File.ReadAllBytesAsync(databaseFile);
+        // П. 5 аудита: порча базы — только в собственной песочнице теста.
+        var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
+        var databaseFile = Path.Combine(sandbox, "security", "database", "hashes.txt");
+        if (!File.Exists(databaseFile))
+        {
+            Assert.Fail("security/database/hashes.txt не найден в песочнице — отсутствует сид SecurityScanner/database.");
+        }
+
         var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -562,8 +600,8 @@ public partial class ScannerCoreIntegrationTests
         }
         finally
         {
-            await File.WriteAllBytesAsync(databaseFile, backup);
             Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
         }
     }
 
@@ -671,14 +709,21 @@ public partial class ScannerCoreIntegrationTests
     [Fact]
     public async Task ScannerCore_RejectsModifiedPayloadWithValidSignature()
     {
-        var scannerPath = FindScannerCore();
         var keyPath = FindDatabaseSigningKey();
-        if (scannerPath is null || keyPath is null)
+        if (FindScannerCore() is null || keyPath is null)
         {
             ReportSkip();
             return;
         }
 
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
         var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -711,6 +756,7 @@ public partial class ScannerCoreIntegrationTests
         finally
         {
             Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
         }
     }
 
@@ -720,24 +766,29 @@ public partial class ScannerCoreIntegrationTests
     [Fact]
     public async Task ScannerCore_FailedUpdate_KeepsPreviousDatabase()
     {
-        var scannerPath = FindScannerCore();
         var keyPath = FindDatabaseSigningKey();
-        if (scannerPath is null || keyPath is null)
+        if (FindScannerCore() is null || keyPath is null)
         {
             ReportSkip();
             return;
         }
 
-        var databaseDirectory = Path.Combine(Path.GetDirectoryName(scannerPath)!, "security", "database");
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
+        var databaseDirectory = Path.Combine(sandbox, "security", "database");
         var databaseFile = Path.Combine(databaseDirectory, "hashes.txt");
         var versionFile = Path.Combine(databaseDirectory, "db-version.json");
         if (!File.Exists(databaseFile))
         {
-            Assert.Fail("security/database/hashes.txt не найден рядом со ScannerCore — установите пакет базы.");
+            Assert.Fail("security/database/hashes.txt не найден в песочнице — отсутствует сид SecurityScanner/database.");
         }
 
-        var backupHashes = await File.ReadAllBytesAsync(databaseFile);
-        var backupVersion = File.Exists(versionFile) ? await File.ReadAllBytesAsync(versionFile) : null;
         var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -776,16 +827,8 @@ public partial class ScannerCoreIntegrationTests
         }
         finally
         {
-            await File.WriteAllBytesAsync(databaseFile, backupHashes);
-            if (backupVersion is null)
-            {
-                File.Delete(versionFile);
-            }
-            else
-            {
-                await File.WriteAllBytesAsync(versionFile, backupVersion);
-            }
             Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
         }
     }
 

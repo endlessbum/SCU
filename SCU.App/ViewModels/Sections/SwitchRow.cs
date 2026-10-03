@@ -12,6 +12,7 @@ namespace SCU.ViewModels.Sections;
 public sealed class SwitchRow : INotifyPropertyChanged
 {
     private bool _isOn;
+    private bool _stateUnknown;
 
     public SwitchRow(string id, string title, string description, bool isOn, bool onMeansEnable = false)
     {
@@ -32,6 +33,10 @@ public sealed class SwitchRow : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string Id { get; }
+
+    // Id закрепления карточки на «Главной» («input.<id>»); пусто — скрепка
+    // не показывается (карточка не подлежит закреплению). Заполняет раздел.
+    public string PinCardId { get; set; } = string.Empty;
 
     // Заголовок на языке интерфейса: Title хранит русский ключ для L.T.
     public string LocalizedTitle => L.T(Title);
@@ -60,6 +65,21 @@ public sealed class SwitchRow : INotifyPropertyChanged
         _isOn = isOn;
         OnPropertyChanged(nameof(IsOn));
     }
+
+    // Состояние не прочитано (сбой чтения): тумблер показывает последнее
+    // известное значение, а бейдж «?» — что факт неизвестен. Успешное чтение
+    // или переключение флаг снимает.
+    public bool StateUnknown
+    {
+        get => _stateUnknown;
+        set
+        {
+            _stateUnknown = value;
+            OnPropertyChanged(nameof(StateUnknown));
+        }
+    }
+
+    public string StateUnknownTooltip => L.T("Состояние не прочитано");
 
     /// <summary>
     /// Постоянное описание функции. Не «Включить:/Отключить:» — только суть настройки.

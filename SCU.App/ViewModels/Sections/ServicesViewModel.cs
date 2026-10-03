@@ -67,7 +67,7 @@ public partial class ServicesViewModel : ObservableObject, IDisposable, ISection
     private ServiceRowViewModel? selectedRow;
 
     public string BackupPathText => string.IsNullOrWhiteSpace(LastBackupPath)
-        ? L.T("бэкап ещё не создавался")
+        ? L.T("ещё не создавался")
         : LastBackupPath;
 
     public bool HasBackup => !string.IsNullOrWhiteSpace(LastBackupPath) && File.Exists(LastBackupPath);

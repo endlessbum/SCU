@@ -105,6 +105,27 @@ public class ScuAiActionPlanStoreTests
         Assert.Null(store.TryClaimForApply(plan.PlanId, "Вкл."));
     }
 
+    // Аудит 3, п. 5: отмена плана в состоянии Applying отклоняется — мутация
+    // уже идёт, жизненный цикл завершает executor (MarkApplied), а не Cancel.
+    [Fact]
+    public void Cancel_WhileApplying_Rejected()
+    {
+        var store = new ScuAiActionPlanStore(Logger);
+        var plan = CreatePlan(store, "Вкл.");
+        store.Confirm(plan.PlanId);
+        Assert.NotNull(store.TryClaimForApply(plan.PlanId, "Вкл.", out _));
+
+        Assert.False(store.Cancel(plan.PlanId));
+
+        // План жив и подтверждён: executor доводит операцию до конца.
+        Assert.NotNull(store.Get(plan.PlanId));
+        Assert.True(store.IsConfirmed(plan.PlanId));
+
+        store.MarkApplied(plan.PlanId);
+        Assert.Null(store.Get(plan.PlanId));
+        Assert.False(store.IsConfirmed(plan.PlanId));
+    }
+
     [Fact]
     public void Confirm_UnknownPlan_Rejected()
     {

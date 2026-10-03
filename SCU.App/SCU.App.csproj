@@ -19,7 +19,7 @@
     <RootNamespace>SCU</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <!-- Версия сборки: показывается в «Настройки → О приложении» (три части). -->
-    <Version>3.1.1</Version>
+    <Version>3.1.2</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,6 +38,14 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Assets\Utilities.bat">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Окрашенные иконки пресетов для ярлыков (см. DesktopIconService):
+         по одному «light»-файлу на пресет, обе темы используют его же;
+         генерируются tools/AccentIconGenerator из корневого SCU.ico.
+         В вывод сборки копируются CopyToOutputDirectory, в publish —
+         таргетом PublishAccentIcons ниже. -->
+    <None Update="Assets\Icons\*.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
@@ -94,6 +102,16 @@
       <_ScannerDatabase Include="..\SecurityScanner\database\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(_ScannerDatabase)" DestinationFiles="@(_ScannerDatabase -> '$(PublishDir)security\database\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Набор иконок для ярлыков (Assets\Icons) нужен в publish: у None/Content
+       с wildcard-Include CopyToPublishDirectory в SDK 10 до копирования не
+       доходит (явные элементы — доходят), поэтому копируем таргетом напрямую. -->
+  <Target Name="PublishAccentIcons" AfterTargets="Publish">
+    <ItemGroup>
+      <_AccentIconFiles Include="Assets\Icons\*.ico" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AccentIconFiles)" DestinationFolder="$(PublishDir)Assets\Icons" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

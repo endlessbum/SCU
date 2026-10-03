@@ -565,6 +565,22 @@
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
                         </Trigger>
+                        <!-- Наведение: трек чуть темнеет из своего же оттенка —
+                             в OFF плотнее серый, в ON темнее акцент (обе темы). -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="False" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchTrackOffHoverBrush}" />
+                        </MultiTrigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchAccentHoverBrush}" />
+                        </MultiTrigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />
                         </Trigger>
@@ -647,6 +663,22 @@
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
                         </Trigger>
+                        <!-- Наведение: трек чуть темнеет из своего же оттенка —
+                             в OFF плотнее серый, в ON темнее акцент (обе темы). -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="False" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchTrackOffHoverBrush}" />
+                        </MultiTrigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchAccentHoverBrush}" />
+                        </MultiTrigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />
                         </Trigger>
@@ -1143,7 +1175,7 @@
                                                                 Margin="4,0"
                                                                 CornerRadius="2"
                                                                 HorizontalAlignment="Center"
-                                                                Background="{DynamicResource TertiaryTextBrush}" />
+                                                                Background="#383838" />
                                                         <ControlTemplate.Triggers>
                                                             <Trigger Property="IsMouseOver" Value="True">
                                                                 <Setter TargetName="ThumbBd" Property="Width" Value="6" />
@@ -1166,7 +1198,7 @@
                                                                         Margin="0,4"
                                                                         CornerRadius="2"
                                                                         VerticalAlignment="Center"
-                                                                        Background="{DynamicResource TertiaryTextBrush}" />
+                                                                        Background="#383838" />
                                                                 <ControlTemplate.Triggers>
                                                                     <Trigger Property="IsMouseOver" Value="True">
                                                                         <Setter TargetName="ThumbBdH" Property="Height" Value="6" />
@@ -1281,6 +1313,55 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- «Скрепка» закрепления карточки на главной (п. ТЗ «Закрепление карточек»):
+         неактивная — приглушённый цвет неактивного информера, закреплённая —
+         акцентный цвет из настроек. Стиль неявный, как у InfoGlyph. -->
+    <Style TargetType="{x:Type controls:PinGlyph}">
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Height" Value="20" />
+        <Setter Property="Margin" Value="6,1,0,0" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AppFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type controls:PinGlyph}">
+                    <Grid Background="Transparent">
+                        <TextBlock x:Name="Glyph"
+                                   FontFamily="{DynamicResource IconFontFamily}"
+                                   FontSize="13"
+                                   Foreground="{TemplateBinding Foreground}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Text="&#xE723;" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource AccentFillBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <!-- Скрепка без CardId (шаблонной карточке не положено закрепление) не видима. -->
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding CardId, RelativeSource={RelativeSource Self}}" Value="">
+                <Setter Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ===================== ToolTip ===================== -->
@@ -1512,7 +1593,36 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowHeaderText}" Text="{Binding LocalizedTitle}" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource RowHeaderText}" Text="{Binding LocalizedTitle}" />
+                                    <!-- Скрепка закрепления на «Главной»: видима только у карточек,
+                                         которым хост задал controls:PinCard.CardId (CanPin раздела). -->
+                                    <controls:PinGlyph
+                                        CardId="{Binding Path=(controls:PinCard.CardId), RelativeSource={RelativeSource TemplatedParent}}" />
+                                    <!-- Состояние не прочитано (сбой чтения): бейдж «?» вместо
+                                         уверенного ON/OFF; тултип объясняет, что факт неизвестен. -->
+                                    <Border Margin="8,0,0,0"
+                                            Padding="6,1"
+                                            CornerRadius="6"
+                                            Background="{DynamicResource WarnFillBrush}"
+                                            ToolTip="{Binding StateUnknownTooltip}">
+                                        <TextBlock
+                                            FontSize="11"
+                                            FontWeight="SemiBold"
+                                            Foreground="{DynamicResource WarnBrush}"
+                                            Text="?" />
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding StateUnknown}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                </StackPanel>
                                 <!-- Действие текущего положения тумблера («Включить: …» /
                                      «Отключить: …»), меняется вместе с IsOn. -->
                                 <TextBlock Margin="0,4,0,0"

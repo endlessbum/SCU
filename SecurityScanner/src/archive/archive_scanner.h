@@ -27,6 +27,10 @@ struct ArchiveIssue {
     std::wstring virtualPath;
     std::wstring code; // encrypted-archive | corrupt-archive | too-large | too-many-entries | expanded-limit | unsupported-member | member-too-large | zip-bomb | too-deep
     std::wstring member;
+    // true — техническая ошибка (сбой диска/записи), учитывается как stats.errors
+    // и делает прогон Partial с exit code 1; false — ограничение покрытия,
+    // учитывается как filesSkipped (аудит п. 3: Errors vs Skipped формализованы).
+    bool technical = false;
 };
 
 // Обработка извлечённого члена: virtualPath — для отчёта, realPath — временный

@@ -35,15 +35,6 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
     [ObservableProperty]
     private string _appSearchText = string.Empty;
 
-    // Поиск активен, пока клавиатурный фокус в поле (ставит AppsView):
-    // тогда затемняется фон окна — как у поиска на «Главной».
-    [ObservableProperty]
-    private bool _isSearchFocused;
-
-    public bool IsSearchActive => IsSearchFocused;
-
-    partial void OnIsSearchFocusedChanged(bool value) => OnPropertyChanged(nameof(IsSearchActive));
-
     // ===================== Сортировка =====================
 
     private AppSortMode _sortMode = AppSortMode.Name;
@@ -113,7 +104,6 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
     private void ApplyAppsFilter()
     {
         var query = AppSearchText.Trim();
-        Apps.Clear();
         IEnumerable<InstalledApp> matched = _allApps;
         if (query.Length > 0)
         {
@@ -122,14 +112,15 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
                 || (app.Publisher?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false));
         }
 
-        matched = SortApps(matched, _sortMode, SortAscending);
+        var found = SortApps(matched, _sortMode, SortAscending).ToList();
 
-        foreach (var app in matched)
-        {
-            Apps.Add(app);
-        }
+        // Подмена списка целиком: Clear + Add по одному в ObservableCollection
+        // генерируют контейнер и перевёрстку на каждый элемент (O(n²) на символ
+        // запроса при паре сотен приложений). Один PropertyChanged с новым
+        // экземпляром — один Reset у ItemsControl.
+        Apps = new ObservableCollection<InstalledApp>(found);
 
-        AppsFoundText = L.T("Программ найдено: {0}", Apps.Count);
+        AppsFoundText = L.T("Программ найдено: {0}", found.Count);
     }
 
     // Сортировка. Объём и дата: записи без значения (размер ещё считается,

@@ -24,8 +24,10 @@ public partial class MainViewModel
     [NotifyCanExecuteChangedFor(nameof(CheckForUpdatesCommand))]
     private bool _isCheckingUpdates;
 
+    // До первой ручной проверки строка не пустует: плейсхолдер-подсказка,
+    // заменяется результатом проверки (или тихой фоновой проверки).
     [ObservableProperty]
-    private string _updateStatusText = string.Empty;
+    private string _updateStatusText = L.T("Нажмите «Проверить» для обновления актуальной информации");
 
     private bool CanCheckForUpdates() => !IsCheckingUpdates;
 

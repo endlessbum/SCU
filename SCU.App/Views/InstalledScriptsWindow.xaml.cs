@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using SCU.Common;
 using SCU.ViewModels;
+using SCU.Views.Controls;
 
 namespace SCU.Views;
 
@@ -63,6 +64,16 @@ public partial class InstalledScriptsWindow : Window
     private void OnDeleteClick(object sender, RoutedEventArgs e)
     {
         if (ScriptFromButton(sender) is not { } data)
+        {
+            return;
+        }
+
+        // Удаление необратимо (файл скрипта стирается) — без подтверждения
+        // случайный клик терял скрипт молча.
+        if (!new ConfirmDialogService().Ask(
+                L.T("Удаление скрипта"),
+                L.T("Скрипт «{0}» будет удалён с диска вместе с закреплением карточки. Продолжить?", data.Title),
+                L.T("Удалить")))
         {
             return;
         }

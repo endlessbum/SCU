@@ -60,12 +60,10 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
     partial void OnSearchTextChanged(string value) => ApplySearch();
 
-    // Поиск активен, пока клавиатурный фокус в поле (ставит DashboardView):
-    // тогда затемняется фон окна и раскрыты подсказки.
+    // Клавиатурный фокус в поле поиска (ставит DashboardView): пока он там,
+    // раскрыты подсказки (затемнение фона окна убрано).
     [ObservableProperty]
     private bool _isSearchFocused;
-
-    public bool IsSearchActive => IsSearchFocused;
 
     // Подсказки под полем поиска: совпавшие утилиты (то же сопоставление, что
     // и фильтр списка) с номером раздела для перехода по клику.
@@ -85,7 +83,6 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
     partial void OnIsSearchFocusedChanged(bool value)
     {
-        OnPropertyChanged(nameof(IsSearchActive));
         IsSearchSuggestionsOpen = value && Suggestions.Count > 0;
     }
 
@@ -153,6 +150,11 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
     public bool IsAdmin { get; }
 
+    // Признак «раздел уже инициализировался и читал систему». Заполняется из
+    // MainViewModel (_initializedSections); до установки — true, чтобы счётчик
+    // и другие вызовы вели себя как раньше (например, в тестах).
+    internal Func<int, bool> SectionLoaded { get; set; } = _ => true;
+
     public bool CanRunBatch => !IsRunning && Rows.Any(row => row.IsIncluded);
 
     public string ReadOnlyHint =>
@@ -160,8 +162,10 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
     public ObservableCollection<BatchGroup> Groups { get; } = [];
 
-    // Группы, прошедшие поиск (те же экземпляры; строки/группы скрываются по IsVisible).
-    public ObservableCollection<BatchGroup> FilteredGroups { get; } = [];
+    // Скрытые группы поиском остаются в Groups: ItemsControl привязан к нему и
+    // не пересоздаёт карточки на каждый символ запроса — фильтр переключает
+    // только IsVisible у строк и групп.
+    public bool HasVisibleGroups => Groups.Any(group => group.IsVisible);
 
     public IReadOnlyList<BatchUtilityRow> Rows { get; private set; } = [];
 
@@ -506,10 +510,13 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
     // Пересчёт «К применению»: сколько выбранных утилит ещё не в целевом
     // состоянии. Читаются только свойства VM (уже отражают систему после
-    // стартового refresh) — обращений к системе нет.
+    // стартового refresh) — обращений к системе нет. Неинициализированные
+    // разделы не считаются: их состояния — конструкторские дефолты.
     public void RecomputePending()
     {
-        var pending = Rows.Count(r => r.IsIncluded && r.Utility.NeedsApply?.Invoke() == true);
+        var pending = PendingCounter.Count(
+            Rows.Select(r => (r.IsIncluded, r.Utility.Section, r.Utility.NeedsApply)),
+            SectionLoaded);
         PendingText = pending > 0 ? L.T("К применению: {0}", pending) : string.Empty;
     }
 
@@ -519,34 +526,40 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
 
     // Применение фильтра: строки и пустые группы скрываются (IsVisible),
-    // совпавшие утилиты попадают в подсказки под полем поиска.
+    // совпавшие утилиты попадают в подсказки под полем поиска. Контейнеры списка
+    // не пересоздаются (Clear+Add групп заставлял ItemsControl на каждый символ
+    // заново генерировать все ~100 карточек утилит) — только переключение видимости.
     private void ApplySearch()
     {
         var tokens = DashboardSearchService.SplitTokens(SearchText);
-        FilteredGroups.Clear();
         Suggestions.Clear();
         foreach (var group in Groups)
         {
             var any = false;
             foreach (var row in group.Rows)
             {
-                var visible = DashboardSearchService.MatchesText(row.Title + " " + row.Utility.Keywords, tokens);
+                // Шапочные кнопки («Бэкап», «Откатить», «Сбросить») поиском не
+                // находятся: при пустом запросе видны, при активном — скрыты.
+                var visible = tokens.Length == 0
+                    ? true
+                    : row.ShowInSearch && DashboardSearchService.MatchesText(row.SearchText, tokens);
                 row.IsVisible = visible;
                 any |= visible;
             }
 
             group.IsVisible = any;
-            if (any)
-            {
-                FilteredGroups.Add(group);
-            }
         }
+
+        OnPropertyChanged(nameof(HasVisibleGroups));
 
         if (tokens.Length > 0)
         {
-            foreach (var row in _searchRows)
+            // Встроенные утилиты и строки пользовательских скриптов в одном
+            // потоке подсказок: иначе при заполненном лимите скрипты бы
+            // никогда не показывались.
+            foreach (var row in _searchRows.Concat(_scriptRows))
             {
-                if (!DashboardSearchService.MatchesText(row.Title + " " + row.Utility.Keywords, tokens))
+                if (!row.ShowInSearch || !DashboardSearchService.MatchesText(row.SearchText, tokens))
                 {
                     continue;
                 }
@@ -635,6 +648,48 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
     private List<BatchUtilityRow> _searchRows = [];
 
+    // ===================== Поиск по пользовательским скриптам =====================
+
+    private readonly Dictionary<string, BatchUtilityRow> _scriptRowMap = new(StringComparer.Ordinal);
+    private List<BatchUtilityRow> _scriptRows = [];
+
+    // Строки скриптов — ТОЛЬКО для подсказок поиска (MainViewModel.RefreshScriptSearchRows
+    // при загрузке/добавлении/удалении). В реестр утилит они не попадают: меню-редактор
+    // и список большого выключателя скрипты не видят, в подсказках скрипт — один,
+    // по месту в своём разделе (закреплённый дубликат не участвует). Экземпляры
+    // BatchUtility мутируются на месте, строки переиспользуются по Id —
+    // BatchUtilityRow подписан на статический L.LanguageChanged без отписки.
+    public void SetScriptSearchRows(IEnumerable<BatchUtility> scripts)
+    {
+        var actualIds = new HashSet<string>(StringComparer.Ordinal);
+        var rows = new List<BatchUtilityRow>();
+        foreach (var utility in scripts)
+        {
+            actualIds.Add(utility.Id);
+            if (!_scriptRowMap.TryGetValue(utility.Id, out var row))
+            {
+                row = new BatchUtilityRow(utility, isIncluded: false);
+                _scriptRowMap[utility.Id] = row;
+            }
+            else
+            {
+                // Скрипт переименован/изменён: свежий экземпляр подставляется
+                // в существующую строку (см. комментарий к BatchUtilityRow.Utility).
+                row.Utility = utility;
+            }
+
+            rows.Add(row);
+        }
+
+        foreach (var staleId in _scriptRowMap.Keys.Where(id => !actualIds.Contains(id)).ToList())
+        {
+            _scriptRowMap.Remove(staleId);
+        }
+
+        _scriptRows = rows;
+        ApplySearch();
+    }
+
     // Кнопка без параметров: CanExecute=false → пропуск (null).
     private static async Task<string?> RunAsync(IAsyncRelayCommand command, Func<string> status)
     {
@@ -716,22 +771,24 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
     private List<BatchUtility> BuildServices() =>
     [
+        // Бэкап/откат — шапочные кнопки раздела «Службы», не карточки: поиск их не находит.
         Utility(6, "svc_backup", "S_Backup",
             () => RunAsync(_services.BackupCommand, () => _services.StatusText),
-            keywords: "служб service бэкап backup"),
+            keywords: "служб service бэкап backup", showInSearch: false),
         Utility(6, "svc_restore", "S_Restore",
             () => RunAsync(_services.RestoreCommand, () => _services.StatusText),
-            keywords: "служб service откат restore восстанов"),
+            keywords: "служб service откат restore восстанов", showInSearch: false),
     ];
 
     private List<BatchUtility> BuildTasks() =>
     [
+        // Шапочные кнопки «Бэкап»/«Откатить» раздела «Задачи» — вне поиска.
         Utility(15, "tasks_backup", "S_Backup",
             () => RunAsync(_tasks.BackupCommand, () => _tasks.StatusText),
-            keywords: "задач планировщ scheduler task бэкап backup"),
+            keywords: "задач планировщ scheduler task бэкап backup", showInSearch: false),
         Utility(15, "tasks_restore", "S_Rollback",
             () => RunAsync(_tasks.RestoreCommand, () => _tasks.StatusText),
-            keywords: "задач планировщ task бэкап restore"),
+            keywords: "задач планировщ task бэкап restore", showInSearch: false),
     ];
 
     private List<BatchUtility> BuildPower()
@@ -801,17 +858,19 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
     {
         return
         [
+            // «Сбросить» — шапочная кнопка раздела «Сеть», не карточка: вне поиска.
             Utility(9, "net_reset_all", "S_NetResetAll",
-                () => RunAsync(_network.ResetAllCommand, () => _network.StatusText)),
+                () => RunAsync(_network.ResetAllCommand, () => _network.StatusText), showInSearch: false),
             Utility(9, "net_gaming_apply", "S_NetGamingProfile",
                 () => RunAsync(_network.GamingProfileCommand, () => _network.StatusText),
                 needsApply: () => !_network.IsGamingActive),
+            // «Откатить» у карточки профиля — кнопка, не отдельная карточка: вне поиска.
             Utility(9, "net_gaming_rollback", "S_Rollback",
-                () => RunAsync(_network.RollbackGamingProfileCommand, () => _network.StatusText)),
+                () => RunAsync(_network.RollbackGamingProfileCommand, () => _network.StatusText), showInSearch: false),
             Utility(9, "net_adapter_apply", "S_NetAdapterProfileTitle",
                 () => RunAsync(_network.ApplyUniversalAdapterProfileCommand, () => _network.StatusText)),
             Utility(9, "net_adapter_restore", "S_Rollback",
-                () => RunAsync(_network.RestoreAdapterProfileCommand, () => _network.StatusText)),
+                () => RunAsync(_network.RestoreAdapterProfileCommand, () => _network.StatusText), showInSearch: false),
             Utility(9, "net_autotuning_normal", "S_BatchAutoTuningNormal",
                 async () =>
                 {
@@ -1047,8 +1106,18 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
         string titleKey,
         Func<Task<string?>> run,
         string keywords = "",
-        Func<bool?>? needsApply = null) =>
-        new() { Id = id, TitleKey = titleKey, Section = section, Run = run, Keywords = keywords, NeedsApply = needsApply };
+        Func<bool?>? needsApply = null,
+        bool showInSearch = true) =>
+        new()
+        {
+            Id = id,
+            TitleKey = titleKey,
+            Section = section,
+            Run = run,
+            Keywords = keywords,
+            NeedsApply = needsApply,
+            ShowInSearch = showInSearch
+        };
 }
 
 // Подсказка поиска: утилита с номером раздела-владельца. Заголовок раздела

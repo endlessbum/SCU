@@ -75,6 +75,9 @@ jobs:
             --out ../../build/database-latest.zip
           echo "DB_VERSION=$VERSION" >> "$GITHUB_ENV"
           sha256sum ../../build/database-latest.zip
+          # Версия отдельным маленьким ассетом: приложение сверяет её до
+          # скачивания пакета и пропускает перекачивание актуальной базы.
+          printf '{"version":"%s"}\n' "$DB_VERSION" > ../../build/db-version.json
 
       # Контроль, что пакет не «пустой» и подписан: размеры членов ZIP и
       # количество записей выводятся DatabaseBuilder (package written: N entries).
@@ -83,8 +86,10 @@ jobs:
       - name: Sanity check package
         run: |
           test -s SecurityScanner/build/database-latest.zip || { echo "::error::пакет не создан"; exit 1; }
+          test -s SecurityScanner/build/db-version.json || { echo "::error::db-version.json не создан"; exit 1; }
           unzip -l SecurityScanner/build/database-latest.zip
           unzip -p SecurityScanner/build/database-latest.zip db-version.json
+          cat SecurityScanner/build/db-version.json
 
       - name: Publish release
         env:
@@ -98,7 +103,7 @@ jobs:
           # Перезапуск воркфлоу за тот же день: старый релиз сносится и
           # создаётся заново.
           gh release delete "$TAG" --cleanup-tag -y 2>/dev/null || true
-          gh release create "$TAG" SecurityScanner/build/database-latest.zip \
+          gh release create "$TAG" SecurityScanner/build/database-latest.zip SecurityScanner/build/db-version.json \
             --prerelease \
             --title "Scanner database $DB_VERSION" \
             --notes "Автосборка базы сигнатур из внешних дампов за $DB_VERSION. Rolling pre-release: тег scanner-db пересоздаётся ежедневно и не является релизом приложения."

@@ -164,9 +164,10 @@ public sealed class ScuAiAssistant
 
     // Отмена плана пользователем (п. 9 ТЗ): план удаляется из store — повторно
     // применить его уже невозможно, а модель получает отказ при попытке.
-    public void CancelPlan(string planId)
+    // false — план сейчас в Applying (аудит 3, п. 5): отменять поздно.
+    public bool CancelPlan(string planId)
     {
-        _plans.Cancel(planId);
+        return _plans.Cancel(planId);
     }
 
     // ===================== Внутреннее =====================

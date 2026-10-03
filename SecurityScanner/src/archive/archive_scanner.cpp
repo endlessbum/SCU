@@ -1,5 +1,7 @@
 #include "archive/archive_scanner.h"
 
+#include "core/path_util.h"
+
 #include <windows.h>
 
 #include "miniz.h"
@@ -13,28 +15,31 @@ namespace {
 
 std::wstring TempRoot()
 {
-    wchar_t buffer[MAX_PATH]{};
-    DWORD size = GetTempPathW(MAX_PATH, buffer);
-    return size == 0 ? std::wstring(L".") : std::wstring(buffer);
+    const std::wstring temp = GetTempPathDynamic();
+    return temp.empty() ? std::wstring(L".") : temp;
 }
 
 std::wstring ToWideName(const char* name, mz_uint bitFlag)
 {
     // ZIP: имена в UTF-8 при установленном бите 11 общего флага, иначе —
     // кодировка изготовителя (обычно CP437/ANSI). Строгая проверка UTF-8,
-    // при неудаче — системная ANSI-страница.
-    const UINT codePage = (bitFlag & 0x800) != 0 ? CP_UTF8 : CP_ACP;
+    // при неудаче — системная ANSI-страница. Fallback последовательно меняет
+    // code page во ВСЕХ вызовах (аудит 2, п. 14): раньше длина считалась по
+    // CP_ACP, а конвертация выполнялась исходной CP_UTF8 — имя терялось.
+    UINT codePage = (bitFlag & 0x800) != 0 ? CP_UTF8 : CP_ACP;
     const int sourceLength = static_cast<int>(strlen(name));
     int wideLength = MultiByteToWideChar(codePage, MB_ERR_INVALID_CHARS,
                                          name, sourceLength, nullptr, 0);
     if (wideLength == 0) {
-        wideLength = MultiByteToWideChar(CP_ACP, 0, name, sourceLength, nullptr, 0);
+        codePage = CP_ACP;
+        wideLength = MultiByteToWideChar(codePage, 0, name, sourceLength, nullptr, 0);
         if (wideLength == 0) {
             return L"member";
         }
     }
     std::wstring wide(static_cast<size_t>(wideLength), L'\0');
-    MultiByteToWideChar(codePage, MB_ERR_INVALID_CHARS, name, sourceLength, wide.data(), wideLength);
+    MultiByteToWideChar(codePage, (codePage == CP_UTF8 ? MB_ERR_INVALID_CHARS : 0),
+                        name, sourceLength, wide.data(), wideLength);
     return wide;
 }
 
@@ -141,6 +146,9 @@ bool ArchiveScanner::ScanZip(const std::wstring& path, const std::wstring& virtu
 
         mz_zip_archive_file_stat stat{};
         if (!mz_zip_reader_file_stat(&zip, index, &stat)) {
+            // Метаданные члена не прочитаны — член не анализируется вовсе
+            // (аудит 2, п. 13): обязательный issue, иначе coverage теряется.
+            onIssue_({virtualPath, L"member-stat-failed", L"", true});
             continue;
         }
 
@@ -226,7 +234,7 @@ bool ArchiveScanner::ScanMember(int index,
                                  nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY,
                                  nullptr);
     if (outFile == INVALID_HANDLE_VALUE) {
-        onIssue_({virtualPath, L"corrupt-archive", tempPath});
+        onIssue_({virtualPath, L"corrupt-archive", tempPath, true});
         return true;
     }
 
@@ -237,7 +245,8 @@ bool ArchiveScanner::ScanMember(int index,
 
     if (!extracted) {
         DeleteFileW(tempPath.c_str());
-        onIssue_({virtualPath, L"unsupported-member", displayName});
+        // Ошибка записи на диск — техническая ошибка, не свойство архива.
+        onIssue_({virtualPath, L"unsupported-member", displayName, context.failed});
         return !context.failed; // ошибка записи — прерываем, отмена/лимит не было
     }
 

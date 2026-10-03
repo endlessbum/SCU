@@ -24,6 +24,7 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     private readonly IFilePickerService _filePicker;
     private readonly IShellOpenService _shell;
     private readonly ScannerUpdateService _updateService = new();
+    private readonly ScannerDbStateStore _dbStateStore;
     private CancellationTokenSource? _operationCts;
 
     // Сериализация доступа к ScannerCore: автообновление базы идёт вне IsBusy
@@ -45,10 +46,40 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     private bool _isBusy;
 
     [ObservableProperty]
-    private string _statusText = L.T("ScannerCore: проверка доступности…");
+    private string _statusText = string.Empty;
 
     [ObservableProperty]
     private string _lastScanSummaryText = string.Empty;
+
+    // Бейдж исхода скана (аудит п. 15.2): «не найдено» ≠ «не найдено, но
+    // проверено не всё». Текст и ключ вида бейджа ставятся вместе со статусом.
+    [ObservableProperty]
+    private string _outcomeBadge = string.Empty;
+
+    [ObservableProperty]
+    private string _outcomeBadgeKind = "None"; // Clean | Threats | Partial | Failed | Cancelled | None
+
+    private void SetOutcomeBadge(ScanOutcome outcome, long detections = 0)
+    {
+        OutcomeBadgeKind = outcome switch
+        {
+            ScanOutcome.Clean => "Clean",
+            ScanOutcome.Threats => "Threats",
+            ScanOutcome.Partial => "Partial",
+            ScanOutcome.Cancelled => "Cancelled",
+            ScanOutcome.Failed => "Failed",
+            _ => "None",
+        };
+        OutcomeBadge = outcome switch
+        {
+            ScanOutcome.Clean => L.T("Проверено полностью"),
+            ScanOutcome.Threats => L.T("Обнаружено проблем: {0}", detections),
+            ScanOutcome.Partial => L.T("Проверено частично"),
+            ScanOutcome.Cancelled => L.T("Прервано"),
+            ScanOutcome.Failed => L.T("Ошибка проверки"),
+            _ => string.Empty,
+        };
+    }
 
     // Database freshness (п. 32): версия и дата базы из события started.
     [ObservableProperty]
@@ -89,9 +120,15 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         _dialogs = dialogs;
         _filePicker = filePicker;
         _shell = shell;
-        StatusText = L.T(scanner.IsAvailable
-            ? "ScannerCore доступен. Перетащите файл/папку или выберите путь."
-            : "ScannerCore.exe не найден — сканирование недоступно.");
+        _dbStateStore = new ScannerDbStateStore(logger, Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "SCU", "scanner-db-state.json"));
+        // Статус пустой: строка «ScannerCore доступен…» дублировала очевидное
+        // (раздел открыт — кнопки видны). Ошибка («ScannerCore не найден»)
+        // остаётся: без неё недоступность сканера выглядела бы как сбой кнопок.
+        StatusText = scanner.IsAvailable
+            ? string.Empty
+            : L.T("ScannerCore.exe не найден — сканирование недоступно.");
     }
 
     public bool ScannerAvailable => _scanner.IsAvailable;
@@ -345,6 +382,17 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         {
             QuarantineItems.Add(item);
         }
+
+        // П. 29 аудита 2: скрытые из-за повреждённых метаданных записи не
+        // превращаются в молчаливое «карантин пуст».
+        if (_quarantine.CorruptedMetadataCount > 0)
+        {
+            AppNotificationCenter.Instance.Push(
+                L.T("Карантин: часть записей недоступна"),
+                L.T("Некоторые записи карантина повреждены и не отображаются: {0}.",
+                    _quarantine.CorruptedMetadataCount),
+                AppNotificationKind.Warn);
+        }
     }
 
     // Автообновление базы при старте приложения: тихое — состояния вкладки и
@@ -365,6 +413,23 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
             await _scannerGate.WaitAsync(_lifetimeCts.Token).ConfigureAwait(true);
             try
             {
+                // Сверка версии до скачивания (пакет — десятки МБ): если на релизе
+                // та же версия, что установлена, пакет не перекачивается. Узнать
+                // версию не удалось — качаем, как раньше (fail-open).
+                var remote = await _updateService
+                    .GetLatestDbVersionAsync(_lifetimeCts.Token)
+                    .ConfigureAwait(true);
+                if (remote.IsSuccess && remote.Value is { } remoteVersion)
+                {
+                    var installed = _dbStateStore.Load();
+                    if (installed == remoteVersion)
+                    {
+                        _logger.Info("DBUPDATE | auto skipped (already installed) | " + remoteVersion);
+                        DatabaseInfoText = L.T("База: {0}", L.Date(remoteVersion));
+                        return;
+                    }
+                }
+
                 var download = await _updateService
                     .DownloadPackageAsync(_updateService.ResolveUrl(), _lifetimeCts.Token)
                     .ConfigureAwait(true);
@@ -382,6 +447,7 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                     // строке «База» показываем её в едином виде дд.мм.гггг.
                     var version = L.Date(ExtractVersion(result.Value));
                     DatabaseInfoText = L.T("База: {0}", version);
+                    _dbStateStore.Save(ExtractVersion(result.Value));
                     _logger.Info("DBUPDATE | auto | " + result.Value);
                     AppNotificationCenter.Instance.Push(
                         L.T("База сканера обновлена"),
@@ -462,6 +528,7 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                 // Версия базы — календарная (yyyy.MM.dd): в статусе показываем дд.мм.гггг.
                 StatusText = L.T("База обновлена: {0}", L.Date(ExtractVersion(result.Value)));
                 DatabaseInfoText = L.T("База: {0}", L.Date(ExtractVersion(result.Value)));
+                _dbStateStore.Save(ExtractVersion(result.Value));
                 _logger.Info("DBUPDATE | online | " + result.Value);
                 _history.Enqueue(new HistoryEvent(
                     DateTime.Now,
@@ -692,6 +759,8 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         IsBusy = true;
         Detections.Clear();
         LastScanSummaryText = string.Empty;
+        OutcomeBadge = string.Empty;
+        OutcomeBadgeKind = "None";
         ScanProgressPercent = 0;
         ScanEtaText = L.T("Оценка объёма…");
         StatusText = L.T("Сканирование: {0}…", path);
@@ -743,58 +812,84 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                 }
 
                 var summary = scanResult.Summary;
-                if (scanResult.Cancelled)
+                // Единая классификация исхода (аудит п. 14): ветвление по Outcome,
+                // а не по независимому чтению Cancelled/Errors/FilesSkipped.
+                SetOutcomeBadge(scanResult.Outcome, summary.Detections);
+                switch (scanResult.Outcome)
                 {
-                    StatusText = L.T("Сканирование прервано. Частичный результат сохранён.");
-                }
-                else if (summary.Errors > 0)
-                {
-                    StatusText = L.T("Сканирование завершено с ошибками: часть файлов не проверена.");
-                }
-                else if (summary.Detections > 0)
-                {
-                    // Пропуски файлов не должны прятаться за «обнаружено»:
-                    // неполный охват показываем рядом с числом детектов (п. SCAN-01).
-                    StatusText = summary.FilesSkipped > 0
-                        ? L.T("Обнаружено проблем: {0} (сканирование неполное, пропущено {1}).",
-                            summary.Detections, summary.FilesSkipped)
-                        : L.T("Обнаружено проблем: {0}.", summary.Detections);
-                    AppNotificationCenter.Instance.Push(
-                        L.T("Сканер: обнаружены угрозы"),
-                        L.T("Проверка «{0}»: проблемных объектов — {1}.", path, summary.Detections),
-                        AppNotificationKind.Danger);
-                }
-                else if (summary.FilesSkipped > 0)
-                {
+                    case ScanOutcome.Cancelled:
+                        StatusText = L.T("Сканирование прервано. Частичный результат сохранён.");
+                        break;
+
+                    // Пропуски файлов не должны прятаться за «обнаружено» (п. SCAN-01).
+                    case ScanOutcome.Partial when summary.Detections > 0:
+                        StatusText = summary.FilesSkipped > 0
+                            ? L.T("Обнаружено проблем: {0} (сканирование неполное, пропущено {1}).",
+                                summary.Detections, summary.FilesSkipped)
+                            : L.T("Обнаружено проблем: {0}.", summary.Detections);
+                        AppNotificationCenter.Instance.Push(
+                            L.T("Сканер: обнаружены угрозы"),
+                            L.T("Проверка «{0}»: проблемных объектов — {1}.", path, summary.Detections),
+                            AppNotificationKind.Danger);
+                        break;
+
+                    case ScanOutcome.Partial when summary.Errors > 0:
+                        StatusText = L.T("Сканирование завершено с ошибками: часть файлов не проверена.");
+                        break;
+
                     // П. SCAN-01/SCAN-06: skip по размеру/нечитаемости/архиву не даёт
                     // права писать «не найдено» — coverage неполный.
-                    StatusText = L.T("Обнаружений не найдено, но сканирование неполное: пропущено {0}.",
-                        summary.FilesSkipped);
-                }
-                else
-                {
-                    // «Не найдено» только при полном прохождении (документ п. 36/51):
-                    // ошибки, пропуски и отмена уже обработаны выше.
-                    StatusText = L.T("На момент сканирования обнаружений не найдено.");
+                    case ScanOutcome.Partial:
+                        StatusText = L.T("Обнаружений не найдено, но сканирование неполное: пропущено {0}.",
+                            summary.FilesSkipped);
+                        break;
+
+                    case ScanOutcome.Threats:
+                        StatusText = L.T("Обнаружено проблем: {0}.", summary.Detections);
+                        AppNotificationCenter.Instance.Push(
+                            L.T("Сканер: обнаружены угрозы"),
+                            L.T("Проверка «{0}»: проблемных объектов — {1}.", path, summary.Detections),
+                            AppNotificationKind.Danger);
+                        break;
+
+                    default:
+                        // «Не найдено» только при полном прохождении (документ п. 36/51):
+                        // ошибки, пропуски и отмена уже обработаны выше.
+                        StatusText = L.T("На момент сканирования обнаружений не найдено.");
+                        break;
                 }
 
                 LastScanSummaryText = L.T("Файлов: {0} | Пропущено: {1} | Ошибок: {2}",
                     summary.FilesScanned, summary.FilesSkipped, summary.Errors);
 
-                _logger.Info($"SCAN | finished | files={summary.FilesScanned} | detections={summary.Detections} | errors={summary.Errors}");
+                _logger.Info($"SCAN | finished | outcome={scanResult.Outcome} | files={summary.FilesScanned} | detections={summary.Detections} | errors={summary.Errors}");
 
                 _history.Enqueue(new HistoryEvent(
                     DateTime.Now,
                     L.T("Сканер"),
                     L.T(scanDirectory ? "Сканирование папки" : "Проверка файла"),
-                    // П. SCAN-01: неполное покрытие (пропуски) — не «успех без оговорок».
-                    summary.Errors > 0 ? HistoryEvent.StatusFail
-                        : summary.FilesSkipped > 0 ? HistoryEvent.StatusWarn
-                        : HistoryEvent.StatusOk,
+                    // П. SCAN-01: неполное покрытие — не «успех без оговорок»;
+                    // угрозы и сбой прогона — не «успех» вовсе.
+                    scanResult.Outcome switch
+                    {
+                        ScanOutcome.Threats => HistoryEvent.StatusFail,
+                        ScanOutcome.Partial => HistoryEvent.StatusWarn,
+                        ScanOutcome.Cancelled => HistoryEvent.StatusWarn,
+                        _ => HistoryEvent.StatusOk,
+                    },
                     L.T("Файлов: {0}, обнаружений: {1}", summary.FilesScanned, summary.Detections)));
             }
             else
             {
+                if (result.Code == -1)
+                {
+                    SetOutcomeBadge(ScanOutcome.Cancelled);
+                }
+                else
+                {
+                    SetOutcomeBadge(ScanOutcome.Failed);
+                }
+
                 StatusText = result.Code == -1
                     ? L.T("Сканирование отменено.")
                     : L.T("Ошибка: {0}", result.Message);

@@ -27,12 +27,22 @@
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- «Обновить»: ручной пересчёт объёмов карточек без повторного
+             захода во вкладку (спиннеры на время подсчёта). -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,12" LastChildFill="False">
+            <Button DockPanel.Dock="Left"
+                    Content="{DynamicResource S_Refresh}"
+                    Command="{Binding RefreshCommand}"
+                    ToolTipService.ShowOnDisabled="True" />
+        </DockPanel>
+
         <!-- Карточка операции: название слева, справа объём и кнопка «Очистить» -->
-        <StackPanel Grid.Row="0">
+        <StackPanel Grid.Row="1">
             <Border Style="{StaticResource SectionCard}">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -110,7 +120,7 @@
             </Border>
         </StackPanel>
 
-        <StackPanel Grid.Row="1">
+        <StackPanel Grid.Row="2">
             <StackPanel Orientation="Horizontal">
                 <TextBlock VerticalAlignment="Center"
                            Style="{StaticResource SectionStatusText}"

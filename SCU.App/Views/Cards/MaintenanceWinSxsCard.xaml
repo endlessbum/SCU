@@ -1,0 +1,43 @@
+<UserControl x:Class="SCU.Views.Cards.MaintenanceWinSxsCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Border Style="{StaticResource SectionCard}">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_MaintWinSxsTitle}" />
+                <controls:PinGlyph CardId="maint.winsxs" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource CardIntroText}"
+                       Text="{DynamicResource S_MaintWinSxsDesc}" />
+            <WrapPanel>
+                <Button Content="{DynamicResource S_MaintWinSxsAnalyze}"
+                        Margin="0,0,8,8"
+                        HorizontalAlignment="Left"
+                        Command="{Binding AnalyzeComponentStoreCommand}" />
+                <Button Content="{DynamicResource S_MaintWinSxsCleanup}"
+                        Margin="0,0,8,8"
+                        HorizontalAlignment="Left"
+                        Command="{Binding StartComponentCleanupCommand}" />
+                <!-- П.17б: «Отмена» активна только после запуска «Анализ» или «Очистить» -->
+                <Button Content="{DynamicResource S_Cancel}"
+                        Margin="0,0,8,8"
+                        HorizontalAlignment="Left"
+                        Command="{Binding CancelCleanupCommand}"
+                        ToolTipService.ShowOnDisabled="True" />
+                <Button Content="{DynamicResource S_MaintWinSxsResetBase}"
+                        Margin="0,0,8,8"
+                        HorizontalAlignment="Left"
+                        Style="{StaticResource DangerButton}"
+                        ToolTip="{DynamicResource S_MaintWinSxsResetBaseTip}"
+                        ToolTipService.InitialShowDelay="250"
+                        ToolTipService.ShowOnDisabled="True"
+                        Command="{Binding StartComponentCleanupResetBaseCommand}" />
+            </WrapPanel>
+            <TextBlock Style="{StaticResource MonoText}"
+                       Margin="0,4,0,0"
+                       Text="{Binding ComponentStoreText}"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+    </Border>
+</UserControl>

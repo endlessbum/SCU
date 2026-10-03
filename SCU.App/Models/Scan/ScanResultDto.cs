@@ -88,6 +88,11 @@ public sealed class ScanResultDto
 
     [JsonPropertyName("detections")]
     public List<DetectionDto> Detections { get; set; } = new();
+
+    // Классификация исхода по матрице аудита: не приходит из протокола,
+    // проставляется ScannerRunner'ом сразу после разбора finished.
+    [JsonIgnore]
+    public ScanOutcome Outcome { get; set; } = ScanOutcome.Clean;
 }
 
 public enum ScanEventKind

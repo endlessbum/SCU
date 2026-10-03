@@ -4,6 +4,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:cards="clr-namespace:SCU.Views.Cards"
              mc:Ignorable="d"
              d:DesignHeight="520" d:DesignWidth="860">
     <Grid>
@@ -41,26 +42,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource SectionCard}">
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_MaintIntegrityTitle}" />
-                        </StackPanel>
-                        <TextBlock Style="{StaticResource CardIntroText}"
-                                   Text="{DynamicResource S_MaintIntegrityDesc}" />
-                        <!-- П.17а: «Отмена» активна только после запуска DISM + SFC -->
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button Content="{DynamicResource S_MaintIntegrityRun}"
-                                    Margin="0,0,8,0"
-                                    HorizontalAlignment="Left"
-                                    Command="{Binding RunIntegrityCheckCommand}" />
-                            <Button Content="{DynamicResource S_Cancel}"
-                                    HorizontalAlignment="Left"
-                                    Command="{Binding CancelIntegrityCommand}"
-                                    ToolTipService.ShowOnDisabled="True" />
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
+                <cards:MaintenanceIntegrityCard />
 
                 <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
@@ -150,43 +132,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource SectionCard}">
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_MaintWinSxsTitle}" />
-                        </StackPanel>
-                        <TextBlock Style="{StaticResource CardIntroText}"
-                                   Text="{DynamicResource S_MaintWinSxsDesc}" />
-                        <WrapPanel>
-                            <Button Content="{DynamicResource S_MaintWinSxsAnalyze}"
-                                    Margin="0,0,8,8"
-                                    HorizontalAlignment="Left"
-                                    Command="{Binding AnalyzeComponentStoreCommand}" />
-                            <Button Content="{DynamicResource S_MaintWinSxsCleanup}"
-                                    Margin="0,0,8,8"
-                                    HorizontalAlignment="Left"
-                                    Command="{Binding StartComponentCleanupCommand}" />
-                            <!-- П.17б: «Отмена» активна только после запуска «Анализ» или «Очистить» -->
-                            <Button Content="{DynamicResource S_Cancel}"
-                                    Margin="0,0,8,8"
-                                    HorizontalAlignment="Left"
-                                    Command="{Binding CancelCleanupCommand}"
-                                    ToolTipService.ShowOnDisabled="True" />
-                            <Button Content="{DynamicResource S_MaintWinSxsResetBase}"
-                                    Margin="0,0,8,8"
-                                    HorizontalAlignment="Left"
-                                    Style="{StaticResource DangerButton}"
-                                    ToolTip="{DynamicResource S_MaintWinSxsResetBaseTip}"
-                                    ToolTipService.InitialShowDelay="250"
-                                    ToolTipService.ShowOnDisabled="True"
-                                    Command="{Binding StartComponentCleanupResetBaseCommand}" />
-                        </WrapPanel>
-                        <TextBlock Style="{StaticResource MonoText}"
-                                   Margin="0,4,0,0"
-                                   Text="{Binding ComponentStoreText}"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
+                <cards:MaintenanceWinSxsCard />
 
                 <Border Style="{StaticResource SectionCard}">
                     <StackPanel>

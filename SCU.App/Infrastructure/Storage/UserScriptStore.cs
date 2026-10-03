@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using SCU.Common;
+using SCU.Interop;
 
 namespace SCU.Infrastructure.Storage;
 
@@ -109,7 +110,9 @@ public sealed class UserScriptStore
         return data;
     }
 
-    public void Delete(UserScriptData data)
+    // true — файла нет или удалён; false — занят/не удалился: запись из
+    // scripts.json в этом случае убирать нельзя, иначе файл останется сиротой.
+    public bool Delete(UserScriptData data)
     {
         try
         {
@@ -117,10 +120,13 @@ public sealed class UserScriptStore
             {
                 File.Delete(ScriptPath(data));
             }
+
+            return true;
         }
         catch (Exception exception)
         {
             _logger.Warn("USCRIPT | delete file failed | " + exception.Message);
+            return false;
         }
     }
 
@@ -293,9 +299,38 @@ public sealed class UserScriptStore
         }
 
         process.Start();
-        var stdout = process.StandardOutput.ReadToEndAsync(ct);
-        var stderr = process.StandardError.ReadToEndAsync(ct);
-        await process.WaitForExitAsync(ct).ConfigureAwait(false);
+
+        // Отмена убивает дерево процессов (аудит п. 7): powershell/cmd и их
+        // дочерние процессы не продолжают жить после отмены в UI.
+        using var registration = ct.Register(() =>
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception)
+            {
+                // процесс мог выйти между проверкой и Kill — не ошибка
+            }
+        });
+
+        // Чтение без ct: при отмене пайпы закроются вместе с убитым деревом,
+        // задачи чтения завершатся сами ( faulted-чтение ждёт ObserveQuietly).
+        var stdout = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+        var stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        try
+        {
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await RunnerGuard.ObserveQuietly(stdout, stderr).ConfigureAwait(false);
+            throw;
+        }
+
         var output = (await stdout.ConfigureAwait(false)) + (await stderr.ConfigureAwait(false));
         return (process.ExitCode, output);
     }

@@ -37,6 +37,18 @@ public partial class ScannerView
         Opacity = 1;
     }
 
+    // Меню «Дополнительно» тулбара: открытие/закрытие popup. Команды пунктов
+    // остаются командами ViewModel — code-behind только показывает/прячет меню.
+    private void OnMoreClick(object sender, RoutedEventArgs e)
+    {
+        MorePopup.IsOpen = true;
+    }
+
+    private void OnMoreItemClick(object sender, RoutedEventArgs e)
+    {
+        MorePopup.IsOpen = false;
+    }
+
     // async void на пользовательском вводе: исключение уйдёт в глобальный обработчик
     // и завершит приложение, поэтому гасим его тостом.
     private async void OnDrop(object sender, DragEventArgs e)

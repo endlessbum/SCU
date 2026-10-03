@@ -377,18 +377,25 @@
                 </Border>
 
                 <Border Style="{StaticResource SectionCard}">
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_PowerCpuTitle}" />
-                            <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource I_PowerCpuClear}" />
+                    <!-- Кнопка справа по центру высоты — карточка в одну строку, без пустот -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_PowerCpuTitle}" />
+                                <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource I_PowerCpuClear}" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource SectionStatusText}"
+                                       Text="{Binding CpuLimitsText}" />
                         </StackPanel>
-                        <Button Content="{DynamicResource S_PowerCpuClear}"
-                                Margin="0,8,0,0"
-                                HorizontalAlignment="Left"
-                                Command="{Binding ClearCpuLimitsCommand}" />
-                        <TextBlock Style="{StaticResource SectionStatusText}"
-                                   Text="{Binding CpuLimitsText}" />
-                    </StackPanel>
+                        <Button Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Command="{Binding ClearCpuLimitsCommand}"
+                                Content="{DynamicResource S_PowerCpuClear}" />
+                    </Grid>
                 </Border>
             </StackPanel>
 

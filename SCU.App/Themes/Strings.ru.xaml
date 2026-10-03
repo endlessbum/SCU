@@ -25,7 +25,7 @@
     <sys:String x:Key="S_Section06_Title">Службы Windows</sys:String>
     <sys:String x:Key="S_Section06_Desc">Статус и управление выбранными службами</sys:String>
     <sys:String x:Key="S_Section07_Title">Автозагрузка</sys:String>
-    <sys:String x:Key="S_Section07_Desc">Run/RunOnce и папки Startup</sys:String>
+    <sys:String x:Key="S_Section07_Desc">Run/RunOnce, папки Startup и StartupTask</sys:String>
     <sys:String x:Key="S_Section08_Title">Питание, память и CPU</sys:String>
     <sys:String x:Key="S_Section08_Desc">PowerCfg, файл подкачки и BCD</sys:String>
     <sys:String x:Key="S_Section09_Title">Сеть</sys:String>
@@ -47,6 +47,7 @@
     <sys:String x:Key="S_ScannerScanDesc">On-demand сканер ScannerCore: подписи, PE-анализ, база хешей. Работает параллельно с Defender, не заменяя его.</sys:String>
     <sys:String x:Key="S_ScannerScanFile">Выбрать файл…</sys:String>
     <sys:String x:Key="S_ScannerCancel">Отмена</sys:String>
+    <sys:String x:Key="S_ScannerMore">Дополнительно ▾</sys:String>
     <sys:String x:Key="S_ScannerQuarantine">В карантин</sys:String>
     <sys:String x:Key="S_ScannerQuarantineTitle">Карантин</sys:String>
     <sys:String x:Key="S_ScannerRestore">Восстановить</sys:String>
@@ -188,7 +189,7 @@
     <sys:String x:Key="S_PowerPageFile16">16ГБ ОЗУ → 4096 МБ</sys:String>
     <sys:String x:Key="S_PowerPageFile32">32ГБ ОЗУ → 2048 МБ</sys:String>
     <sys:String x:Key="S_PowerCpuTitle">Ограничения CPU и ОЗУ (bcdedit)</sys:String>
-    <sys:String x:Key="S_PowerCpuClear">Убрать ограничения numproc / truncatememory</sys:String>
+    <sys:String x:Key="S_PowerCpuClear">Убрать ограничения</sys:String>
 
     <sys:String x:Key="S_NetAdapterProfileTitle">Профиль сетевого адаптера</sys:String>
     <sys:String x:Key="S_NetAdapterProfileDesc">Универсальный сбалансированный профиль для физических NIC. Неподдерживаемые свойства драйвера пропускаются; остальные параметры не изменяются.</sys:String>
@@ -286,6 +287,7 @@
     <sys:String x:Key="S_Install">Установить</sys:String>
 
     <sys:String x:Key="S_Backup">Бэкап</sys:String>
+    <sys:String x:Key="S_Refresh">Обновить</sys:String>
     <sys:String x:Key="S_Rollback">Откатить</sys:String>
     <sys:String x:Key="S_TasksDisableAll">Отключить все</sys:String>
     <sys:String x:Key="S_SettingsLog">Журнал</sys:String>
@@ -345,6 +347,7 @@
     <sys:String x:Key="S_EmptyStateStartup">Приложений в автозагрузке нет</sys:String>
     <!-- Ввод: сноска к карточкам со звёздочкой (ускорение мыши, залипание клавиш) -->
     <sys:String x:Key="S_InputAsteriskNote">* Включение отключает параметр</sys:String>
+<sys:String x:Key="S_PrivacyAsteriskNote">* Включение отключает параметр</sys:String>
 
     <!-- ===================== Раздел 0 «Состояние ПК»: большой выключатель ===================== -->
     <sys:String x:Key="D_BatchTitle">Применить оптимизацию</sys:String>
@@ -612,6 +615,9 @@
     <sys:String x:Key="S_MenuEditorTitle">Редактирование меню</sys:String>
     <sys:String x:Key="S_MenuEditorCardDesc">Включение и отключение вкладок, переименование, перенос между группами, пользовательские вкладки и утилиты.</sys:String>
     <sys:String x:Key="S_MenuEditorOpen">Открыть редактор</sys:String>
+    <sys:String x:Key="S_OnboardingTitle">Знакомство с приложением</sys:String>
+    <sys:String x:Key="S_OnboardingDesc">Порядок использования утилит и главные возможности приложения.</sys:String>
+    <sys:String x:Key="S_OnboardingOpen">Показать знакомство</sys:String>
     <sys:String x:Key="S_MenuEditorNewTitle">Название:</sys:String>
     <sys:String x:Key="S_MenuEditorNewGroup">Группа вкладки</sys:String>
     <sys:String x:Key="S_MenuEditorAdd">Добавить</sys:String>
@@ -647,4 +653,10 @@
     <sys:String x:Key="S_InstalledScriptsHint">«Посмотреть» — просмотр; «Редактировать» — правка с сохранением и применением; «Удалить» удаляет скрипт и его карточку.</sys:String>
     <sys:String x:Key="S_ScriptView">Посмотреть</sys:String>
     <sys:String x:Key="S_ScriptEdit">Редактировать</sys:String>
+    <sys:String x:Key="S_BackupsTitle">Бэкапы</sys:String>
+    <sys:String x:Key="S_BackupsDesc">Все сохранённые бэкапы: раздел, время создания и назначение каждого.</sys:String>
+    <sys:String x:Key="S_BackupsOpen">Посмотреть</sys:String>
+    <sys:String x:Key="S_BackupsEmpty">Бэкапов пока нет — они появятся после первых изменений в разделах.</sys:String>
+    <sys:String x:Key="S_BackupsHint">На раздел хранятся до 10 самых свежих бэкапов, более старые удаляются автоматически.</sys:String>
+    <sys:String x:Key="S_BackupsClose">Закрыть</sys:String>
 </ResourceDictionary>

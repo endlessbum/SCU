@@ -1,4 +1,5 @@
 ﻿<UserControl xmlns:controls="clr-namespace:SCU.Views.Controls"
+             xmlns:cards="clr-namespace:SCU.Views.Cards"
              x:Class="SCU.Views.Controls.UserScriptsStrip"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -7,72 +8,12 @@
              mc:Ignorable="d"
              d:DesignHeight="220" d:DesignWidth="800">
     <!-- Полоса пользовательских скриптов открытого раздела: карточки, добавленные
-         через «Настройки → Добавить свой скрипт». Стили — как у встроенных карточек. -->
+         через «Настройки → Добавить свой скрипт». Визуал — общая карточка
+         Views/Cards/UserScriptCard (та же живёт закреплённой на «Главной»). -->
     <ItemsControl ItemsSource="{Binding Cards}">
         <ItemsControl.ItemTemplate>
             <DataTemplate>
-                <Border Style="{StaticResource SectionCard}">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource RowHeaderText}"
-                                           TextTrimming="CharacterEllipsis"
-                                           Text="{Binding Title}" />
-                                <!-- Информер ⓘ: описание скрипта, если задано -->
-                                <controls:InfoGlyph Margin="6,0,0,0"
-                                                    VerticalAlignment="Center"
-                                                    InfoText="{Binding Tooltip}">
-                                    <controls:InfoGlyph.Style>
-                                        <Style TargetType="controls:InfoGlyph">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HasTooltip}" Value="True">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </controls:InfoGlyph.Style>
-                                </controls:InfoGlyph>
-                            </StackPanel>
-                            <TextBlock Style="{StaticResource RowActionText}"
-                                       Text="{Binding Comment}" />
-                            <TextBlock Text="{Binding ResultText}">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding ResultText, FallbackValue=null}" Value="{x:Null}">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding ResultText, FallbackValue=null}" Value="">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Control Margin="0,0,8,0" VerticalAlignment="Center">
-                                <Control.Style>
-                                    <Style TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Control.Style>
-                            </Control>
-                            <Button Content="{DynamicResource S_Apply}" Click="OnRunCardClick" />
-                        </StackPanel>
-                    </Grid>
-                </Border>
+                <cards:UserScriptCard RunRequested="OnCardRunRequested" />
             </DataTemplate>
         </ItemsControl.ItemTemplate>
     </ItemsControl>

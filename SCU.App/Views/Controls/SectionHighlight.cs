@@ -17,13 +17,20 @@ internal sealed class SectionHighlight
     private readonly System.Windows.Controls.ListBox _sidebarList;
     private readonly ScrollViewer _contentScroll;
 
+    // Корень полосы пользовательских скриптов: она живёт ВНЕ ContentScroll
+    // (MainWindow, Row 3), поэтому поиск карточки скрипта по заголовку идёт
+    // и по ней. null — полосы в окне нет.
+    private readonly DependencyObject? _scriptsRoot;
+
     public SectionHighlight(Window owner, MainViewModel viewModel,
-        System.Windows.Controls.ListBox sidebarList, ScrollViewer contentScroll)
+        System.Windows.Controls.ListBox sidebarList, ScrollViewer contentScroll,
+        DependencyObject? scriptsRoot = null)
     {
         _owner = owner;
         _viewModel = viewModel;
         _sidebarList = sidebarList;
         _contentScroll = contentScroll;
+        _scriptsRoot = scriptsRoot;
     }
 
     // ===================== Подсветка элемента после перехода по ссылке =====================
@@ -69,9 +76,13 @@ internal sealed class SectionHighlight
     // Прокрутка, гарантирующая полную видимость карточки с отступом под контур:
     // позиция карточки считается в координатах контента ScrollViewer и
     // сопоставляется с текущим окном просмотра (учитывает и низ, и верх).
+    // Карточка вне контента скроллера (карточка скрипта в полосе под разделом)
+    // прокрутки не требует — она и так видна; координаты в чужом дереве
+    // считать нельзя, TransformToVisual бросил бы исключение.
     private void EnsureCardVisible(FrameworkElement card)
     {
         if (_contentScroll.Content is not Visual contentVisual
+            || !card.IsDescendantOf(contentVisual)
             || _contentScroll.ViewportHeight <= 0
             || card.ActualHeight <= 0)
         {
@@ -109,6 +120,13 @@ internal sealed class SectionHighlight
         TextBlock? best = null;
         var bestScore = -1;
         Walk(root);
+        // Полоса скриптов — вне скроллера: ищем и в ней (совпадение по точности
+        // сравнивается с лучшим кандидатом из раздела).
+        if (_scriptsRoot is not null)
+        {
+            Walk(_scriptsRoot);
+        }
+
         return best is null ? null : PickRowCard(best, title);
 
         void Walk(DependencyObject node)

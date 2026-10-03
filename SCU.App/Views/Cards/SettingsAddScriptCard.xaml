@@ -1,0 +1,66 @@
+<UserControl x:Class="SCU.Views.Cards.SettingsAddScriptCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Border Style="{StaticResource SectionCard}">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource RowHeaderText}"
+                               Text="{DynamicResource S_ScriptCardTitle}" />
+                    <!-- Информер ⓘ: поддерживаемые расширения -->
+                    <controls:InfoGlyph Margin="6,0,0,0"
+                                        VerticalAlignment="Center"
+                                        InfoText="{DynamicResource S_ScriptCardExtensions}" />
+                    <controls:PinGlyph CardId="settings.addscript" />
+                </StackPanel>
+                <TextBlock Style="{StaticResource RowActionText}"
+                           Text="{DynamicResource S_ScriptCardDesc}" />
+                <TextBlock Margin="0,4,0,0"
+                           TextTrimming="CharacterEllipsis"
+                           Text="{Binding SelectedScriptPath}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedScriptPath}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- Неактивна, пока не добавлен первый скрипт -->
+                <Button Style="{StaticResource SmallButton}"
+                        Margin="0,0,8,0"
+                        Content="{DynamicResource S_ScriptInstalled}"
+                        IsEnabled="{Binding HasInstalledScripts}"
+                        Command="{Binding ShowInstalledScriptsCommand}" />
+                <Button Style="{StaticResource SmallButton}"
+                        Margin="0,0,8,0"
+                        Content="{DynamicResource S_ScriptPick}"
+                        Command="{Binding PickScriptCommand}" />
+                <Control VerticalAlignment="Center" Margin="0,0,8,0">
+                    <Control.Style>
+                        <Style TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsValidatingScript}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Control.Style>
+                </Control>
+                <Button Content="{DynamicResource S_ScriptAdd}"
+                        Command="{Binding AddScriptCommand}" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

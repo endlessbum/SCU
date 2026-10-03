@@ -4,6 +4,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:cards="clr-namespace:SCU.Views.Cards"
              mc:Ignorable="d"
              d:DesignHeight="720" d:DesignWidth="860">
     <UserControl.Resources>
@@ -20,39 +21,27 @@
         </Grid.RowDefinitions>
 
         <!-- Состояние драйверов -->
-        <Border Grid.Row="0" Style="{StaticResource SectionCard}">
-            <StackPanel>
-                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvStateTitle}" />
-                <TextBlock Style="{StaticResource CardIntroText}"
-                           Text="{DynamicResource S_DrvStateDesc}" />
-                <Button Content="{DynamicResource S_DrvRescan}"
-                        HorizontalAlignment="Right"
-                        Margin="0,8,0,0"
-                        Command="{Binding RefreshCommand}" />
-                <TextBlock Text="{Binding SummaryText}">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock" BasedOn="{StaticResource SectionStatusText}">
-                            <Style.Triggers>
-                                <Trigger Property="Text" Value="">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-            </StackPanel>
-        </Border>
+        <cards:DriversStateCard Grid.Row="0" />
 
-        <!-- Обновления драйверов (Windows Update) -->
+        <!-- Обновления драйверов (Windows Update): заголовок и описание слева,
+             кнопка поиска справа по центру высоты шапки — карточка без пустот. -->
         <Border Grid.Row="1" Style="{StaticResource SectionCard}">
             <StackPanel>
-                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvUpdatesTitle}" />
-                <TextBlock Style="{StaticResource CardIntroText}"
-                           Text="{DynamicResource S_DrvUpdatesDesc}" />
-                <Button Content="{DynamicResource S_DrvSearch}"
-                        HorizontalAlignment="Right"
-                        Margin="0,8,0,0"
-                        Command="{Binding SearchUpdatesCommand}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvUpdatesTitle}" />
+                        <TextBlock Style="{StaticResource CardIntroText}"
+                                   Text="{DynamicResource S_DrvUpdatesDesc}" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Content="{DynamicResource S_DrvSearch}"
+                            Command="{Binding SearchUpdatesCommand}" />
+                </Grid>
                 <TextBlock Text="{Binding UpdatesHeaderText}">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock" BasedOn="{StaticResource SectionStatusText}">
@@ -251,17 +240,39 @@
             </StackPanel>
         </Border>
 
-        <!-- Резервная копия драйверов -->
+        <!-- Резервная копия драйверов: кнопка справа по центру; при экспорте
+             спиннер стоит слева от кнопки — без затемнения всего экрана. -->
         <Border Grid.Row="5" Style="{StaticResource SectionCard}">
-            <StackPanel>
-                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvExportTitle}" />
-                <TextBlock Style="{StaticResource CardIntroText}"
-                           Text="{DynamicResource S_DrvExportDesc}" />
-                <Button Content="{DynamicResource S_DrvExport}"
-                        HorizontalAlignment="Right"
-                        Margin="0,8,0,0"
-                        Command="{Binding ExportCommand}" />
-            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                    <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvExportTitle}" />
+                    <TextBlock Style="{StaticResource CardIntroText}"
+                               Text="{DynamicResource S_DrvExportDesc}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Control VerticalAlignment="Center"
+                             Margin="0,0,8,0">
+                        <Control.Style>
+                            <Style TargetType="Control" BasedOn="{StaticResource AccentSpinner}">
+                                <Setter Property="Width" Value="14" />
+                                <Setter Property="Height" Value="14" />
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsExporting}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Control.Style>
+                    </Control>
+                    <Button Content="{DynamicResource S_DrvExport}"
+                            Command="{Binding ExportCommand}" />
+                </StackPanel>
+            </Grid>
         </Border>
 
         <StackPanel Grid.Row="6" Margin="0,4,0,8">

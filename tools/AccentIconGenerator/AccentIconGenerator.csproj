@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Генератор набора окрашенных иконок для ярлыков (Assets\Icons\SCU-<пресет>-light.ico,
+       один файл на пресет, обе темы используют его же).
+       В решение не входит; запуск вручную после изменения SCU.ico или палитры пресетов:
+         dotnet run ▸ project tools/AccentIconGenerator ▸ args: SCU.ico SCU.App/Assets/Icons
+       Кадры < 256 px пишутся DIB-кадрами (BI_RGB 32bpp, прямая альфа), 256 ▸ PNG-кадром. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>AccentIconGenerator</AssemblyName>
+  </PropertyGroup>
+</Project>

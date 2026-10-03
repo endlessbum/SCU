@@ -87,19 +87,21 @@
                         <TextBlock Style="{StaticResource BodyStrongText}"
                                                                       Margin="0,0,0,12"
                                    Text="{DynamicResource S_InfoSummary}" />
+                        <!-- Те же строки-пары, что у «Логических дисков»: подпись
+                             в фиксированной колонке, значение рядом — ровный столбик -->
                         <ItemsControl ItemsSource="{Binding SystemInfo.Fields}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Margin="0,4">
+                                    <Grid Style="{StaticResource ListRowGrid}">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="180" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0"
-                                                   Margin="0,0,16,0"
-                                                   MaxWidth="280"
                                                    VerticalAlignment="Top"
                                                    TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Label}"
+                                                   ToolTipService.InitialShowDelay="300"
                                                    Text="{Binding Label}"
                                                    Foreground="{DynamicResource SecondaryTextBrush}" />
                                         <TextBlock Grid.Column="1"

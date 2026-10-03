@@ -1,0 +1,24 @@
+<UserControl x:Class="SCU.Views.Cards.UpdateServicesCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Border Style="{StaticResource SectionCard}">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_WuServicesTitle}" />
+                <controls:PinGlyph CardId="update.services" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource CardIntroText}"
+                       Text="{DynamicResource S_WuServicesDesc}" />
+            <WrapPanel>
+                <Button Content="{DynamicResource S_WuBlock}"
+                        Margin="0,0,8,8"
+                        Style="{StaticResource DangerButton}"
+                        Command="{Binding BlockUpdatesCommand}" />
+                <Button Content="{DynamicResource S_WuUnblock}"
+                        Margin="0,0,8,8"
+                        Command="{Binding UnblockUpdatesCommand}" />
+            </WrapPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

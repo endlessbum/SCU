@@ -25,6 +25,7 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
     [NotifyCanExecuteChangedFor(nameof(CleanTempCommand))]
     [NotifyCanExecuteChangedFor(nameof(CleanBrowsersCommand))]
     [NotifyCanExecuteChangedFor(nameof(CleanUpdateCacheCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     private bool _isBusy;
 
@@ -331,6 +332,19 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
     // Счётчик запросов: результат устаревшего подсчёта (например, после быстрого
     // повторного открытия вкладки) не должен перезаписать свежий.
     private int _measureVersion;
+
+    // Кнопка «Обновить»: ручной пересчёт объёмов карточек — те же четыре независимых подсчёта,
+    // что и при открытии вкладки. Подсчёт не требует прав администратора,
+    // блокируется только на время операции очистки.
+    [RelayCommand(CanExecute = nameof(CanRefreshSizes))]
+    private async Task RefreshAsync()
+    {
+        StatusText = L.T("Пересчёт объёмов…");
+        await ActivateAsync().ConfigureAwait(true);
+        StatusText = L.T("Объёмы пересчитаны.");
+    }
+
+    private bool CanRefreshSizes() => !IsBusy;
 
     // Пересчёт объёмов при открытии вкладки: четыре независимых подсчёта — каждая
     // карточка показывает индикатор ровно до готовности своих данных.

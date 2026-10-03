@@ -202,24 +202,32 @@
         </Border>
 
         <!-- ===================== Детальные метрики ===================== -->
+        <!-- Колонки значений — SharedSizeGroup: шапка и все строки делят ширину
+             колонки (иначе каждая Auto-колонка размеряется по своей строке,
+             и заголовки уезжают от данных). Кнопка «Открыть» резервирует место
+             и в строках без навигации (Hidden) — колонка не «прыгает». -->
         <Border Style="{StaticResource SectionCard}"
                 Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
-            <StackPanel>
+            <StackPanel Grid.IsSharedSizeScope="True">
                 <TextBlock Style="{StaticResource RowHeaderText}"
                            Text="{DynamicResource S_BenchMetricsHeader}" />
                 <!-- Шапка таблицы -->
                 <Grid Margin="0,10,0,2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="BenchValue" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="BenchConformity" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="BenchStatus" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="BenchAction" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Style="{StaticResource CaptionText}" Text="{DynamicResource S_BenchColumnMetric}" />
                     <TextBlock Grid.Column="1" MinWidth="120" Margin="0,0,12,0" Style="{StaticResource CaptionText}" Text="{DynamicResource S_BenchColumnValue}" />
                     <TextBlock Grid.Column="2" MinWidth="90" Margin="0,0,12,0" Style="{StaticResource CaptionText}" Text="{DynamicResource S_BenchColumnConformity}" />
-                    <TextBlock Grid.Column="3" MinWidth="110" Margin="0,0,70,0" TextAlignment="Right" Style="{StaticResource CaptionText}" Text="{DynamicResource S_BenchColumnStatus}" />
+                    <TextBlock Grid.Column="3" MinWidth="110" Margin="0,0,8,0" TextAlignment="Right" Style="{StaticResource CaptionText}" Text="{DynamicResource S_BenchColumnStatus}" />
+                    <Button Grid.Column="4"
+                            Visibility="Hidden"
+                            Style="{StaticResource SmallButton}"
+                            Content="{DynamicResource S_BenchOpen}" />
                 </Grid>
                 <ItemsControl ItemsSource="{Binding MetricRows}">
                     <ItemsControl.ItemTemplate>
@@ -227,10 +235,10 @@
                             <Grid Margin="0,4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="BenchValue" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="BenchConformity" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="BenchStatus" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="BenchAction" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0"
                                            VerticalAlignment="Center"

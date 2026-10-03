@@ -52,6 +52,103 @@ public sealed class ScannerUpdateService
         };
     }
 
+    // Адрес db-version.json рядом с пакетом: из URL пакета заменой имени файла.
+    // null — адрес не разобрать (вызывающий код скачивает пакет без сверки).
+    internal static string? DeriveVersionUrl(string packageUrl)
+    {
+        if (!Uri.TryCreate(packageUrl, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        var path = uri.LocalPath;
+        var fileName = Path.GetFileName(path);
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return null;
+        }
+
+        return new Uri(uri, path[..^fileName.Length] + "db-version.json").ToString();
+    }
+
+    // Версия базы на релизе — маленький ассет db-version.json рядом с пакетом.
+    // Сверка до скачивания избавляет от перекачивания пакета целиком при каждом
+    // старте. Сбой (нет ассета, сети) — обычный Failure: вызывающий код ведёт
+    // себя как раньше, то есть скачивает пакет.
+    public async Task<Result<string>> GetLatestDbVersionAsync(CancellationToken ct = default)
+    {
+        var versionUrl = DeriveVersionUrl(ResolveUrl());
+        if (versionUrl is null)
+        {
+            return Result<string>.Failure("Не удалось определить адрес версии базы.", 2);
+        }
+
+        try
+        {
+            // Ручные redirect — те же ограничения, что у пакета (п. 8 аудита).
+            var current = new Uri(versionUrl);
+            HttpResponseMessage? response = null;
+            for (var redirect = 0; ; redirect++)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, current);
+                response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
+                    .ConfigureAwait(false);
+                if (!IsRedirect(response.StatusCode))
+                {
+                    break;
+                }
+
+                using (response)
+                {
+                    if (redirect >= MaxRedirects)
+                    {
+                        return Result<string>.Failure("Превышен лимит перенаправлений.", 2);
+                    }
+
+                    var location = response.Headers.Location;
+                    if (location is null)
+                    {
+                        return Result<string>.Failure("Redirect без адреса Location.", 2);
+                    }
+
+                    var next = location.IsAbsoluteUri ? location : new Uri(current, location);
+                    if (!IsAllowedRedirect(current, next))
+                    {
+                        return Result<string>.Failure("Недопустимый redirect (только HTTPS, без смены хоста и понижения схемы).", 2);
+                    }
+
+                    current = next;
+                }
+            }
+
+            using (response)
+            {
+                response.EnsureSuccessStatusCode();
+                await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                using var json = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+                var version = json.RootElement.ValueKind == JsonValueKind.Object
+                    && json.RootElement.TryGetProperty("version", out var value)
+                    && value.ValueKind == JsonValueKind.String
+                        ? value.GetString()
+                        : null;
+                return string.IsNullOrWhiteSpace(version)
+                    ? Result<string>.Failure("db-version.json без версии.", 2)
+                    : Result<string>.Success(version);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return Result<string>.Failure("Отменено", -1);
+        }
+        catch (Exception exception)
+        {
+            // Сетевые и JSON-ошибки: версию узнать не удалось — это не сбой
+            // обновления, пакет качается без сверки.
+            _logger?.Warn("SCANNER UPDATE | version probe failed | " + exception.Message);
+            return Result<string>.Failure(exception.Message);
+        }
+    }
+
     public string ResolveUrl()
     {
         try

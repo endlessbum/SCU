@@ -17,17 +17,22 @@ internal sealed record ResidualCleanupReport(
 // Установленное приложение из ARP-раздела реестра (Add/Remove Programs).
 // Показывается всё, у чего есть DisplayName, включая скрытые SystemComponent
 // записи — вкладка «Приложения» задумана как полный список программ системы.
-// Насколько приложение важно для работы системы (прочерк слева от «Удалить»).
+// Насколько приложение важно для системы (прочерк слева от «Удалить»).
+// Правило: зелёный прочерк и активное «Удалить» — у всего, что не поставляется
+// с официальной сборкой Windows (включая рекламные и навязанные корпорацией
+// приложения); не-зелёный — только у компонентов самой системы.
 public enum AppImportance
 {
-    // Игра или скачанное пользователем приложение/лаунчер — можно удалить.
+    // Приложение, не входящее в состав Windows: скачанное пользователем,
+    // рекламное или предустановленное корпорацией — можно удалять.
     User,
 
-    // Системное приложение/компонент: удалить можно, но возможны проблемы
-    // в работе зависимых программ.
+    // Драйвер/фирменная утилита производителя железа: удалить можно, но
+    // возможны проблемы в работе оборудования.
     System,
 
-    // Критичный системный компонент: удаление может вывести систему из строя.
+    // Компонент официальной сборки Windows: удаление может вывести систему
+    // из строя, кнопка «Удалить» неактивна.
     Critical,
 }
 
@@ -92,8 +97,8 @@ public sealed class InstalledApp : INotifyPropertyChanged
     public string DashTooltip => Importance switch
     {
         AppImportance.System => L.T(
-            "Системный компонент. Удалять не рекомендуется: могут перестать работать зависящие от него программы и компоненты. При необходимости его можно установить заново."),
-        AppImportance.Critical => L.T("Системное приложение"),
+            "Драйвер или фирменная утилита производителя железа. Удалять не рекомендуется: может нарушиться работа оборудования. При необходимости его можно установить заново."),
+        AppImportance.Critical => L.T("Компонент официальной сборки Windows"),
         _ => L.T("Можно удалить"),
     };
 
@@ -218,16 +223,16 @@ public sealed class InstalledAppsService
     private static bool IsFlagSet(RegistryKey key, string name) =>
         key.GetValue(name) is int value && value != 0;
 
-    // Классификация важности для системы:
-    // • User — игры, лаунчеры и скачанное пользователем: пер-установка (HKCU),
-    //   папка в профиле пользователя или сторонний издатель без системных
-    //   признаков (флаг SystemComponent у сторонних установщиков — лишь
-    //   «скрыть из списка», о важности он ничего не говорит);
-    // • System — компонент Microsoft/драйвер/платформа: удалить можно, но
-    //   возможны проблемы у зависимых программ;
-    // • Critical — установщик запретил удаление (NoRemove), запись помечена
-    //   скрытой системной (SystemComponent) у системного издателя, либо это
-    //   обновление/редистрибутив/среда выполнения Windows.
+    // Классификация важности для системы. Зелёный прочерк и активное «Удалить»
+    // — у всех приложений, кроме компонентов официальной сборки Windows:
+    // • Critical — компонент самой Windows (Edge/WebView2, VC++, .NET, DirectX,
+    //   обновления, SDK и т.п.) по имени записи;
+    // • System — драйвер/утилита производителя железа (жёлтый прочерк);
+    // • User — всё остальное, включая рекламные и навязанные корпорацией
+    //   приложения (OneDrive, Teams, Xbox и т.п.).
+    // Флаги реестра на важность не влияют: SystemComponent/NoRemove у
+    // сторонних и корпоративных записей — лишь политика установщика («скрыть
+    // из списка», «не показывать кнопку Remove»), а не признак системности.
     internal static AppImportance Classify(
         InstalledApp entry, bool systemComponent, bool noRemove, bool isPerUser)
     {
@@ -237,39 +242,32 @@ public sealed class InstalledAppsService
         var haystack = $"{name} {publisher} {location} {entry.UninstallString}";
 
         // Игры и лаунчеры — всегда пользовательское, даже если издатель Microsoft
-        // (Xbox-игры из Store), путь в WindowsApps или установщик пометил запись
-        // SystemComponent/NoRemove: проверяются первыми.
+        // (Xbox-игры из Store) или путь в WindowsApps: проверяются первыми.
         if (IsGameOrLauncher(haystack))
         {
             return AppImportance.User;
         }
 
         // Скачанное пользователем: пер-установка или папка в профиле. Системные
-        // компоненты в профиле пользователя не живут — до проверки флагов.
+        // компоненты в профиле пользователя не живут.
         if (isPerUser || IsUnderUserProfile(location))
         {
             return AppImportance.User;
         }
 
-        var isSystemNamed = IsSystemPattern(haystack);
-        var isCriticalNamed = IsCriticalPattern(name);
-
-        // NoRemove/SystemComponent у системных компонентов — признак критичности;
-        // у сторонних приложений это лишь политика установщика (скрыть запись из
-        // классического списка), важность для системы она не повышает.
-        if (isCriticalNamed || ((noRemove || systemComponent) && isSystemNamed))
+        // Компонент официальной сборки Windows — по имени записи.
+        if (IsCriticalPattern(name))
         {
             return AppImportance.Critical;
         }
 
-        // Системный компонент — только по положительным признакам: издатель или
-        // имя Microsoft / производителя железа, драйвер, среда выполнения.
-        if (isSystemNamed)
+        // Драйвер или утилита производителя железа.
+        if (IsDriverPattern(haystack))
         {
             return AppImportance.System;
         }
 
-        // Всё прочее стороннее — обычные скачанные пользователем программы.
+        // Всё прочее — пользовательское (в т.ч. навязанное корпорацией).
         return AppImportance.User;
     }
 
@@ -298,12 +296,13 @@ public sealed class InstalledAppsService
             ],
             StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsSystemPattern(string haystack) =>
+    // Драйвер/фирменная утилита производителя железа — единственный класс вне
+    // официальной сборки Windows, которому оставлен жёлтый прочерк (не реклама
+    // и не навязанное приложение, а поддержка оборудования).
+    private static bool IsDriverPattern(string haystack) =>
         ContainsAny(haystack,
             [
-                "Microsoft", "Windows", "Visual Studio", "NVIDIA", "AMD",
-                "Realtek", "Intel", "Driver", "Драйвер", "Runtime",
-                "Redistributable", "Распространяемый", "WindowsApps",
+                "NVIDIA", "AMD", "Realtek", "Intel", "Driver", "Драйвер",
             ],
             StringComparison.OrdinalIgnoreCase);
 
@@ -510,6 +509,7 @@ public sealed class InstalledAppsService
 
         var killed = 0;
         var exited = true;
+        var uninstallExitCode = 0;
         try
         {
             using var process = new Process();
@@ -527,25 +527,44 @@ public sealed class InstalledAppsService
                 return Result.Failure("Система не запустила деинсталлятор.", 1);
             }
 
-            // Тихие деинсталляторы завершаются сами; не завершился за таймаут —
+            // Cancellation-aware ожидание (аудит 2, п. 21): отмена пользователя
+            // прерывает ожидание немедленно, а не после 10-минутного таймаута.
+            // Тихие деинсталляторы завершаются сами; не уложился в таймаут —
             // снимаем процессы приложения и дерево деинсталлятора.
-            if (!process.WaitForExit((int)UninstallTimeoutForTests.TotalMilliseconds))
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(UninstallTimeoutForTests);
+            try
+            {
+                await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                killed = KillAppProcesses(app);
+                _logger.Warn($"APPS | uninstall cancelled | processes killed={killed} | " + app.DisplayName);
+            }
+            catch (OperationCanceledException)
             {
                 exited = false;
                 killed = KillAppProcesses(app);
                 _logger.Warn($"APPS | uninstall timed out | processes killed={killed} | " + app.DisplayName);
+            }
+
+            if (!process.HasExited)
+            {
                 try
                 {
-                    if (!process.HasExited)
-                    {
-                        process.Kill(entireProcessTree: true);
-                        _logger.Warn("APPS | uninstall tree killed | " + app.DisplayName);
-                    }
+                    process.Kill(entireProcessTree: true);
+                    _logger.Warn("APPS | uninstall tree killed | " + app.DisplayName);
                 }
                 catch (Exception killException)
                 {
                     _logger.Warn("APPS | uninstall kill failed | " + killException.Message);
                 }
+            }
+
+            if (exited)
+            {
+                uninstallExitCode = process.ExitCode;
             }
         }
         catch (Exception exception)
@@ -553,7 +572,22 @@ public sealed class InstalledAppsService
             _logger.Error($"APPS | uninstall failed | {app.DisplayName} | {exception.Message}");
             return Result.Failure("Не удалось запустить удаление: " + exception.Message, 1);
         }
+
+        // Пользовательская отмена: ничего не удаляем после снятия деинсталлятора.
         ct.ThrowIfCancellationRequested();
+
+        // Аудит 3, п. 9: нормальное завершение процесса ≠ успешное удаление.
+        // Код возврата деинсталлятора (например 1603 у MSI) анализируется:
+        // при сбое хвосты НЕ зачищаются — приложение могло остаться установленным,
+        // и удаление папки установки вслепую опасно.
+        if (exited && uninstallExitCode != 0)
+        {
+            _logger.Warn($"APPS | uninstall exit code | {app.DisplayName} | rc={uninstallExitCode}");
+            return Result.Failure(
+                $"Деинсталлятор «{app.DisplayName}» завершился с ошибкой (код {uninstallExitCode}). "
+                + "Приложение могло остаться установленным — повторите удаление или удалите вручную.",
+                uninstallExitCode);
+        }
 
         // Хвосты: папка установки (только при подтверждённом ownership) и папки
         // данных, совпадающие по имени приложения — после явного подтверждения.
@@ -562,6 +596,8 @@ public sealed class InstalledAppsService
         var failedFolders = residual.Failed;
         var skippedDataFolders = residual.SkippedDataFolders;
 
+        // Аудит 3, п. 10: завершённый деинсталлятор ≠ полностью удалённое
+        // приложение — неочищенные хвосты явно попадают в итоговый текст.
         var summary = $"Удаление «{app.DisplayName}» завершено"
             + (exited ? "." : " (деинсталлятор снят по таймауту).")
             + $" Процессов остановлено: {killed}. Папок зачищено: {removed}.";
@@ -572,6 +608,10 @@ public sealed class InstalledAppsService
         if (failedFolders.Count > 0)
         {
             summary += " Не удалось удалить: " + string.Join("; ", failedFolders) + ".";
+        }
+        if (skippedDataFolders.Count > 0 || failedFolders.Count > 0)
+        {
+            summary += " Удаление выполнено частично.";
         }
 
         _logger.Info($"APPS | uninstall complete | {app.DisplayName} | killed={killed} folders={removed} failed={failedFolders.Count}");

@@ -63,6 +63,10 @@ public partial class MainViewModel
 
         public UserScriptData Data { get; }
 
+        // Id закрепления карточки скрипта на «Главной» (скрепка). Id скрипта
+        // стабилен (us_XXXXXXXXXXXX, хранится в scripts.json).
+        public string PinCardId => "uscript." + Id;
+
         [ObservableProperty]
         private bool _isRunning;
 
@@ -79,7 +83,33 @@ public partial class MainViewModel
         }
 
         HasInstalledScripts = UserScripts.Count > 0;
+        // Поисковые строки скриптов: в конструкторе Dashboard ещё не создан
+        // (скрипты грузятся раньше) — он подтянет набор своим явным вызовом.
+        if (Dashboard is not null)
+        {
+            RefreshScriptSearchRows();
+        }
+
         UserScriptsChanged?.Invoke();
+    }
+
+    // Строки скриптов для поиска «Главной»: подсказки находят скрипт по названию
+    // и комментарию, переход открывает раздел-владелец (подсветка — SectionHighlight).
+    // В реестр утилит (UtilitiesById/меню-редактор/список выключателя) скрипты
+    // не попадают — закреплённый дубликат в поиске тоже не участвует.
+    private void RefreshScriptSearchRows()
+    {
+        Dashboard.SetScriptSearchRows(UserScripts.Select(card => new BatchUtility
+        {
+            Id = card.Id,
+            TitleKey = card.Title,
+            IsRawTitle = true,
+            Section = card.SectionNumber,
+            Keywords = string.Join(" ", "скрипт script", card.Comment),
+            // Run не вызывается никогда: строки скриптов не входят в список
+            // выключателя и пакет (Run нужен только BatchUtility из групп).
+            Run = () => Task.FromResult<string?>(null),
+        }));
     }
 
     public bool AddUserScript(string sourcePath, int sectionNumber, string title,
@@ -109,19 +139,39 @@ public partial class MainViewModel
         }
     }
 
-    public void RemoveUserScript(string id)
+    // true — скрипт удалён; false — файл занять (например, скрипт выполняется):
+    // запись остаётся в scripts.json и карточка на месте, иначе файл оставался
+    // бы в %AppData%\SCU\scripts без карточки.
+    public bool RemoveUserScript(string id)
     {
-        var data = _userScriptStore.Load().FirstOrDefault(script => script.Id == id);
+        var scripts = _userScriptStore.Load();
+        var data = scripts.FirstOrDefault(script => script.Id == id);
         if (data is null)
         {
-            return;
+            _logger.Warn("USCRIPT | remove skipped (unknown id) | " + id);
+            return false;
         }
 
-        _userScriptStore.Delete(data);
-        var scripts = _userScriptStore.Load();
+        if (!_userScriptStore.Delete(data))
+        {
+            AppNotificationCenter.Instance.Push(
+                L.T("Скрипт не удалён"),
+                L.T("Файл «{0}» занят (возможно, скрипт выполняется) — остановите его и повторите.", data.Title),
+                AppNotificationKind.Danger);
+            _logger.Warn("USCRIPT | remove aborted (file busy) | " + id);
+            return false;
+        }
+
         _userScriptStore.Save(scripts.Where(script => script.Id != id).ToList());
+        // Скрепка удалённого скрипта не должна оставаться в pinned-cards.json.
+        PinState.Instance.Set("uscript." + id, false);
         ReloadUserScripts();
+        AppNotificationCenter.Instance.Push(
+            L.T("Скрипт удалён"),
+            L.T("«{0}» удалён из установленных.", data.Title),
+            AppNotificationKind.Success);
         _logger.Info("USCRIPT | removed | " + id);
+        return true;
     }
 
     public async Task<string?> RunUserScriptAsync(UserScriptCard card)
@@ -350,6 +400,31 @@ public partial class MainViewModel
         foreach (var utilityId in custom.Utils)
         {
             Dashboard.ResetUtilitySection(utilityId);
+        }
+
+        // Скрипты, размещённые на удаляемой вкладке, переезжают в «Настройки»
+        // (17): иначе их SectionNumber указывал бы на несуществующую вкладку —
+        // скрипт не рендерился ни в одной полосе и был виден только в
+        // «Установленных» с «Раздел: ?».
+        var allScripts = _userScriptStore.Load();
+        var homelessCount = 0;
+        foreach (var script in allScripts)
+        {
+            if (script.SectionNumber == number)
+            {
+                script.SectionNumber = 17;
+                homelessCount++;
+            }
+        }
+
+        if (homelessCount > 0)
+        {
+            _userScriptStore.Save(allScripts);
+            ReloadUserScripts();
+            AppNotificationCenter.Instance.Push(
+                L.T("Вкладка удалена"),
+                L.T("Скрипты удалённой вкладки ({0} шт.) перенесены в раздел «Настройки».", homelessCount),
+                AppNotificationKind.Info);
         }
 
         _menu.CustomSections.Remove(custom);

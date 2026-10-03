@@ -50,8 +50,9 @@
 
     <!-- Раздел 0 «Главная»: поиск утилит под верхним краем, большой выключатель
          по центру, шестерёнка со списком утилит сразу под ним. Логика —
-         DashboardViewModel; фильтр поиска — SearchText/FilteredGroups,
-         подсказки — Suggestions (клик открывает вкладку раздела). -->
+         DashboardViewModel; фильтр поиска — SearchText + IsVisible у строк и
+         групп (список не пересобирается на каждый символ), подсказки —
+         Suggestions (клик открывает вкладку раздела). -->
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -73,12 +74,13 @@
                                   SearchText="{Binding SearchText, Mode=TwoWay}" />
 
             <!-- Подсказки поиска: совпавшие утилиты, друг под другом. Клик —
-                 переход на вкладку раздела + акцентная вспышка контура. -->
+                 переход на вкладку раздела + акцентная вспышка контура.
+                 Placement=Custom: список центрируется по полю ввода
+                 (PlaceSuggestionsCentered), стандартный Bottom прижимал его
+                 к левому краю и не следовал за смещением цели. -->
             <Popup x:Name="SearchSuggestionsPopup"
                    PlacementTarget="{Binding ElementName=SearchHost}"
-                   Placement="Bottom"
-                   HorizontalOffset="0"
-                   VerticalOffset="4"
+                   Placement="Custom"
                    PopupAnimation="Fade"
                    AllowsTransparency="True"
                    StaysOpen="True"
@@ -294,7 +296,10 @@
                                    Text="{DynamicResource D_BatchSettings}" />
                     </Grid>
                 </Expander.Header>
-                <ItemsControl Margin="12,8,0,0" ItemsSource="{Binding FilteredGroups}">
+                <!-- Вся коллекция групп (скрытые поиском остаются внутри, IsVisible
+                     коллапсирует их): пересоздание контейнеров карточек на каждый
+                     символ запроса — главная причина тормозов поиска на «Главной». -->
+                <ItemsControl Margin="12,8,0,0" ItemsSource="{Binding Groups}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border Style="{StaticResource SectionCard}"
@@ -370,6 +375,15 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </Expander>
+
+            <!-- ===================== Закреплённые карточки ===================== -->
+            <!-- Дубликаты карточек разделов, закреплённые скрепкой, — под
+                 разворачивающимся списком утилит (п. ТЗ «Закрепление карточек»).
+                 Содержимое собирает code-behind по PinState; в поиске утилит
+                 дубликаты не участвуют — реестр утилит не меняется. -->
+            <ItemsControl x:Name="PinnedCardsHost"
+                          Margin="0,8,0,0"
+                          Visibility="Collapsed" />
 
         </StackPanel>
     </Grid>

@@ -15,49 +15,51 @@
 
     <Grid Margin="14">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Добавление пользовательской вкладки -->
-        <Border Grid.Row="0" Style="{StaticResource SectionCard}" Padding="12,8" Margin="0,0,0,10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0"
-                           VerticalAlignment="Center"
-                           Margin="0,0,8,0"
-                           Style="{StaticResource CaptionText}"
-                           Text="{DynamicResource S_MenuEditorNewTitle}" />
-                <TextBox Grid.Column="1"
-                         Margin="0,0,10,0"
-                         VerticalContentAlignment="Center"
-                         Text="{Binding NewSectionTitle, UpdateSourceTrigger=PropertyChanged}" />
-                <ComboBox Grid.Column="2"
-                          MinWidth="200"
-                          Margin="0,0,10,0"
-                          VerticalContentAlignment="Center"
-                          IsEditable="True"
-                          Text="{Binding NewSectionGroup, UpdateSourceTrigger=PropertyChanged}"
-                          ItemsSource="{Binding Groups}"
-                          SelectedItem="{Binding SelectedGroup}"
-                          DisplayMemberPath="Title"
-                          ToolTip="{DynamicResource S_MenuEditorNewGroup}" />
-                <Button Grid.Column="3"
-                        Style="{StaticResource SmallButton}"
-                        Content="{DynamicResource S_MenuEditorAdd}"
-                        Command="{Binding AddSectionCommand}" />
-            </Grid>
-        </Border>
+        <!-- Дерево меню: группы → разделы. Карточка создания вкладки — внутри
+             того же ScrollViewer, что и карточки разделов: одинаково сжимается
+             скроллбаром и выровнена по левому краю с ними. -->
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- Добавление пользовательской вкладки -->
+                <Border Style="{StaticResource SectionCard}" Padding="12,8" Margin="0,0,0,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   Style="{StaticResource CaptionText}"
+                                   Text="{DynamicResource S_MenuEditorNewTitle}" />
+                        <TextBox Grid.Column="1"
+                                 Margin="0,0,10,0"
+                                 VerticalContentAlignment="Center"
+                                 Text="{Binding NewSectionTitle, UpdateSourceTrigger=PropertyChanged}" />
+                        <ComboBox Grid.Column="2"
+                                  MinWidth="200"
+                                  Margin="0,0,10,0"
+                                  VerticalContentAlignment="Center"
+                                  IsEditable="True"
+                                  Text="{Binding NewSectionGroup, UpdateSourceTrigger=PropertyChanged}"
+                                  ItemsSource="{Binding Groups}"
+                                  SelectedItem="{Binding SelectedGroup}"
+                                  DisplayMemberPath="Title"
+                                  ToolTip="{DynamicResource S_MenuEditorNewGroup}" />
+                        <Button Grid.Column="3"
+                                Style="{StaticResource SmallButton}"
+                                Content="{DynamicResource S_MenuEditorAdd}"
+                                Command="{Binding AddSectionCommand}" />
+                    </Grid>
+                </Border>
 
-        <!-- Дерево меню: группы → разделы -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding Groups}">
+                <ItemsControl ItemsSource="{Binding Groups}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <StackPanel>
@@ -198,11 +200,12 @@
                         </StackPanel>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                </ItemsControl>
+            </StackPanel>
         </ScrollViewer>
 
         <!-- Низ: сброс и готово -->
-        <Grid Grid.Row="2" Margin="0,10,0,0">
+        <Grid Grid.Row="1" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

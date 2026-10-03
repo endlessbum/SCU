@@ -83,7 +83,7 @@ public partial class UserScriptsStrip : UserControl
         }
     }
 
-    private void OnRunCardClick(object sender, RoutedEventArgs e)
+    private void OnCardRunRequested(object? sender, EventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is UserScriptCardViewModel card)
         {

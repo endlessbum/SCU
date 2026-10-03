@@ -8,7 +8,8 @@ public sealed class UpdateCheckServiceTests
     [Theory]
     [InlineData("v2.3.1", "2.3.1")]
     [InlineData("2.3.1", "2.3.1")]
-    [InlineData("V3.0", "3.0")]
+    [InlineData("V3.0", "3.0.0")]
+    [InlineData("2.3", "2.3.0")]
     [InlineData("2.4.0-beta1", "2.4.0")]
     [InlineData("2.5.0+build.42", "2.5.0")]
     public void NormalizeVersion_ParsesTags(string tag, string expected)
@@ -17,6 +18,16 @@ public sealed class UpdateCheckServiceTests
 
         Assert.NotNull(version);
         Assert.Equal(Version.Parse(expected), version);
+    }
+
+    [Fact]
+    public void NormalizeVersion_TwoPartTag_EqualsThreePartTag()
+    {
+        // «2.3» и «2.3.0» — одна и та же версия: без нормализации до трёх
+        // частей System.Version считал бы «2.3» более старой.
+        Assert.Equal(
+            UpdateCheckService.NormalizeVersion("2.3.0"),
+            UpdateCheckService.NormalizeVersion("2.3"));
     }
 
     [Theory]

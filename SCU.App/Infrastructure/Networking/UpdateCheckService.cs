@@ -124,6 +124,8 @@ public sealed class UpdateCheckService
     }
 
     // «v2.3.1» / «2.3.1» / «2.3» → Version; null, если разобрать не удалось.
+    // Двухкомпонентный тег нормализуется до трёх частей: System.Version
+    // сравнивает покомпонентно, и без этого «2.3» оказалась бы меньше «2.3.0».
     internal static Version? NormalizeVersion(string? tag)
     {
         if (string.IsNullOrWhiteSpace(tag))
@@ -145,6 +147,11 @@ public sealed class UpdateCheckService
             trimmed = trimmed[..dash];
         }
 
-        return Version.TryParse(trimmed, out var version) ? version : null;
+        if (!Version.TryParse(trimmed, out var version))
+        {
+            return null;
+        }
+
+        return new Version(version.Major, version.Minor, Math.Max(version.Build, 0));
     }
 }

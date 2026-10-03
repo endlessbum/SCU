@@ -1,0 +1,26 @@
+<UserControl x:Class="SCU.Views.Cards.MaintenanceIntegrityCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Border Style="{StaticResource SectionCard}">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_MaintIntegrityTitle}" />
+                <controls:PinGlyph CardId="maint.integrity" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource CardIntroText}"
+                       Text="{DynamicResource S_MaintIntegrityDesc}" />
+            <!-- П.17а: «Отмена» активна только после запуска DISM + SFC -->
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <Button Content="{DynamicResource S_MaintIntegrityRun}"
+                        Margin="0,0,8,0"
+                        HorizontalAlignment="Left"
+                        Command="{Binding RunIntegrityCheckCommand}" />
+                <Button Content="{DynamicResource S_Cancel}"
+                        HorizontalAlignment="Left"
+                        Command="{Binding CancelIntegrityCommand}"
+                        ToolTipService.ShowOnDisabled="True" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

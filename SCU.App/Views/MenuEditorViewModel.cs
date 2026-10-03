@@ -214,7 +214,11 @@ public partial class MenuEditorViewModel : ObservableObject
     public ObservableCollection<MenuEditorGroup> Groups { get; } = [];
 
     // Утилиты, доступные для добавления в выбранную пользовательскую вкладку.
-    public ObservableCollection<BatchUtility> AvailableUtilities { get; } = [];
+    // Ровно MenuEditorUtility, а не BatchUtility: SelectedItem биндится на
+    // SelectedAvailableUtility этого же типа — при несовпадении WPF молча
+    // отклонял присваивание, выбранный пункт не отображался и «Добавить
+    // утилиту» не получал значение (баг с релиза 2.2.0).
+    public ObservableCollection<MenuEditorUtility> AvailableUtilities { get; } = [];
 
     [ObservableProperty]
     private MenuEditorSection? _selectedSection;
@@ -336,7 +340,8 @@ public partial class MenuEditorViewModel : ObservableObject
         {
             if (!assigned.Contains(pair.Key))
             {
-                AvailableUtilities.Add(pair.Value);
+                AvailableUtilities.Add(new MenuEditorUtility(
+                    pair.Key, pair.Value.ResolveTitle(), canRemove: false, canDelete: false));
             }
         }
     }

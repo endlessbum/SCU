@@ -93,6 +93,8 @@
     <SolidColorBrush x:Key="SwitchKnobBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="SwitchKnobOffBrush" Color="#FFFFFFFF" />
     <!-- Трек тумблера в OFF: полупрозрачный серый iOS (#787880) — заметен и на фоне
-         окна, и на стекле карточек при обоих режимах прозрачности. -->
+         окна, и на стекле карточек при обоих режимах прозрачности.
+         Hover: тот же оттенок плотнее — трек чуть темнеет под курсором. -->
     <SolidColorBrush x:Key="SwitchTrackOffBrush" Color="#51787880" />
+    <SolidColorBrush x:Key="SwitchTrackOffHoverBrush" Color="#65787880" />
 </ResourceDictionary>

@@ -1,5 +1,7 @@
 #include "core/scanner.h"
 
+#include "core/path_util.h"
+
 #include <windows.h>
 
 #include <algorithm>
@@ -105,6 +107,9 @@ void Scanner::RememberVerdict(const std::string& sha256, Verdict verdict, Detect
 {
     // Лимит кэша (п. 25): при переполнении новые записи не добавляются —
     // деградация до отсутствия кэша, не до неверных результатов.
+    // Кэш mutated воркерами параллельно — под собственным cacheMutex_
+    // (порядок захвата всегда cacheMutex_ → stateMutex_).
+    std::lock_guard lock(cacheMutex_);
     if (verdictCache_.size() < kMaxCacheEntries) {
         verdictCache_[sha256] = {verdict, std::move(detection)};
     }
@@ -112,11 +117,12 @@ void Scanner::RememberVerdict(const std::string& sha256, Verdict verdict, Detect
 
 std::wstring Scanner::DiskCachePath() const
 {
-    wchar_t localAppData[MAX_PATH]{};
-    if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0) {
+    // Динамический путь (аудит п. 9): длинный путь профиля не усекается.
+    const std::wstring localAppData = GetEnvironmentValueDynamic(L"LOCALAPPDATA");
+    if (localAppData.empty()) {
         return {};
     }
-    std::wstring path = std::wstring(localAppData) + L"\\SCU";
+    std::wstring path = localAppData + L"\\SCU";
     CreateDirectoryW(path.c_str(), nullptr);
     return path + L"\\scan-cache.txt";
 }
@@ -286,11 +292,19 @@ bool Scanner::Run(const ScanOptions& options, ScanStats& stats, std::vector<Dete
             swprintf_s(codeText, L"%lu", code);
             events_.Warning(L"directory error (" + std::wstring(codeText) + L"): " + path);
         },
+        // Намеренный пропуск обхода (reparse/max-depth/offline/device) — потеря
+        // покрытия, а не пустой результат (аудит 2, п. 3–5): фиксируется как
+        // filesSkipped, чтобы итог стал Partial.
+        [this, &stats](const std::wstring& path, const wchar_t* reason) {
+            std::lock_guard lock(stateMutex_);
+            stats.filesSkipped++;
+            events_.Warning(L"skipped (" + std::wstring(reason) + L"): " + path);
+        },
         isCancelled_);
 
-    // 2. Дисковый кэш загружается до воркеров (п. 25).
+    // 2. Дисковый кэш загружается до воркеров (п. 25). Этапы однопоточные:
+    //    блокировка не нужна, join воркеров даёт happens-before для записи.
     if (useDiskCache_) {
-        std::lock_guard lock(stateMutex_);
         LoadDiskCache();
     }
 
@@ -348,9 +362,8 @@ bool Scanner::Run(const ScanOptions& options, ScanStats& stats, std::vector<Dete
         }
     }
 
-    // 5. Кэш сохраняется один раз в конце скана.
+    // 5. Кэш сохраняется один раз в конце скана (воркеры уже join — потокобопасно).
     if (useDiskCache_) {
-        std::lock_guard lock(stateMutex_);
         SaveDiskCache();
     }
 
@@ -359,18 +372,21 @@ bool Scanner::Run(const ScanOptions& options, ScanStats& stats, std::vector<Dete
 
 void Scanner::ScanFile(const FileEntry& entry, ScanStats& stats, std::vector<Detection>& detections)
 {
-    // Файловая фаза под блокировкой: stats/detections/кэш общие для воркеров.
-    // EventsWriter имеет собственный mutex — emission под блокировкой безопасен.
+    // Анализ выполняется ВНЕ общих блокировок (аудит 2, п. 15): SHA-256,
+    // WinVerifyTrust и PE-разбор не должны сериализовать воркеры.
+    // AnalyzeFile сам синхронизирует короткие критические секции
+    // (stats/detections/verdictCache), events_ имеет собственный мьютекс.
     bool needsArchiveScan = false;
+    AnalyzeFile(entry.path, entry.path, entry.size, L"", false, stats, detections, needsArchiveScan);
+
     {
         std::lock_guard lock(stateMutex_);
-        AnalyzeFile(entry.path, entry.path, entry.size, L"", false, stats, detections, needsArchiveScan);
         events_.Progress(stats, entry.path);
     }
 
     // Полный pipeline для архива (ScanMode::File и Full Scan, документ п. 20/24):
     // извлечение членов с лимитами и скан каждого. Само извлечение — вне
-    // блокировки (тяжёлая операция), блокировка берётся в ProcessMember.
+    // блокировки (тяжёлая операция), синхронизация — внутри ProcessMember.
     if (needsArchiveScan && scanArchives_ && !IsCancelled()) {
         RunArchiveScan(entry.path, entry.path, stats, detections);
     }
@@ -399,9 +415,18 @@ Verdict Scanner::RunArchiveScan(const std::wstring& path,
         },
         [this, &stats](const ArchiveIssue& issue) {
             std::lock_guard lock(stateMutex_);
-            stats.filesSkipped++;
-            events_.Warning(L"archive " + issue.code + L": " + issue.virtualPath
-                            + (issue.member.empty() ? L"" : L" :: " + issue.member));
+            // Ошибки vs пропуски формализованы (аудит п. 3): технический сбой
+            // идёт в errors (exit code 1 → Partial), ограничение покрытия —
+            // в filesSkipped (Partial без exit code 1).
+            if (issue.technical) {
+                stats.errors++;
+                events_.Error(L"archive " + issue.code + L": " + issue.virtualPath
+                              + (issue.member.empty() ? L"" : L" :: " + issue.member));
+            } else {
+                stats.filesSkipped++;
+                events_.Warning(L"archive " + issue.code + L": " + issue.virtualPath
+                                + (issue.member.empty() ? L"" : L" :: " + issue.member));
+            }
         });
     scanner.ScanZip(path, path, 0);
     return worst;
@@ -418,14 +443,15 @@ Verdict Scanner::ProcessMember(const std::wstring& virtualPath,
         return Verdict::Clean;
     }
 
-    std::lock_guard lock(stateMutex_);
-
-    // Вложенные архивы разворачивает сам ArchiveScanner (лимит nesting),
-    // здесь только анализ члена как обычного файла.
+    // Анализ члена — вне общих блокировок (см. ScanFile, аудит 2, п. 15).
     bool needsArchiveScan = false;
     const Verdict verdict = AnalyzeFile(virtualPath, realPath, size, containerPath, true,
                                         stats, detections, needsArchiveScan);
-    events_.Progress(stats, virtualPath);
+
+    {
+        std::lock_guard lock(stateMutex_);
+        events_.Progress(stats, virtualPath);
+    }
     return verdict;
 }
 
@@ -442,16 +468,23 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
     needsArchiveScan = false;
 
     // Фильтр по размеру (документ п. 2.A): слишком большие файлы не анализируем.
+    // Это потеря покрытия для ЛЮБОГО источника (аудит 2, п. 7): persistence-цель
+    // с size > maxFileSize больше не исчезает молча — итог становится Partial.
     if (size > maxFileSize_) {
-        if (countInFileStats) {
+        {
+            std::lock_guard lock(stateMutex_);
             stats.filesSkipped++;
         }
+        events_.Warning(L"skipped oversized: " + displayPath);
         return Verdict::Clean;
     }
 
     std::string sha256;
     if (!Sha256::HashFile(realPath, sha256)) {
-        stats.errors++;
+        {
+            std::lock_guard lock(stateMutex_);
+            stats.errors++;
+        }
         events_.Warning(L"hash failed: " + displayPath);
         return Verdict::Clean;
     }
@@ -459,7 +492,8 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
     // 1. Hash lookup по базе IOC — ВСЕГДА до кэша (п. 1 аудита): подписанная
     //    база обновляется, кэш — нет, поэтому кэш не имеет права перекрывать
     //    её вердикт (hash в malware-базе + чистый кэш = malware). Выполняется
-    //    даже для allowlist-компонентов (документ п. 19).
+    //    даже для allowlist-компонентов (документ п. 19). database_/allowlist_
+    //    иммутабельны во время скана — читаются без блокировки.
     Verdict dbVerdict;
     std::wstring dbName;
     if (database_.Lookup(sha256, dbVerdict, dbName)) {
@@ -471,17 +505,21 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
         detection.description = dbName.empty() ? L"Known malicious hash" : dbName;
         detection.containerPath = containerPath;
         detection.isVirtual = isVirtual;
-        events_.DetectionEvent(detection);
-        detections.push_back(detection);
-        if (countInFileStats) {
-            stats.filesScanned++;
+        {
+            std::lock_guard lock(stateMutex_);
+            if (countInFileStats) {
+                stats.filesScanned++;
+            }
+            stats.detections++;
+            detections.push_back(detection);
         }
-        stats.detections++;
+        events_.DetectionEvent(detection);
         RememberVerdict(sha256, dbVerdict, detection);
         return dbVerdict;
     }
 
     if (countInFileStats) {
+        std::lock_guard lock(stateMutex_);
         stats.filesScanned++;
     }
 
@@ -507,20 +545,27 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
     //    эвристиками (WinVerifyTrust/PE/скрипты); повторные копии того же файла
     //    не проходят их повторно. DB выше уже сказала «не в базе», а архив
     //    выше уже ушёл в archive scan — кэш не может замаскировать ни детект
-    //    базы, ни содержимое контейнера.
-    const auto cached = verdictCache_.find(sha256);
-    if (cached != verdictCache_.end()) {
-        if (cached->second.verdict != Verdict::Clean) {
-            Detection clone = cached->second.detection;
-            clone.path = displayPath;
-            clone.containerPath = containerPath;
-            clone.isVirtual = isVirtual;
-            events_.DetectionEvent(clone);
-            detections.push_back(clone);
-            stats.detections++;
+    //    базы, ни содержимое контейнера. Кэш — под собственным cacheMutex_
+    //    (порядок захвата всегда cacheMutex_ → stateMutex_).
+    {
+        std::lock_guard cacheLock(cacheMutex_);
+        const auto cached = verdictCache_.find(sha256);
+        if (cached != verdictCache_.end()) {
+            if (cached->second.verdict != Verdict::Clean) {
+                Detection clone = cached->second.detection;
+                clone.path = displayPath;
+                clone.containerPath = containerPath;
+                clone.isVirtual = isVirtual;
+                std::lock_guard stateLock(stateMutex_);
+                stats.detections++;
+                detections.push_back(clone);
+                events_.DetectionEvent(clone);
+            }
+            return cached->second.verdict;
         }
-        return cached->second.verdict;
     }
+
+    // === Тяжёлый анализ — без общих блокировок ===
 
     if (fileType == FileType::Script && scanScripts_) {
         const ScriptAnalysis script = ScriptScanner::Analyze(realPath);
@@ -535,9 +580,12 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
             detection.signals = script.signals;
             detection.containerPath = containerPath;
             detection.isVirtual = isVirtual;
+            {
+                std::lock_guard lock(stateMutex_);
+                detections.push_back(detection);
+                stats.detections++;
+            }
             events_.DetectionEvent(detection);
-            detections.push_back(detection);
-            stats.detections++;
             RememberVerdict(sha256, Verdict::Suspicious, detection);
             return Verdict::Suspicious;
         }
@@ -573,9 +621,12 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
         detection.signals = signals;
         detection.containerPath = containerPath;
         detection.isVirtual = isVirtual;
+        {
+            std::lock_guard lock(stateMutex_);
+            detections.push_back(detection);
+            stats.detections++;
+        }
         events_.DetectionEvent(detection);
-        detections.push_back(detection);
-        stats.detections++;
         RememberVerdict(sha256, Verdict::Suspicious, detection);
         return Verdict::Suspicious;
     }
@@ -591,13 +642,14 @@ void Scanner::ScanPersistence(ScanStats& stats, std::vector<Detection>& detectio
     std::unordered_map<std::wstring, Verdict> verdictCache;
 
     PersistenceScanner persistence;
-    persistence.Enumerate([&](const PersistenceEntry& entry) {
-        if (IsCancelled()) {
-            return;
-        }
+    persistence.Enumerate(
+        [&](const PersistenceEntry& entry) {
+            if (IsCancelled()) {
+                return;
+            }
 
-        const std::wstring displayPath = entry.location + L"\\" + entry.name;
-        events_.Progress(stats, displayPath);
+            const std::wstring displayPath = entry.location + L"\\" + entry.name;
+            events_.Progress(stats, displayPath);
 
         Verdict verdict = Verdict::Clean;
         std::vector<std::wstring> signals;
@@ -663,18 +715,39 @@ void Scanner::ScanPersistence(ScanStats& stats, std::vector<Detection>& detectio
         events_.DetectionEvent(detection);
         detections.push_back(detection);
         stats.detections++;
-    });
+    },
+        // Намеренный пропуск записи автозапуска (глубина, reparse, oversized
+        // registry value, битый XML задачи) — потеря покрытия (аудит 2, п. 7/11/12).
+        [this, &stats](const std::wstring& path, const wchar_t* reason) {
+            stats.filesSkipped++;
+            events_.Warning(L"persistence skipped (" + std::wstring(reason) + L"): " + path);
+        });
 }
 
 void Scanner::ScanProcesses(ScanStats& stats, std::vector<Detection>& detections)
 {
-    ProcessScanner::Enumerate([&](const ProcessInfo& process) {
-        if (IsCancelled() || process.exePath.empty()) {
+    // Снапшот процессов: недоступность — техническая ошибка скана, а не
+    // «процессов нет» (аудит 2, п. 6).
+    const bool enumerated = ProcessScanner::Enumerate([&](const ProcessInfo& process) {
+        if (IsCancelled()) {
+            return;
+        }
+
+        // Пустой exePath (OpenProcess/QueryFullProcessImageNameW fail) — объект
+        // не проверен: coverage skip, а не молчаливое «не найдено».
+        if (process.exePath.empty()) {
+            stats.filesSkipped++;
+            wchar_t pidText[16];
+            swprintf_s(pidText, L"%lu", process.pid);
+            events_.Warning(L"process path unavailable (PID " + std::wstring(pidText) + L"): "
+                            + process.name);
             return;
         }
 
         std::string sha256;
         if (!Sha256::HashFile(process.exePath, sha256)) {
+            stats.errors++;
+            events_.Warning(L"process hash failed: " + process.exePath);
             return;
         }
 
@@ -700,6 +773,11 @@ void Scanner::ScanProcesses(ScanStats& stats, std::vector<Detection>& detections
         detections.push_back(detection);
         stats.detections++;
     });
+
+    if (!enumerated) {
+        stats.errors++;
+        events_.Warning(L"process snapshot unavailable");
+    }
 }
 
 } // namespace scan

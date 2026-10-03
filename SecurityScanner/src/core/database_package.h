@@ -1,12 +1,16 @@
 #pragma once
 
 // DatabasePackage (документ п. 12/30/33): установка offline-пакета базы.
-// Пакет — ZIP с hashes.txt + hashes.txt.sig + db-version.json.
-// Подпись: ECDSA P-256 (CNG) над SHA-256(hashes.txt), r||s 64 байта.
+// Пакет — ZIP с hashes.txt + hashes.txt.sig + db-version.json (все три члена
+// обязательны). Подпись: ECDSA P-256 (CNG) над составным дайджестом
+// SHA-256(hashes.txt || db-version.json) — метаданные версии входят в
+// подписанный payload наравне с базой (аудит п. 11), r||s 64 байта.
 // Публичный ключ вшит в бинарь; приватный существует только в
 // tools/database-builder (п. 33: private key никогда не в приложении).
-// Применение — atomic replace: запись в .tmp в целевом каталоге,
-// затем MoveFileEx(REPLACE_EXISTING) (п. 12: atomic replace).
+// Установка — единым состоянием (аудит 2, п. 16): полная генерация в
+// databaseDir\generations\<id>, атомарный commit-поинтер current.json;
+// hashes.txt/db-version.json в корне — best-effort легаси-зеркало.
+// Легаси-раскладка (без current.json) продолжает читаться напрямую.
 
 #include <string>
 

@@ -73,6 +73,21 @@ public partial class SettingsView : UserControl
         }
     }
 
+    // Окно всех созданных бэкапов: раздел, время и назначение каждого.
+    private void OnBackupsClick(object sender, RoutedEventArgs e)
+    {
+        new SCU.Views.BackupsWindow { Owner = Window.GetWindow(this) }.ShowDialog();
+    }
+
+    // Повторный показ окна знакомства (при первом запуске оно открывается само).
+    private void OnOnboardingClick(object sender, RoutedEventArgs e)
+    {
+        if (Window.GetWindow(this) is MainWindow main)
+        {
+            SCU.Views.OnboardingWindow.Show(main, onlyIfFirstRun: false);
+        }
+    }
+
     private void OnAccentSwatchPreviewMouseDown(object sender, MouseButtonEventArgs e) =>
         _accentWasOpen = AccentPopup.IsOpen;
 

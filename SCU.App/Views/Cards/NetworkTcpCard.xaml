@@ -1,0 +1,33 @@
+<UserControl x:Class="SCU.Views.Cards.NetworkTcpCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Border Style="{StaticResource SectionCard}">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetTcpTitle}" />
+                <controls:InfoGlyph x:Name="TcpInfoGlyph" VerticalAlignment="Center" />
+                <controls:PinGlyph CardId="net.tcp" />
+            </StackPanel>
+            <!-- П.5: информеры актуальных значений удалены — ComboBox выставляется по факту -->
+            <WrapPanel Margin="0,8,0,0" VerticalAlignment="Center">
+                <TextBlock Margin="0,0,8,8" VerticalAlignment="Center" Text="{DynamicResource S_NetAutoTuningLabel}" />
+                <ComboBox
+                          Margin="0,0,8,8"
+                          ItemsSource="{Binding AutoTuningValues}"
+                          SelectedItem="{Binding SelectedAutoTuning}" />
+                <Button Content="{DynamicResource S_NetApplyAutoTuning}"
+                        Margin="0,0,8,8"
+                        Command="{Binding ApplyAutoTuningCommand}" />
+                <TextBlock Margin="0,0,8,8" VerticalAlignment="Center" Text="{DynamicResource S_NetEcnLabel}" />
+                <ComboBox
+                          Margin="0,0,8,8"
+                          ItemsSource="{Binding EcnValues}"
+                          SelectedItem="{Binding SelectedEcn}" />
+                <Button Content="{DynamicResource S_NetApplyEcn}"
+                        Margin="0,0,8,8"
+                        Command="{Binding ApplyEcnCommand}" />
+            </WrapPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

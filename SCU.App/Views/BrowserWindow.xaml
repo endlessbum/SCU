@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:sc="clr-namespace:SCU.Models.Browser"
         mc:Ignorable="d"
         Title="{DynamicResource S_BrowserTitle}"
         MinWidth="1040" MinHeight="700"
@@ -51,36 +52,28 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- Логотип браузера: глобус в акцентном цвете -->
-            <Grid Grid.Column="0" Width="22" Height="22" Margin="0,0,8,0" VerticalAlignment="Center">
-                <Path Data="{Binding GlobeData, RelativeSource={RelativeSource AncestorType=Window}}"
-                      Fill="Transparent"
-                      Stroke="{DynamicResource AccentFillBrush}" />
-            </Grid>
-
-            <Button Grid.Column="1" Style="{StaticResource BrowserToolButton}"
+            <Button Grid.Column="0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE72B;" Command="{Binding GoBackCommand}"
                     ToolTip="{DynamicResource S_BrowserBack}" ToolTipService.InitialShowDelay="300" />
-            <Button Grid.Column="2" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+            <Button Grid.Column="1" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE72A;" Command="{Binding GoForwardCommand}"
                     ToolTip="{DynamicResource S_BrowserForward}" ToolTipService.InitialShowDelay="300" />
-            <Button Grid.Column="3" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+            <Button Grid.Column="2" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE72C;" Command="{Binding ReloadCommand}"
                     ToolTip="{DynamicResource S_BrowserReload}" ToolTipService.InitialShowDelay="300" />
-            <Button Grid.Column="4" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+            <Button Grid.Column="3" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE711;" Command="{Binding StopCommand}"
                     ToolTip="{DynamicResource S_BrowserStop}" ToolTipService.InitialShowDelay="300" />
 
             <!-- Адресная строка: URL или поиск в Google. Для небезопасного http://
                  слева внутри поля появляется бейдж «Не защищено», текст сдвигается
                  Padding'ом (см. Style.Triggers). -->
-            <Grid Grid.Column="5" Margin="8,0">
+            <Grid Grid.Column="4" Margin="8,0">
                 <TextBox x:Name="AddressBox"
                          VerticalContentAlignment="Center"
                          GotKeyboardFocus="OnAddressGotKeyboardFocus"
@@ -112,11 +105,11 @@
                            Visibility="{Binding IsInsecureConnection, Converter={StaticResource BoolToVis}}" />
             </Grid>
 
-            <Button Grid.Column="6" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
+            <Button Grid.Column="5" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE734;" Command="{Binding ToggleBookmarkCommand}"
                     ToolTip="{DynamicResource S_BrowserBookmarkAdd}" ToolTipService.InitialShowDelay="300" />
 
-            <StackPanel Grid.Column="7" Orientation="Horizontal">
+            <StackPanel Grid.Column="6" Orientation="Horizontal">
                 <!-- Тумблеры popup-панелей: Click + PreviewMouseDown вместо Command,
                      чтобы повторный клик закрывал, а не переоткрывал панель
                      (StaysOpen=False закрывает popup по mousedown вне него и через
@@ -280,9 +273,21 @@
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
                                                         <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
                                                         <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Setter Property="FontWeight" Value="SemiBold" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding HasScanResult}" Value="True">
                                                                 <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                            <!-- Цвет по исходу скана (аудит п. 15.3):
+                                                                 угроза/ошибка — красный, частично — жёлтый. -->
+                                                            <DataTrigger Binding="{Binding StateKey}" Value="{x:Static sc:BrowserDownloadItem.StateThreat}">
+                                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding StateKey}" Value="{x:Static sc:BrowserDownloadItem.StateError}">
+                                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding StateKey}" Value="{x:Static sc:BrowserDownloadItem.StatePartial}">
+                                                                <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>

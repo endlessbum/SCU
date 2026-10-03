@@ -124,7 +124,7 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             dialogs,
             history);
         Startup = new StartupViewModel(_logger, scuRunner, dialogs, history);
-        Tasks = new TasksViewModel(_logger, scuRunner, new TaskManager(scuRunner), dialogs, history);
+        Tasks = new TasksViewModel(_logger, scuRunner, new TaskManager(scuRunner, _logger), dialogs, history);
         Services = new ServicesViewModel(_logger, scuRunner, new ServiceManager(), history, dialogs);
         Privacy = new PrivacyViewModel(_logger, scuRunner, dialogs);
         var longRunner = new LongProcessRunner(_logger);
@@ -177,6 +177,10 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             Security,
             Update);
 
+        // «К применению» на «Главной»: неинициализированные разделы не считаются —
+        // их тумблеры ещё показывают конструкторские дефолты.
+        Dashboard.SectionLoaded = IsSectionInitialized;
+
         // Подсказка поиска на «Главной» открывает вкладку раздела настройки и
         // просит окно один раз подсветить строку утилиты, по которой тапнули.
         Dashboard.NavigateToSectionRequested += (number, title) =>
@@ -184,6 +188,9 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             SelectSectionByNumber(number);
             SectionHighlightRequested?.Invoke(number, title);
         };
+
+        // Dashboard готов: скрипты, загруженные до его создания, догоняют поиск.
+        RefreshScriptSearchRows();
 
         // Раздел 18 «История»: тот же экземпляр HistoryStore, что пишут все разделы.
         HistorySection = new HistoryViewModel(_logger, history);
@@ -315,25 +322,57 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         ScuStatusText = L.T(IsSCUAvailable ? "да" : "нет");
     }
 
-    // Стартовая инициализация: только «Главная» и «Бэнчмарк» (п. 13 аудита).
-    // Остальные разделы инициализируются лениво при первом открытии
-    // (EnsureSectionInitialized) — заставка исчезает значительно быстрее.
-    public async Task InitializeAsync()
+    // Стартовая инициализация (п. 1 запроса): ДАННЫЕ ВСЕХ ВКЛАДОК собираются
+    // при старте, одновременно (не поочерёдно) — каждая VM уводит тяжёлую
+    // работу в Task.Run, загрузки идут параллельно. Приложение открывается,
+    // когда все данные собраны; прогресс — для индикатора на заставке.
+    // Browser намеренно не предзагружается: ни WebView2, ни окружение браузера
+    // не создаются до первого открытия вкладки (интерактивный компонент,
+    // а не «информация системы»).
+    public async Task InitializeAsync(IProgress<double>? progress = null)
     {
-        await RunSectionInitAsync("Dashboard", () => Dashboard.InitializeAsync()).ConfigureAwait(true);
-        await RunSectionInitAsync("Benchmark", () => Benchmark.InitializeAsync()).ConfigureAwait(true);
-
-        // Автозагрузка прогружается при старте: метрика «Элементов автозагрузки»
-        // бэнчмарка должна быть читаемой сразу, а не «Не удалось прочитать».
-        // Тот же ленивый init (InitializeAsync + refresh), помечается как загруженный.
-        EnsureSectionInitialized(7);
-
-        // Бэнчмарк запускается сразу после InitializeAsync (App.RunStartupAsync →
-        // TriggerInitialBenchmark): дожидаемся инициализации автозагрузки, иначе
-        // метрика «Элементов автозагрузки» считает состояние до загрузки списка.
-        if (_startupInitTask is { } startupInit)
+        var steps = new List<(string Name, int? Number, Func<Task> Run)>
         {
-            await startupInit.ConfigureAwait(true);
+            ("dashboard", null, () => Dashboard.InitializeAsync()),
+            ("benchmark", null, () => Benchmark.InitializeAsync()),
+        };
+
+        _sectionInits ??= BuildSectionInits();
+        foreach (var pair in _sectionInits)
+        {
+            steps.Add(("section-" + pair.Key, pair.Key, pair.Value));
+        }
+
+        var total = steps.Count;
+        var completed = 0;
+        var tasks = new List<Task<bool>>(total);
+        foreach (var step in steps)
+        {
+            tasks.Add(RunSectionInitAsync(step.Name, step.Run));
+
+            // Автозагрузка (7): автозапуск бэнчмарка дожидается её, иначе
+            // метрика «Элементов автозагрузки» считает состояние до загрузки.
+            if (step.Number == 7)
+            {
+                _startupInitTask = tasks[^1];
+            }
+        }
+
+        for (var i = 0; i < steps.Count; i++)
+        {
+            var ok = await tasks[i].ConfigureAwait(true);
+
+            // Успех — раздел помечается загруженным: открытие вкладки не
+            // перечитывает данные. Сбой — отметка не ставится, ленивый init
+            // при первом открытии повторит попытку.
+            if (ok && steps[i].Number is { } number)
+            {
+                _initializedSections.Add(number);
+                Dashboard.RecomputePending();
+            }
+
+            completed++;
+            progress?.Report(100.0 * completed / total);
         }
 
         // Тихое автообновление базы сканера с GitHub Releases при старте.
@@ -351,12 +390,16 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
     private Dictionary<int, Func<Task>>? _sectionInits;
     private readonly HashSet<int> _initializedSections = [];
 
-    // Задача ленивой инициализации автозагрузки (раздел 7) — InitializeAsync
+    // Задача инициализации автозагрузки (раздел 7) — TriggerInitialBenchmark
     // дожидается её перед автозапуском бэнчмарка.
     private Task? _startupInitTask;
 
-    // Ленивая инициализация раздела при первом открытии: тот же код, что раньше
-    // выполнялся целиком на заставке. Повторное открытие — без повторного refresh.
+    // Ленивая инициализация раздела по требованию извне (закреплённые карточки
+    // на «Главной» должны быть рабочими сразу, не дожидаясь открытия раздела).
+    public void EnsureSectionReady(int number) => EnsureSectionInitialized(number);
+
+    // Инициализация раздела, ещё не загруженного при старте (сбой предзагрузки,
+    // или раздел вне стартового набора). Повторное открытие — без refresh.
     private void EnsureSectionInitialized(int? number)
     {
         if (number is null || !_initializedSections.Add(number.Value))
@@ -364,44 +407,7 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             return;
         }
 
-        _sectionInits ??= new Dictionary<int, Func<Task>>
-        {
-            [1] = () => ExecuteRefreshAsync(Info.RefreshCommand),
-            [2] = () => ExecuteRefreshAsync(Components.RefreshCommand),
-            // await вместо ContinueWith: ContinueWith запускает continuation даже после
-            // сбоя InitializeAsync и сам завершается успешно — ошибка терялась молча.
-            [4] = async () =>
-            {
-                await Bloat.InitializeAsync().ConfigureAwait(true);
-                await ExecuteRefreshAsync(Bloat.RefreshCommand).ConfigureAwait(true);
-            },
-            [5] = () => ExecuteRefreshAsync(Privacy.RefreshCommand),
-            [6] = async () =>
-            {
-                await Services.InitializeAsync().ConfigureAwait(true);
-                await ExecuteRefreshAsync(Services.RefreshCommand).ConfigureAwait(true);
-            },
-            [7] = async () =>
-            {
-                await Startup.InitializeAsync().ConfigureAwait(true);
-                await ExecuteRefreshAsync(Startup.RefreshCommand).ConfigureAwait(true);
-            },
-            [8] = () => ExecuteRefreshAsync(Power.RefreshCommand),
-            [9] = () => ExecuteRefreshAsync(Network.RefreshCommand),
-            [10] = () => ExecuteRefreshAsync(Ui.RefreshCommand),
-            [11] = () => ExecuteRefreshAsync(Input.RefreshCommand),
-            [12] = () => ExecuteRefreshAsync(Maintenance.RefreshCommand),
-            [13] = () => ExecuteRefreshAsync(Security.RefreshCommand),
-            [15] = async () =>
-            {
-                await Tasks.InitializeAsync().ConfigureAwait(true);
-                await ExecuteRefreshAsync(Tasks.RefreshCommand).ConfigureAwait(true);
-            },
-            [16] = () => ExecuteRefreshAsync(Update.RefreshCommand),
-            [25] = () => ExecuteRefreshAsync(Drivers.RefreshCommand),
-            [19] = () => ExecuteRefreshAsync(Apps.RefreshCommand),
-        };
-
+        _sectionInits ??= BuildSectionInits();
         if (!_sectionInits.TryGetValue(number.Value, out var init))
         {
             return;
@@ -413,10 +419,71 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         {
             _startupInitTask = initTask;
         }
+
+        _ = AfterLazySectionInitAsync(number.Value, initTask);
     }
 
+    private Dictionary<int, Func<Task>> BuildSectionInits() => new()
+    {
+        [1] = () => ExecuteRefreshAsync(Info.RefreshCommand),
+        [2] = () => ExecuteRefreshAsync(Components.RefreshCommand),
+        // await вместо ContinueWith: ContinueWith запускает continuation даже после
+        // сбоя InitializeAsync и сам завершается успешно — ошибка терялась молча.
+        [4] = async () =>
+        {
+            await Bloat.InitializeAsync().ConfigureAwait(true);
+            await ExecuteRefreshAsync(Bloat.RefreshCommand).ConfigureAwait(true);
+        },
+        [5] = () => ExecuteRefreshAsync(Privacy.RefreshCommand),
+        [6] = async () =>
+        {
+            await Services.InitializeAsync().ConfigureAwait(true);
+            await ExecuteRefreshAsync(Services.RefreshCommand).ConfigureAwait(true);
+        },
+        [7] = async () =>
+        {
+            await Startup.InitializeAsync().ConfigureAwait(true);
+            await ExecuteRefreshAsync(Startup.RefreshCommand).ConfigureAwait(true);
+        },
+        [8] = () => ExecuteRefreshAsync(Power.RefreshCommand),
+        [9] = () => ExecuteRefreshAsync(Network.RefreshCommand),
+        [10] = () => ExecuteRefreshAsync(Ui.RefreshCommand),
+        [11] = () => ExecuteRefreshAsync(Input.RefreshCommand),
+        [12] = () => ExecuteRefreshAsync(Maintenance.RefreshCommand),
+        [13] = () => ExecuteRefreshAsync(Security.RefreshCommand),
+        [15] = async () =>
+        {
+            await Tasks.InitializeAsync().ConfigureAwait(true);
+            await ExecuteRefreshAsync(Tasks.RefreshCommand).ConfigureAwait(true);
+        },
+        [16] = () => ExecuteRefreshAsync(Update.RefreshCommand),
+        [25] = () => ExecuteRefreshAsync(Drivers.RefreshCommand),
+        [19] = () => ExecuteRefreshAsync(Apps.RefreshCommand),
+    };
+
+    // Хвост ленивой инициализации. Успех — пересчёт «К применению» на «Главной»:
+    // состояния раздела изменились относительно конструкторских дефолтов, счётчик
+    // раньше этого не замечал. Сбой — отметка «инициализирован» снимается, чтобы
+    // следующее открытие вкладки повторило попытку (ранее раздел после сбоя
+    // навсегда оставался с дефолтными состояниями без сообщения).
+    private async Task AfterLazySectionInitAsync(int number, Task<bool> initTask)
+    {
+        if (await initTask.ConfigureAwait(true))
+        {
+            Dashboard.RecomputePending();
+        }
+        else
+        {
+            _initializedSections.Remove(number);
+        }
+    }
+
+    // Раздел уже успешно инициализировался и читал систему (для «К применению»).
+    internal bool IsSectionInitialized(int number) => _initializedSections.Contains(number);
+
     // Инициализация/refresh одного раздела: ошибка логируется, остальные продолжают работу.
-    private async Task RunSectionInitAsync(string section, Func<Task> action)
+    // false — раздел не загрузился.
+    private async Task<bool> RunSectionInitAsync(string section, Func<Task> action)
     {
         try
         {
@@ -425,7 +492,10 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         catch (Exception exception)
         {
             _logger.Error("INIT | " + section + " load failed | " + exception);
+            return false;
         }
+
+        return true;
     }
 
     private static Task ExecuteRefreshAsync(IAsyncRelayCommand command) =>

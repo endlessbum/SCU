@@ -1,7 +1,9 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using SCU.Common;
 using SCU.ViewModels.Sections;
 
 namespace SCU.Views.Sections;
@@ -11,6 +13,49 @@ public partial class DashboardView : UserControl
     // Прокрутка главной — внешний ContentScroll из MainWindow (своего
     // ScrollViewer у раздела нет), у него и берём размер видимой зоны.
     private ScrollViewer? _hostScroll;
+
+    // ===================== Закреплённые карточки =====================
+
+    // Фабрика дубликатов (нужен MainViewModel, которого у DashboardViewModel
+    // нет) — устанавливает MainWindow при создании раздела «Главная».
+    private Func<string, FrameworkElement?>? _pinnedCardFactory;
+
+    // Установка фабрики, первая отрисовка области и подписка на изменения.
+    // Повторный вызов (кэш view может пересоздаваться) безопасен.
+    public void SetPinnedCardFactory(Func<string, FrameworkElement?> factory)
+    {
+        _pinnedCardFactory = factory;
+        PinState.Instance.EnsureLoaded();
+        PinState.Instance.Changed -= OnPinnedCardsChanged;
+        PinState.Instance.Changed += OnPinnedCardsChanged;
+        RebuildPinnedCards();
+    }
+
+    // Set/Unset приходят с UI-потока (клик по скрепке) — диспетчеризация не нужна.
+    private void OnPinnedCardsChanged() => RebuildPinnedCards();
+
+    // Полная пересборка области: закреплений немного, дешевле пересоздать,
+    // чем синхронизировать порядок. DataContext дубликатам назначает фабрика.
+    private void RebuildPinnedCards()
+    {
+        if (_pinnedCardFactory is null)
+        {
+            return;
+        }
+
+        PinnedCardsHost.Items.Clear();
+        foreach (var cardId in PinState.Instance.PinnedIds)
+        {
+            if (_pinnedCardFactory(cardId) is { } card)
+            {
+                PinnedCardsHost.Items.Add(card);
+            }
+        }
+
+        PinnedCardsHost.Visibility = PinnedCardsHost.Items.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
 
     public DashboardView()
     {
@@ -22,13 +67,22 @@ public partial class DashboardView : UserControl
         SearchBox.LostKeyboardFocus += (_, _) => SearchVm().IsSearchFocused = false;
         SearchBox.PreviewKeyDown += OnSearchBoxKeyDown;
 
+        // Список подсказок — по центру поля + слежение за смещением цели.
+        SearchSuggestionsPopup.CustomPopupPlacementCallback = PlaceSuggestionsCentered;
+        SearchHost.LayoutUpdated += OnSearchHostShifted;
+
         ToggleCore.SizeChanged += (_, _) => UpdateToggleBlockOffset();
         Loaded += (_, _) =>
         {
             HookHostScroll();
             UpdateSearchFieldOffset();
+            HookHostWindowShifted();
         };
-        Unloaded += (_, _) => UnhookHostScroll();
+        Unloaded += (_, _) =>
+        {
+            UnhookHostScroll();
+            UnhookHostWindowShifted();
+        };
     }
 
     // П. №7 UI-аудита: верхний отступ поля поиска раньше был константой 57.2,
@@ -91,6 +145,58 @@ public partial class DashboardView : UserControl
 
     private DashboardViewModel SearchVm() =>
         (DashboardViewModel)DataContext;
+
+    // ===================== Позиция списка подсказок =====================
+
+    // Список центрируется по полю ввода: стандартный Placement=Bottom прижимал
+    // Popup к левому краю SearchHost. Не вылезает левее поля, если подсказки
+    // неожиданно шире цели.
+    private CustomPopupPlacement[] PlaceSuggestionsCentered(Size popupSize, Size targetSize, Point offset)
+    {
+        var x = Math.Max((targetSize.Width - popupSize.Width) / 2, 0);
+        return [new CustomPopupPlacement(new Point(x, targetSize.Height + 4), PopupPrimaryAxis.None)];
+    }
+
+    // WPF перепозиционирует Popup только при смене РАЗМЕРОВ цели: смещение
+    // SearchHost (изменение размера/перетаскивание окна, сворачивание сайдбара)
+    // оставляло открытый список на старом месте — «смещённым влево». Толчок
+    // HorizontalOffset заставляет Popup пересчитать позицию (сеть ±0.01 даёт
+    // два изменения свойства — пересчёт гарантирован).
+    private void OnSearchHostShifted(object? sender, EventArgs e) => RepositionSuggestionsPopup();
+
+    private void HookHostWindowShifted()
+    {
+        if (Window.GetWindow(this) is not { } window)
+        {
+            return;
+        }
+
+        window.LocationChanged += OnSearchHostShifted;
+        window.SizeChanged += OnSearchHostShifted;
+    }
+
+    private void UnhookHostWindowShifted()
+    {
+        if (Window.GetWindow(this) is not { } window)
+        {
+            return;
+        }
+
+        window.LocationChanged -= OnSearchHostShifted;
+        window.SizeChanged -= OnSearchHostShifted;
+    }
+
+    private void RepositionSuggestionsPopup()
+    {
+        if (!SearchSuggestionsPopup.IsOpen)
+        {
+            return;
+        }
+
+        var offset = SearchSuggestionsPopup.HorizontalOffset;
+        SearchSuggestionsPopup.HorizontalOffset = offset + 0.01;
+        SearchSuggestionsPopup.HorizontalOffset = offset;
+    }
 
     // Большой выключатель закреплён: верхний отступ блока центрирует его
     // постоянную часть (ToggleCore) в видимой зоне. Развёрнутый список

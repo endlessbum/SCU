@@ -210,7 +210,9 @@ std::vector<unsigned char> Unhex(const char* hex, size_t byteCount)
     return bytes;
 }
 
-bool HashBuffer(const unsigned char* data, size_t size, std::vector<unsigned char>& digest)
+bool HashBuffer(const unsigned char* data, size_t size,
+                const unsigned char* data2, size_t size2,
+                std::vector<unsigned char>& digest)
 {
     BCRYPT_ALG_HANDLE algorithm = nullptr;
     if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != STATUS_SUCCESS) {
@@ -224,6 +226,9 @@ bool HashBuffer(const unsigned char* data, size_t size, std::vector<unsigned cha
     bool ok = false;
     if (status == STATUS_SUCCESS) {
         status = BCryptHashData(hash, const_cast<PUCHAR>(data), static_cast<ULONG>(size), 0);
+        if (status == STATUS_SUCCESS && data2 != nullptr) {
+            status = BCryptHashData(hash, const_cast<PUCHAR>(data2), static_cast<ULONG>(size2), 0);
+        }
         if (status == STATUS_SUCCESS) {
             digest.resize(32);
             status = BCryptFinishHash(hash, digest.data(), 32, 0);
@@ -351,6 +356,38 @@ bool AtomicWrite(const std::wstring& targetPath, const std::vector<unsigned char
     return true;
 }
 
+// Числовое поле из мини-JSON (для схемы db-version.json).
+bool ExtractJsonLong(const std::string& json, const char* field, long long& value)
+{
+    const std::string key = std::string("\"") + field + "\"";
+    const size_t keyPos = json.find(key);
+    if (keyPos == std::string::npos) {
+        return false;
+    }
+    const size_t colon = json.find(':', keyPos + key.size());
+    if (colon == std::string::npos) {
+        return false;
+    }
+    size_t i = colon + 1;
+    while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' || json[i] == '\n')) {
+        ++i;
+    }
+    const char* begin = json.c_str() + i;
+    char* end = nullptr;
+    value = strtoll(begin, &end, 10);
+    return end != nullptr && end != begin;
+}
+
+// Best-effort удаление каталога генерации (2 файла + каталог).
+void TryRemoveGeneration(const std::wstring& dir)
+{
+    DeleteFileW((dir + L"\\hashes.txt").c_str());
+    DeleteFileW((dir + L"\\db-version.json").c_str());
+    DeleteFileW((dir + L"\\hashes.txt.tmp").c_str());
+    DeleteFileW((dir + L"\\db-version.json.tmp").c_str());
+    RemoveDirectoryW(dir.c_str());
+}
+
 } // namespace
 
 void DatabasePackage::Apply(const std::wstring& packageZip,
@@ -403,15 +440,27 @@ void DatabasePackage::Apply(const std::wstring& packageZip,
     }
 
     const std::vector<unsigned char> signature = ReadZipMember(zip, "hashes.txt.sig", found);
-    mz_zip_reader_end(&zip);
     if (!found) {
+        mz_zip_reader_end(&zip);
         result.error = L"package is missing hashes.txt.sig";
         return;
     }
 
-    // 3. Верификация подписи (п. 33): SHA-256(hashes.txt) + ECDSA P-256.
+    // db-version.json — обязательный член подписанного payload (аудит п. 11):
+    // метаданные версии верифицируются тем же дайджестом, а не копируются
+    // best-effort после проверки базы.
+    const std::vector<unsigned char> version = ReadZipMember(zip, "db-version.json", found);
+    mz_zip_reader_end(&zip);
+    if (!found) {
+        result.error = L"package is missing db-version.json";
+        return;
+    }
+
+    // 3. Верификация подписи (п. 33): SHA-256(hashes.txt || db-version.json)
+    //    + ECDSA P-256. Старые пакеты (подпись только над hashes.txt)
+    //    отклоняются — издатель перевыпускает пакет новым форматом.
     std::vector<unsigned char> digest;
-    if (!HashBuffer(hashes.data(), hashes.size(), digest)) {
+    if (!HashBuffer(hashes.data(), hashes.size(), version.data(), version.size(), digest)) {
         result.error = L"hash computation failed";
         return;
     }
@@ -430,24 +479,75 @@ void DatabasePackage::Apply(const std::wstring& packageZip,
     }
     result.entries = entries;
 
-    // 5. Atomic replace (п. 12).
-    if (!AtomicWrite(databaseDir + L"\\hashes.txt", hashes)) {
-        result.error = L"failed to write hashes.txt";
+    // 5. Семантическая схема db-version.json (аудит 2, п. 17): подписан ≠
+    //    семантически валиден. version обязателен, entries — неотрицательное.
+    const std::string versionJson(version.begin(), version.end());
+    const std::wstring versionValue = ExtractJsonString(versionJson, "version");
+    if (versionValue.empty()) {
+        result.error = L"db-version.json rejected: version is empty";
+        return;
+    }
+    long long declaredEntries = -1;
+    if (!ExtractJsonLong(versionJson, "entries", declaredEntries) || declaredEntries < 0) {
+        result.error = L"db-version.json rejected: invalid entries";
         return;
     }
 
-    // db-version.json копируется best-effort (подписан сам hashes.txt).
-    mz_zip_archive zip2{};
-    if (mz_zip_reader_init_mem(&zip2, packageBytes.data(), packageBytes.size(), 0)) {
-        const std::vector<unsigned char> version = ReadZipMember(zip2, "db-version.json", found);
-        mz_zip_reader_end(&zip2);
-        if (found) {
-            AtomicWrite(databaseDir + L"\\db-version.json", version);
-            result.dbVersion = ExtractJsonString(
-                std::string(version.begin(), version.end()), "version");
-        }
+    // 6. Атомарная установка ЕДИНЫМ состоянием (аудит 2, п. 16): полная
+    //    генерация пишется в generations/<id>, commit — атомарная замена
+    //    указателя current.json. Разрыв «hashes=новый, version=старый»
+    //    больше невозможен: читатель активируется одним файлом.
+    wchar_t idBuffer[64];
+    swprintf_s(idBuffer, L"gen-%016llx-%08lx",
+               static_cast<unsigned long long>(GetTickCount64()),
+               static_cast<unsigned long>(GetCurrentProcessId()));
+    const std::wstring generationId = idBuffer;
+
+    CreateDirectoryW((databaseDir + L"\\generations").c_str(), nullptr); // уже есть — норма
+    const std::wstring generationDir = databaseDir + L"\\generations\\" + generationId;
+    if (!CreateDirectoryW(generationDir.c_str(), nullptr)) {
+        result.error = L"failed to create generation directory";
+        return;
     }
 
+    if (!AtomicWrite(generationDir + L"\\hashes.txt", hashes)
+        || !AtomicWrite(generationDir + L"\\db-version.json", version)) {
+        TryRemoveGeneration(generationDir);
+        result.error = L"failed to write generation files";
+        return;
+    }
+
+    // Commit point: атомарный указатель на новую генерацию.
+    const std::string pointerJson = "{\"generation\":\"" +
+        std::string(generationId.begin(), generationId.end()) + "\"}\n";
+    const std::vector<unsigned char> pointerBytes(pointerJson.begin(), pointerJson.end());
+    if (!AtomicWrite(databaseDir + L"\\current.json", pointerBytes)) {
+        TryRemoveGeneration(generationDir);
+        result.error = L"failed to commit database pointer";
+        return;
+    }
+
+    // Легаси-зеркало (best-effort): ручные проверки и внешние инструменты
+    // читают hashes.txt/db-version.json по классическим путям.
+    AtomicWrite(databaseDir + L"\\hashes.txt", hashes);
+    AtomicWrite(databaseDir + L"\\db-version.json", version);
+
+    // Уборка чужих генераций (best-effort): активная остаётся.
+    WIN32_FIND_DATAW findData{};
+    HANDLE find = FindFirstFileW((databaseDir + L"\\generations\\gen-*").c_str(), &findData);
+    if (find != INVALID_HANDLE_VALUE) {
+        do {
+            if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                const std::wstring name = findData.cFileName;
+                if (name != generationId) {
+                    TryRemoveGeneration(databaseDir + L"\\generations\\" + name);
+                }
+            }
+        } while (FindNextFileW(find, &findData));
+        FindClose(find);
+    }
+
+    result.dbVersion = versionValue;
     result.ok = true;
 }
 

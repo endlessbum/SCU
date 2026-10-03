@@ -21,7 +21,12 @@ struct PersistenceEntry {
 
 class PersistenceScanner {
 public:
-    void Enumerate(const std::function<void(const PersistenceEntry&)>& onEntry);
+    // onSkipped — объект, который перечислитель НЕ проверил намеренно
+    // (предел глубины, reparse, oversized registry value, битый XML задачи).
+    // Молчаливый пропуск = потеря покрытия (аудит 2, п. 7/11/12).
+    using SkipCallback = std::function<void(const std::wstring& path, const wchar_t* reason)>;
+    void Enumerate(const std::function<void(const PersistenceEntry&)>& onEntry,
+                   const SkipCallback& onSkipped = {});
 };
 
 } // namespace scan

@@ -5,6 +5,7 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -13,8 +14,17 @@
                    Style="{StaticResource SectionDescription}"
                    Text="{DynamicResource S_StartupDesc}" />
 
+        <!-- Обновление списка: перечитывает автозагрузку (StartupList) —
+             актуальные данные без повторного захода во вкладку. -->
+        <DockPanel Grid.Row="1" Margin="0,0,0,12" LastChildFill="False">
+            <Button DockPanel.Dock="Left"
+                    Content="{DynamicResource S_Refresh}"
+                    Command="{Binding RefreshCommand}"
+                    ToolTipService.ShowOnDisabled="True" />
+        </DockPanel>
+
         <!-- Карточка автозагрузки: имя, ниже команда, справа кнопка «Отключить» -->
-        <ItemsControl Grid.Row="1" ItemsSource="{Binding Rows}">
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding Rows}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <Border Style="{StaticResource SectionCard}">
@@ -47,7 +57,7 @@
         </ItemsControl>
 
         <!-- Пустой список автозагрузки -->
-        <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,24,0,8">
+        <StackPanel Grid.Row="2" HorizontalAlignment="Center" Margin="0,24,0,8">
             <StackPanel.Style>
                 <Style TargetType="StackPanel">
                     <Setter Property="Visibility" Value="Collapsed" />
@@ -65,7 +75,7 @@
                        Text="{DynamicResource S_EmptyStateStartup}" />
         </StackPanel>
 
-        <StackPanel Grid.Row="2">
+        <StackPanel Grid.Row="3">
             <TextBlock Style="{StaticResource SectionStatusText}" Text="{Binding StatusText}" />
             <!-- Предупреждение «нет прав / SCU.ps1 недоступен» — как в остальных разделах -->
             <TextBlock Style="{StaticResource SectionWarnText}" Text="{Binding ReadOnlyHint}" />

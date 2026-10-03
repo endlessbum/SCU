@@ -37,6 +37,58 @@ public partial class ScannerCoreIntegrationTests
         return null;
     }
 
+    // П. 5 аудита: тесты, применяющие пакеты базы или правящие hashes.txt,
+    // обязаны работать в собственной песочнице — копия runtime ScannerCore
+    // с сидом security/database из репозитория. out/Release никогда не мутируется.
+    private static string? TryCreateScannerSandbox()
+    {
+        var scannerPath = FindScannerCore();
+        if (scannerPath is null)
+        {
+            return null;
+        }
+
+        var sandbox = Path.Combine(Path.GetTempPath(), "scu-sandbox-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(sandbox);
+
+        // Runtime: файлы верхнего уровня каталога бинарника; security/ не копируется —
+        // сеется из сида, чтобы тестовое состояние из out/Release не протекало в тесты.
+        foreach (var file in Directory.EnumerateFiles(Path.GetDirectoryName(scannerPath)!))
+        {
+            File.Copy(file, Path.Combine(sandbox, Path.GetFileName(file)), overwrite: true);
+        }
+
+        var seedDatabase = FindSeedDatabaseDirectory();
+        var sandboxDatabase = Path.Combine(sandbox, "security", "database");
+        Directory.CreateDirectory(sandboxDatabase);
+        if (seedDatabase is not null)
+        {
+            foreach (var file in Directory.EnumerateFiles(seedDatabase))
+            {
+                File.Copy(file, Path.Combine(sandboxDatabase, Path.GetFileName(file)), overwrite: true);
+            }
+        }
+
+        return sandbox;
+    }
+
+    private static string? FindSeedDatabaseDirectory()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 6 && directory is not null; i++)
+        {
+            var candidate = Path.Combine(directory.FullName, "SecurityScanner", "database");
+            if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, "hashes.txt")))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
+    }
+
     // П. 10 аудита: интеграционный тест без ScannerCore — это FAIL, а не тихий
     // PASS. В CI бинарник обязан быть собран; локально разрешён осознанный skip
     // через SCU_ALLOW_INTEGRATION_SKIP=1 — с явной пометкой SKIPPED в выводе.
@@ -70,6 +122,9 @@ public partial class ScannerCoreIntegrationTests
             startInfo.ArgumentList.Add("--dev-unsigned-ok");
         }).ConfigureAwait(false);
 
+        // Обе стороны протокола (аудит 2, п. 23): событие finished без
+        // согласованности с exit code тестом не подтверждается.
+        Assert.True(exitCode is 0 or 1 or 3, $"unexpected scanner exit code: {exitCode}");
         return events.Find(e => e.Kind == ScanEventKind.Finished)?.Result;
     }
 
@@ -94,7 +149,30 @@ public partial class ScannerCoreIntegrationTests
             process.StandardOutput.BaseStream,
             line => events.Add(ScanEventParser.Parse(line)),
             CancellationToken.None);
-        process.WaitForExit(120000);
+        // Зависший ScannerCore не оставляет тест висеть навсегда (аудит 2, п. 22):
+        // таймаут убивает дерево процессов; перед падением stdout осушается,
+        // чтобы диагностика содержала собранные события (аудит 3, п. 14).
+        if (!process.WaitForExit(120000))
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (System.InvalidOperationException)
+            {
+            }
+
+            try
+            {
+                await stdout;
+            }
+            catch (Exception)
+            {
+                // чтение прерванного пайпа — не влияет на вердикт таймаута
+            }
+
+            Assert.Fail("ScannerCore не завершился за 120 секунд — процесс снят.");
+        }
         await stdout;
         return (process.ExitCode, events);
     }
@@ -118,11 +196,16 @@ public partial class ScannerCoreIntegrationTests
     }
 
     // Подписанный пакет базы (как DatabaseBuilder): hashes.txt + sig + db-version.json.
+    // Подпись — составной дайджест SHA-256(hashes.txt || db-version.json) (аудит п. 11).
     private static byte[] BuildSignedPackage(byte[] hashesBytes, byte[] versionJson, string keyPath)
     {
         using var ecdsa = System.Security.Cryptography.ECDsa.Create();
         ecdsa.ImportFromPem(File.ReadAllText(keyPath));
-        var signature = ecdsa.SignData(hashesBytes, System.Security.Cryptography.HashAlgorithmName.SHA256);
+
+        var payload = new byte[hashesBytes.Length + versionJson.Length];
+        hashesBytes.CopyTo(payload, 0);
+        versionJson.CopyTo(payload, hashesBytes.Length);
+        var signature = ecdsa.SignData(payload, System.Security.Cryptography.HashAlgorithmName.SHA256);
 
         using var stream = new MemoryStream();
         using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
@@ -387,14 +470,21 @@ public partial class ScannerCoreIntegrationTests
     {
         // Документ п. 30/33: пакет с валидной ECDSA-подписью применяется
         // атомарно; IOC из новой базы детектируется следующим сканом.
-        var scannerPath = FindScannerCore();
         var keyPath = FindDatabaseSigningKey();
-        if (scannerPath is null || keyPath is null)
+        if (FindScannerCore() is null || keyPath is null)
         {
             ReportSkip();
             return;
         }
 
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
         var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -434,6 +524,7 @@ public partial class ScannerCoreIntegrationTests
         finally
         {
             Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
         }
     }
 
@@ -442,14 +533,21 @@ public partial class ScannerCoreIntegrationTests
     {
         // Документ п. 33: подпись обязательна. Изменённый hashes.txt без
         // перевыпуска подписи отклоняется, база не меняется.
-        var scannerPath = FindScannerCore();
         var keyPath = FindDatabaseSigningKey();
-        if (scannerPath is null || keyPath is null)
+        if (FindScannerCore() is null || keyPath is null)
         {
             ReportSkip();
             return;
         }
 
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
         var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -498,6 +596,7 @@ public partial class ScannerCoreIntegrationTests
         finally
         {
             Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
         }
     }
 

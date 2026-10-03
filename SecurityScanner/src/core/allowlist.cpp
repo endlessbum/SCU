@@ -1,21 +1,12 @@
 #include "core/allowlist.h"
 
 #include "component_allowlist.h"
+#include "core/path_util.h"
 #include "hash/sha256.h"
 
 #include <windows.h>
 
 namespace scan {
-
-namespace {
-
-std::wstring DirectoryOf(const std::wstring& path)
-{
-    const size_t slash = path.find_last_of(L'\\');
-    return slash == std::wstring::npos ? std::wstring() : path.substr(0, slash);
-}
-
-} // namespace
 
 ComponentAllowlist::ComponentAllowlist()
 {
@@ -26,13 +17,13 @@ ComponentAllowlist::ComponentAllowlist()
 
 void ComponentAllowlist::AddRuntimeComponents()
 {
-    wchar_t pathBuffer[MAX_PATH]{};
-    if (GetModuleFileNameW(nullptr, pathBuffer, MAX_PATH) == 0) {
+    // Динамический путь (аудит п. 9): длинный путь установки не усекается.
+    const std::wstring selfPath = GetModulePathDynamic();
+    if (selfPath.empty()) {
         return;
     }
 
     std::string hex;
-    const std::wstring selfPath = pathBuffer;
     if (Sha256::HashFile(selfPath, hex)) {
         hashes_.insert(hex);
     }

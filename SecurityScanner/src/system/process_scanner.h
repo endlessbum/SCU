@@ -19,7 +19,10 @@ struct ProcessInfo {
 
 class ProcessScanner {
 public:
-    static void Enumerate(const std::function<void(const ProcessInfo&)>& onProcess);
+    // Возврат false — снапшот недоступен (ошибка CreateToolhelp32Snapshot/
+    // Process32First): вызывающая сторона обязана учесть это в coverage
+    // (аудит 2, п. 6), а не трактовать как «процессов нет».
+    static bool Enumerate(const std::function<void(const ProcessInfo&)>& onProcess);
 };
 
 } // namespace scan

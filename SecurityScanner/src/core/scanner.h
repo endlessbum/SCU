@@ -87,19 +87,22 @@ private:
     unsigned long long testCancelAfter_ = 0;
     std::atomic<bool> isCancelled_{false};
 
-    // Состояние, общее для воркеров: доступ только под stateMutex_.
-    // (ScanPersistence/ScanProcesses идут после join'а воркеров — вне блокировки.)
+    // Состояние, общее для воркеров: короткие критические секции под stateMutex_
+    // (stats/detections), тяжёлый анализ — вне блокировок (аудит 2, п. 15).
+    // ScanPersistence/ScanProcesses идут после join'а воркеров.
     std::mutex stateMutex_;
 
     // Кэш по SHA-256 (п. 25): детект или минимальная запись с Clean.
     // Персистится в %LOCALAPPDATA%\SCU\scan-cache.txt; инвалидация — по
     // engine/db версии И профилю скана в заголовке файла (п. 2 аудита).
     // Кэш не может перекрыть signed DB: lookup по базе всегда выполняется
-    // до обращения к кэшу.
+    // до обращения к кэшу. Читается/пишется воркерами — под cacheMutex_;
+    // порядок захвата всегда cacheMutex_ → stateMutex_.
     struct CachedVerdict {
         Verdict verdict;
         Detection detection; // валиден при verdict != Clean
     };
+    std::mutex cacheMutex_;
     std::unordered_map<std::string, CachedVerdict> verdictCache_;
     void RememberVerdict(const std::string& sha256, Verdict verdict, Detection detection);
     std::string CacheProfileTag() const;

@@ -1,0 +1,63 @@
+<UserControl x:Class="SCU.Views.Cards.NetworkQosCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Border Style="{StaticResource SectionCard}">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetQosTitle}" />
+                <controls:InfoGlyph x:Name="QosInfoGlyph" VerticalAlignment="Center" />
+                <controls:PinGlyph CardId="net.qos" />
+            </StackPanel>
+            <!-- Активный вариант QoS подсвечивается акцентом через DataTrigger по ActiveQosKey -->
+            <WrapPanel Margin="0,8,0,0">
+                <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                    <Button Content="{DynamicResource S_NetQosZero}"
+                            Command="{Binding QosZeroCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveQosKey}" Value="0">
+                                        <Setter Property="Tag" Value="accent" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                    <Button Content="{DynamicResource S_NetQosTwenty}"
+                            Command="{Binding QosTwentyCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveQosKey}" Value="20">
+                                        <Setter Property="Tag" Value="accent" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                    <Button Content="{DynamicResource S_NetQosRemove}"
+                            Command="{Binding QosRemoveCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveQosKey}" Value="none">
+                                        <Setter Property="Tag" Value="accent" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="12,0,8,8">
+                    <Button Content="{DynamicResource S_NetQosRestore}"
+                            Command="{Binding QosRestoreCommand}" />
+                </StackPanel>
+            </WrapPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

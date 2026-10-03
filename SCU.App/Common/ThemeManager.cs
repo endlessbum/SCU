@@ -339,7 +339,7 @@ public static class ThemeManager
     // в «Настройки → Горячие клавиши», хранятся в общем settings.json.
     public static bool GlobalHotkeysEnabled { get; internal set; } = true;
 
-    public static void SaveSettings(AppTheme theme, AppAccent accent, AppLanguage language, bool showLog, bool uacConfirmations = true)
+    public static void SaveSettings(AppTheme theme, AppAccent accent, AppLanguage language, bool showLog, bool uacConfirmations = true, bool? onboardingShown = null)
     {
         InvalidateCaches();
         try
@@ -356,7 +356,10 @@ public static class ThemeManager
                     showLog = showLog,
                     uacConfirmations = uacConfirmations,
                     globalHotkeys = GlobalHotkeysEnabled,
-                    iconAccent = IconAccent.ToString().ToLowerInvariant()
+                    iconAccent = IconAccent.ToString().ToLowerInvariant(),
+                    // null — сохранить ранее записанное значение (флаг первого
+                    // запуска меняется только через MarkOnboardingShown).
+                    onboardingShown = onboardingShown ?? LoadOnboardingShown()
                 },
                 new JsonSerializerOptions { WriteIndented = true });
 
@@ -423,9 +426,38 @@ public static class ThemeManager
         return true;
     }
 
-    // Видимость журнала: значение из настроек; параметр отсутствует — журнал видим.
-    public static bool LoadShowLog()
+    // Окно знакомства с приложением: показывается при первом запуске. Флаг
+    // отсутствует — окно ещё не показывалось (новая установка или старые настройки).
+    public static bool LoadOnboardingShown()
     {
+        try
+        {
+            var path = GetSettingsPath();
+            if (File.Exists(path))
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                if (document.RootElement.TryGetProperty("onboardingShown", out var shown)
+                    && (shown.ValueKind == JsonValueKind.True || shown.ValueKind == JsonValueKind.False))
+                {
+                    return shown.GetBoolean();
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return false;
+    }
+
+    // Запоминает, что окно знакомства показано (вызывается после его закрытия).
+    public static void MarkOnboardingShown()
+    {
+        SaveSettings(GetCachedThemeMode(), Accent, L.Current, LoadShowLog(), LoadUacConfirmations(), onboardingShown: true);
+    }
+
+    // Видимость журнала: значение из настроек; параметр отсутствует — журнал видим.
+    public static bool LoadShowLog()    {
         try
         {
             var path = GetSettingsPath();
@@ -561,6 +593,9 @@ public static class ThemeManager
         SetBrush(application, "AccentFillBrush", accent);
         SetBrush(application, "AccentHoverBrush", hover);
         SetBrush(application, "AccentPressedBrush", pressed);
+        // Трек тумблера в ON при наведении: чуть темнее акцента, из его же оттенка,
+        // в обеих темах (обычный AccentHoverBrush в тёмной теме светлеет).
+        SetBrush(application, "SwitchAccentHoverBrush", Shift(accent, 0.92f));
         SetBrush(application, "AccentTintBrush", Color.FromArgb((byte)(dark ? 0x2E : 0x1A), accent.R, accent.G, accent.B));
         SetBrush(application, "AccentStrokeBrush", Color.FromArgb(0x66, accent.R, accent.G, accent.B));
         // Текст на акцентных кнопках: светлый акцент — чёрный текст, тёмный — белый.

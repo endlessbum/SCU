@@ -7,6 +7,7 @@ using Microsoft.Web.WebView2.Core;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models.Browser;
+using SCU.Models.Scan;
 using SCU.Views.Controls;
 
 namespace SCU.ViewModels.Sections;
@@ -963,11 +964,25 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         // открытие — только после явного подтверждения для любого файла,
         // для исполняемых — с отдельным предупреждением.
         var isExecutable = BrowserDownloadPolicy.IsExecutable(item.FilePath);
+        // П. 30 аудита 2: файл в состоянии проверки ≠ «не проверен» —
+        // формулировка должна отражать, что проверка ещё идёт.
+        string executableMessage;
+        if (item.StateKey == BrowserDownloadItem.StateChecking)
+        {
+            executableMessage = L.T(
+                "«{0}» — исполняемый файл, скачанный из интернета.\nSCU ещё проверяет файл. Открыть до завершения проверки?",
+                item.FileName);
+        }
+        else
+        {
+            executableMessage = L.T(
+                "«{0}» — исполняемый файл, скачанный из интернета.\nЗапустить его? SCU не проверял файл автоматически.",
+                item.FileName);
+        }
+
         var confirmed = _dialogs.Ask(
             L.T("Открыть файл"),
-            isExecutable
-                ? L.T("«{0}» — исполняемый файл, скачанный из интернета.\nЗапустить его? SCU не проверял файл автоматически.",
-                    item.FileName)
+            isExecutable ? executableMessage
                 : L.T("Открыть файл «{0}», скачанный из интернета?", item.FileName),
             L.T("Открыть"));
         if (!confirmed)
@@ -1005,38 +1020,51 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         try
         {
             var result = await _scanner.RunScanAsync(item.FilePath, scanDirectory: false).ConfigureAwait(true);
-            var detections = result.IsSuccess ? result.Value?.Detections.Count ?? 0 : 0;
-            if (!result.IsSuccess)
+            if (!result.IsSuccess || result.Value is null)
             {
+                // Ошибка проверки ≠ чистый результат: состояние «Ошибка», а не «Завершено».
                 item.ScanResult = L.T("ошибка проверки");
                 _logger.Warn("BROWSER | download scan failed | " + result.Message);
-                item.StateKey = BrowserDownloadItem.StateCompleted;
+                item.StateKey = BrowserDownloadItem.StateError;
                 return;
             }
 
-            item.ScanResult = detections > 0
-                ? L.T("обнаружено угроз: {0}", detections)
-                : L.T("угроз не обнаружено");
-            if (detections > 0)
+            // Ветвление по единому Outcome (аудит п. 2/15.3): Partial больше не
+            // прикидывается чистым результатом «угроз не обнаружено».
+            var scanResult = result.Value;
+            switch (scanResult.Outcome)
             {
-                item.StateKey = BrowserDownloadItem.StateThreat;
-                StatusText = L.T("В скачанном файле {0} обнаружены угрозы. Файл не запускался.", item.FileName);
-                AppNotificationCenter.Instance.Push(
-                    L.T("Сканер: угрозы в загрузке"),
-                    L.T("В файле {0} обнаружены угрозы ({1}). Файл не запускался.", item.FileName, detections),
-                    AppNotificationKind.Danger);
+                case ScanOutcome.Threats:
+                    item.ScanResult = L.T("обнаружено угроз: {0}", scanResult.Detections.Count);
+                    item.StateKey = BrowserDownloadItem.StateThreat;
+                    StatusText = L.T("В скачанном файле {0} обнаружены угрозы. Файл не запускался.", item.FileName);
+                    AppNotificationCenter.Instance.Push(
+                        L.T("Сканер: угрозы в загрузке"),
+                        L.T("В файле {0} обнаружены угрозы ({1}). Файл не запускался.", item.FileName, scanResult.Detections.Count),
+                        AppNotificationKind.Danger);
+                    break;
+
+                case ScanOutcome.Partial:
+                    item.ScanResult = L.T("проверено не полностью");
+                    item.StateKey = BrowserDownloadItem.StatePartial;
+                    break;
+
+                case ScanOutcome.Cancelled:
+                    item.ScanResult = L.T("проверка прервана");
+                    item.StateKey = BrowserDownloadItem.StateError;
+                    break;
+
+                default:
+                    item.ScanResult = L.T("угроз не обнаружено");
+                    item.StateKey = BrowserDownloadItem.StateCompleted;
+                    break;
             }
-            else
-            {
-                // Проверка закончена — файл остаётся «Завершено», не «Проверяется».
-                item.StateKey = BrowserDownloadItem.StateCompleted;
-            }
-            _logger.Info($"BROWSER | download scan | {Path.GetFileName(item.FilePath)} | detections={detections}");
+            _logger.Info($"BROWSER | download scan | {Path.GetFileName(item.FilePath)} | outcome={scanResult.Outcome} | detections={scanResult.Detections.Count}");
         }
         catch (Exception exception)
         {
             item.ScanResult = L.T("ошибка проверки");
-            item.StateKey = BrowserDownloadItem.StateCompleted;
+            item.StateKey = BrowserDownloadItem.StateError;
             _logger.Error("BROWSER | download scan error | " + exception);
         }
     }

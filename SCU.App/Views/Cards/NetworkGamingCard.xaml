@@ -1,0 +1,55 @@
+<UserControl x:Class="SCU.Views.Cards.NetworkGamingCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Border Style="{StaticResource SectionCard}">
+        <!-- П.14+П.16: профиль для игр — в начале вкладки. Обе кнопки видны всегда:
+             профиль применён → «Применить» неактивна, не применён → «Откатить» неактивна. -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetGamingProfile}" />
+                    <controls:InfoGlyph VerticalAlignment="Center" InfoText="{DynamicResource I_NetGamingProfile}" />
+                    <controls:PinGlyph CardId="net.gaming" />
+                </StackPanel>
+                <TextBlock Style="{StaticResource CardIntroText}"
+                           Text="{DynamicResource S_NetGamingProfileDesc}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="{DynamicResource S_Rollback}"
+                        Margin="0,0,8,0"
+                        Command="{Binding RollbackGamingProfileCommand}"
+                        ToolTipService.ShowOnDisabled="True">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Setter Property="IsEnabled" Value="False" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsGamingActive}" Value="True">
+                                    <Setter Property="IsEnabled" Value="True" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                <Button Content="{DynamicResource S_Apply}"
+                        Command="{Binding GamingProfileCommand}"
+                        ToolTipService.ShowOnDisabled="True">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Setter Property="IsEnabled" Value="True" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsGamingActive}" Value="True">
+                                    <Setter Property="IsEnabled" Value="False" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

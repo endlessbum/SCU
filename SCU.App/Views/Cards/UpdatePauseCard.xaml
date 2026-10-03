@@ -1,0 +1,25 @@
+<UserControl x:Class="SCU.Views.Cards.UpdatePauseCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Border Style="{StaticResource SectionCard}">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_WuPauseTitle}" />
+                <controls:PinGlyph CardId="update.pause" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource CardIntroText}"
+                       Text="{DynamicResource S_WuPauseDesc}" />
+            <WrapPanel>
+                <Button Content="{DynamicResource S_WuPause7}"
+                        Margin="0,0,8,8"
+                        Command="{Binding PauseUpdatesCommand}" />
+                <Button Content="{DynamicResource S_WuUnpause}"
+                        Margin="0,0,8,8"
+                        Command="{Binding UnpauseCommand}" />
+            </WrapPanel>
+            <TextBlock Style="{StaticResource SectionStatusText}"
+                       Text="{Binding PauseInfoText}" />
+        </StackPanel>
+    </Border>
+</UserControl>

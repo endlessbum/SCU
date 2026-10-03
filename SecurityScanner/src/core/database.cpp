@@ -1,5 +1,6 @@
 #include "core/database.h"
 
+#include "core/path_util.h"
 #include "core/types.h"
 
 #include <windows.h>
@@ -26,32 +27,79 @@ std::string ToLower(std::string value)
 
 } // namespace
 
+std::wstring ResolveDatabaseDir(const std::wstring& databaseDir)
+{
+    std::ifstream current(databaseDir + L"\\current.json");
+    if (!current.is_open()) {
+        return databaseDir; // нет указателя — легаси-раскладка
+    }
+    std::ostringstream buffer;
+    buffer << current.rdbuf();
+    const std::string json = buffer.str();
+
+    // Мини-парсер значения "generation".
+    const std::string key = "\"generation\"";
+    const size_t keyPos = json.find(key);
+    if (keyPos == std::string::npos) {
+        return databaseDir;
+    }
+    const size_t colon = json.find(':', keyPos + key.size());
+    const size_t open = colon == std::string::npos ? std::string::npos : json.find('"', colon);
+    const size_t close = open == std::string::npos ? std::string::npos : json.find('"', open + 1);
+    if (open == std::string::npos || close == std::string::npos) {
+        return databaseDir;
+    }
+    const std::string generation = json.substr(open + 1, close - open - 1);
+    if (generation.empty()) {
+        return databaseDir;
+    }
+
+    // Белый список символов id: подмена указателя на "..\.." не проходит.
+    for (const char c : generation) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                        || (c >= '0' && c <= '9') || c == '-' || c == '_';
+        if (!ok) {
+            return databaseDir;
+        }
+    }
+
+    std::wstring wide(generation.begin(), generation.end());
+    const std::wstring genDir = databaseDir + L"\\generations\\" + wide;
+    if (GetFileAttributesW((genDir + L"\\hashes.txt").c_str()) != INVALID_FILE_ATTRIBUTES) {
+        return genDir;
+    }
+    // Указатель на несуществующую генерацию — fallback на легаси.
+    return databaseDir;
+}
+
 HashDatabase::HashDatabase()
 {
     entries_[kEicarSha256] = {Verdict::Malware, L"EICAR-Test-File"};
 
     // Опциональная внешняя база рядом с exe (offline-установка пакета, п. 31).
-    wchar_t pathBuffer[MAX_PATH]{};
-    if (GetModuleFileNameW(nullptr, pathBuffer, MAX_PATH) == 0) {
+    // Динамический путь (аудит п. 9): длинный путь установки не усекается.
+    const std::wstring selfPath = GetModulePathDynamic();
+    if (selfPath.empty()) {
         return;
     }
-    std::wstring directory(pathBuffer);
-    const size_t slash = directory.find_last_of(L'\\');
-    if (slash == std::wstring::npos) {
+    const std::wstring directory = DirectoryOf(selfPath);
+    if (directory.empty()) {
         return;
     }
-    databaseDir_ = directory.substr(0, slash) + L"\\security\\database";
+    databaseDir_ = directory + L"\\security\\database";
 
-    std::ifstream file(databaseDir_ + L"\\hashes.txt");
+    // Активная база: генерация из current.json либо легаси-файлы (аудит 2, п. 16).
+    const std::wstring activeDir = ResolveDatabaseDir(databaseDir_);
+    std::ifstream file(activeDir + L"\\hashes.txt");
     if (file.is_open()) {
         LoadEntries(file);
     }
-    LoadVersionInfo();
+    LoadVersionInfo(activeDir);
 }
 
-void HashDatabase::LoadVersionInfo()
+void HashDatabase::LoadVersionInfo(const std::wstring& activeDir)
 {
-    std::ifstream file(databaseDir_ + L"\\db-version.json");
+    std::ifstream file(activeDir + L"\\db-version.json");
     if (!file.is_open()) {
         return;
     }
@@ -73,7 +121,15 @@ void HashDatabase::LoadVersionInfo()
             return {};
         }
         const std::string value = json.substr(open + 1, close - open - 1);
-        return std::wstring(value.begin(), value.end());
+        // UTF-8 → wide (имя/дата попадают в UI).
+        const int wideLength = MultiByteToWideChar(CP_UTF8, 0, value.c_str(),
+                                                   static_cast<int>(value.size()), nullptr, 0);
+        if (wideLength <= 0) {
+            return {};
+        }
+        std::wstring wide(static_cast<size_t>(wideLength), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()), wide.data(), wideLength);
+        return wide;
     };
     version_ = extract("version");
     date_ = extract("date");
@@ -101,7 +157,15 @@ void HashDatabase::LoadEntries(std::ifstream& file)
         if (verdict == Verdict::Clean) {
             continue;
         }
-        entries_[ToLower(hash)] = {verdict, std::wstring(name.begin(), name.end())};
+        // Имя — UTF-8 → wide (раньше байт-в-wchar ломал кириллицу в UI).
+        const int wideLength = MultiByteToWideChar(CP_UTF8, 0, name.c_str(),
+                                                   static_cast<int>(name.size()), nullptr, 0);
+        std::wstring wideName;
+        if (wideLength > 0) {
+            wideName.resize(static_cast<size_t>(wideLength), L'\0');
+            MultiByteToWideChar(CP_UTF8, 0, name.c_str(), static_cast<int>(name.size()), wideName.data(), wideLength);
+        }
+        entries_[ToLower(hash)] = {verdict, std::move(wideName)};
     }
 }
 

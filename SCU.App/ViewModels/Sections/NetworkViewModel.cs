@@ -53,12 +53,15 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
     private string _statusText = L.T("Загрузка состояния…");
 
     // П.5: выбор в списках выставляется по фактическим значениям при загрузке
-    // (текстовые информеры «TCP Auto-Tuning: …» / «ECN: …» удалены).
+    // (текстовые информеры удалены). null — состояние не прочитано: в списке
+    // показывается плейсхолдер, а не дефолт «normal»/«default» как факт.
     [ObservableProperty]
-    private string _selectedAutoTuning = "normal";
+    [NotifyPropertyChangedFor(nameof(AutoTuningValues), nameof(EcnValues))]
+    private string? _selectedAutoTuning = "normal";
 
     [ObservableProperty]
-    private string _selectedEcn = "default";
+    [NotifyPropertyChangedFor(nameof(AutoTuningValues), nameof(EcnValues))]
+    private string? _selectedEcn = "default";
 
     [ObservableProperty]
     private InterfaceRow? _selectedInterface;
@@ -111,9 +114,15 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
         _networkService = new NetworkService(logger, new LongProcessRunner(logger));
     }
 
-    public IReadOnlyList<string> AutoTuningValues => AutoTuningOptions;
+    // Плейсхолдер вместо несчитанного значения: пустой ComboBox выглядел бы
+    // как «не задано», плейсхолдер честно говорит, что состояние не прочитано.
+    private static string UnknownTcpOption => L.T("Не удалось прочитать");
 
-    public IReadOnlyList<string> EcnValues => EcnOptions;
+    public IReadOnlyList<string> AutoTuningValues =>
+        SelectedAutoTuning is null ? [UnknownTcpOption, .. AutoTuningOptions] : AutoTuningOptions;
+
+    public IReadOnlyList<string> EcnValues =>
+        SelectedEcn is null ? [UnknownTcpOption, .. EcnOptions] : EcnOptions;
 
     public ObservableCollection<InterfaceRow> Interfaces { get; } = [];
 
@@ -130,14 +139,25 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
         await RunExclusiveAsync("обновление сетевых параметров", async ct =>
         {
             StatusText = L.T("Чтение TCP Global, MTU, QoS и NetBIOS…");
-            await RefreshTcpGlobalAsync(ct).ConfigureAwait(true);
-            await RefreshInterfacesAsync(ct).ConfigureAwait(true);
+            var problems = new List<string>();
+            AddRefreshProblem(problems, await RefreshTcpGlobalAsync(ct).ConfigureAwait(true));
+            AddRefreshProblem(problems, await RefreshInterfacesAsync(ct).ConfigureAwait(true));
             await RefreshQosAsync(ct).ConfigureAwait(true);
             await RefreshNetBiosAsync(ct).ConfigureAwait(true);
             IsAdapterProfileRestoreAvailable = NetworkService.HasAdapterProfileBackup();
             IsMinCifraCertInstalled = TrustedCertificateService.IsRussianTrustedInstalled();
-            StatusText = L.T("Состояние обновлено.");
+            StatusText = problems.Count > 0
+                ? L.T("Состояние обновлено не полностью: {0}", string.Join("; ", problems))
+                : L.T("Состояние обновлено.");
         }).ConfigureAwait(true);
+    }
+
+    private static void AddRefreshProblem(List<string> problems, string? problem)
+    {
+        if (!string.IsNullOrWhiteSpace(problem))
+        {
+            problems.Add(problem);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanModify))]
@@ -234,12 +254,24 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
     [RelayCommand(CanExecute = nameof(CanModify))]
     private async Task ApplyAutoTuningAsync()
     {
+        if (SelectedAutoTuning is null)
+        {
+            StatusText = L.T("Сначала выберите значение — текущее состояние не прочитано.");
+            return;
+        }
+
         await SetTcpGlobalAsync("autotuninglevel", SelectedAutoTuning).ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanModify))]
     private async Task ApplyEcnAsync()
     {
+        if (SelectedEcn is null)
+        {
+            StatusText = L.T("Сначала выберите значение — текущее состояние не прочитано.");
+            return;
+        }
+
         await SetTcpGlobalAsync("ecncapability", SelectedEcn).ConfigureAwait(true);
     }
 
@@ -526,28 +558,18 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
         StatusText = L.T("Отмена операции…");
     }
 
-    private async Task RefreshTcpGlobalAsync(CancellationToken ct)
+    // Возвращает описание проблемы чтения (null — прочитано), чтобы RefreshAsync
+    // показал её в статусе: сбой чтения не должен выглядеть как «Состояние обновлено».
+    private async Task<string?> RefreshTcpGlobalAsync(CancellationToken ct)
     {
         var state = await _networkService.GetTcpGlobalAsync(ct).ConfigureAwait(true);
         _tcpGlobalState = state.IsSuccess ? state.Value : null;
-        // П.5: текстовые информеры удалены — выбор в ComboBox выставляется по факту
-        // (регистронезависимо; неизвестное значение оставляет выбор как есть).
-        if (state.IsSuccess)
-        {
-            var autoTuning = MatchOption(AutoTuningOptions, state.Value?.AutoTuning);
-            if (autoTuning is not null)
-            {
-                SelectedAutoTuning = autoTuning;
-            }
-
-            var ecn = MatchOption(EcnOptions, state.Value?.Ecn);
-            if (ecn is not null)
-            {
-                SelectedEcn = ecn;
-            }
-        }
-
+        // П.5: выбор в ComboBox выставляется по факту (регистронезависимо);
+        // несчитанное/неизвестное значение — плейсхолдер, а не прошлое значение.
+        SelectedAutoTuning = state.IsSuccess ? MatchOption(AutoTuningOptions, state.Value?.AutoTuning) : null;
+        SelectedEcn = state.IsSuccess ? MatchOption(EcnOptions, state.Value?.Ecn) : null;
         UpdateIsGamingActive();
+        return state.IsSuccess ? null : state.Message;
     }
 
     private static string? MatchOption(string[] options, string? actual)
@@ -560,7 +582,7 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
         return options.FirstOrDefault(o => string.Equals(o, actual.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
-    private async Task RefreshInterfacesAsync(CancellationToken ct)
+    private async Task<string?> RefreshInterfacesAsync(CancellationToken ct)
     {
         var list = await _networkService.GetInterfacesAsync(ct).ConfigureAwait(true);
         Interfaces.Clear();
@@ -570,11 +592,13 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
             {
                 Interfaces.Add(new InterfaceRow(item.Alias, item.Mtu));
             }
+
+            return null;
         }
-        else
-        {
-            _logger.Warn("NET | interfaces | " + list.Message);
-        }
+
+        // Пустой список при сбое неотличим от «интерфейсов нет» — проблема в статус.
+        _logger.Warn("NET | interfaces | " + list.Message);
+        return L.T("интерфейсы: {0}", list.Message);
     }
 
     private async Task RefreshQosAsync(CancellationToken ct)

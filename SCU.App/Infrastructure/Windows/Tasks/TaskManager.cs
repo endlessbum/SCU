@@ -1,4 +1,5 @@
 using SCU.Common;
+using SCU.Infrastructure.Logging;
 using SCU.Interop;
 using SCU.Models;
 
@@ -7,10 +8,12 @@ namespace SCU.Infrastructure.Windows.Tasks;
 public sealed class TaskManager
 {
     private readonly SCURunner _runner;
+    private readonly Logger? _logger;
 
-    public TaskManager(SCURunner runner)
+    public TaskManager(SCURunner runner, Logger? logger = null)
     {
         _runner = runner;
+        _logger = logger;
     }
 
     public static IReadOnlyList<string> DefaultTaskPaths { get; } =
@@ -67,7 +70,24 @@ public sealed class TaskManager
                 return Result<IReadOnlyList<ScheduledTaskInfo>>.Failure(result.Message, result.Code);
             }
 
+            if (!File.Exists(outFile))
+            {
+                // Скрипт отработал успешно, но файл не записал: показывать
+                // «Загружено задач: 0» как норму нельзя — это сбой формирования
+                // отчёта, неотличимый от машины без задач.
+                _logger?.Warn("TASKS | list file missing after successful run | " + outFile);
+                return Result<IReadOnlyList<ScheduledTaskInfo>>.Failure(
+                    "Скрипт не сформировал список задач.", result.Code);
+            }
+
             var items = ParseListFile(outFile);
+            if (items.Count == 0)
+            {
+                // Пустой файл легален (ни одной задачи из списка на машине) —
+                // отличие от отсутствующего файла только в журнале.
+                _logger?.Warn("TASKS | list file empty | " + outFile);
+            }
+
             return Result<IReadOnlyList<ScheduledTaskInfo>>.Success(items);
         }
         catch (OperationCanceledException)

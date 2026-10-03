@@ -9,6 +9,26 @@ namespace SCU.Tests;
 [Collection("LocalizationSequential")]
 public class LocalizationTests
 {
+    [Theory]
+    [InlineData("Закрепить карточку на главной", "Pin card to the dashboard")]
+    [InlineData("Открепить карточку", "Unpin card")]
+    public void T_EnglishMode_PinCardStrings_Translated(string key, string expected)
+    {
+        // Guard от удаления строк скрепки из EN-словаря: тогда L.T вернул бы
+        // ключ как есть, и тултип глифа закрепления показал бы русский текст.
+        var saved = L.Current;
+        try
+        {
+            L.SetLanguage(AppLanguage.En, notify: false);
+
+            Assert.Equal(expected, L.T(key));
+        }
+        finally
+        {
+            L.SetLanguage(saved, notify: false);
+        }
+    }
+
     [Fact]
     public void T_RussianMode_ReturnsKeyAsIs()
     {
