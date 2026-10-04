@@ -90,10 +90,13 @@ jobs:
           Write-Host "Imported certificate: $($cert.Thumbprint)"
           # Self-signed: публичная часть обязана попасть в доверенные корни,
           # иначе signtool verify /pa не строит цепочку до доверенного корня.
+          # LocalMachine, а не CurrentUser: импорт в CurrentUser\Root вызывает
+          # модальный диалог Windows «Установить этот сертификат?» — на раннере
+          # некому нажать Yes, шаг зависает до таймаута.
           $cerPath = Join-Path $env:RUNNER_TEMP "scu-signing.cer"
           [IO.File]::WriteAllBytes($cerPath, $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-          Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
-          Write-Host "Trusted root installed: $($cert.Subject)"
+          Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+          Write-Host "Trusted root installed (LocalMachine): $($cert.Subject)"
           "SIGN_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
