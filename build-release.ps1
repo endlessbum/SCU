@@ -32,8 +32,10 @@ function Find-Tool {
     return $null
 }
 
-Write-Host '=== 1. ScannerCore (CMake) ==='
-cmake -S (Join-Path $root 'SecurityScanner') -B (Join-Path $root 'SecurityScanner\build') | Out-Null
+Write-Host '=== 1. ScannerCore (CMake, с тест-хуками для гейта) ==='
+# Фаза тестов собирается С хуками (SCU_TEST_*): часть интеграционных тестов
+# ими управляется. Перед publish фаза 2a пересобирает бинарник БЕЗ них.
+cmake -S (Join-Path $root 'SecurityScanner') -B (Join-Path $root 'SecurityScanner\build') -A x64 -DSCU_ENABLE_TEST_HOOKS=ON | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed' }
 cmake --build (Join-Path $root 'SecurityScanner\build') --config Release | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'cmake build failed' }
@@ -77,6 +79,23 @@ if ($SkipSign -and (Test-Path $thumbprintFile)) {
 }
 dotnet @testArgs
 if ($LASTEXITCODE -ne 0) { throw 'dotnet test failed' }
+
+Write-Host '=== 2a. ScannerCore без тест-хуков (production) ==='
+# Релизится ровно hooks-free бинарник: SCU_TEST_CANCEL_AFTER / SCU_TEST_RUN_KEY
+# читают переменные окружения пользовательской сессии — hook в production-движке
+# стал бы рычагом отказа в обслуживании без прав администратора (аудит).
+cmake -S (Join-Path $root 'SecurityScanner') -B (Join-Path $root 'SecurityScanner\build') -A x64 -DSCU_ENABLE_TEST_HOOKS=OFF | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'cmake reconfigure failed' }
+cmake --build (Join-Path $root 'SecurityScanner\build') --config Release --clean-first | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'cmake rebuild failed' }
+if (-not (Test-Path (Join-Path $scannerOut 'ScannerCore.exe'))) { throw 'ScannerCore.exe не пересобран' }
+if ($signingEnabled) {
+    # Переподпись: пересобранный бинарник unsigned, а SCU.dll несёт pin —
+    # раннер требует подписанный exe.
+    & $signtool sign /fd SHA256 /n 'SCU Code Signing' /sha1 $thumbprint (Join-Path $scannerOut 'ScannerCore.exe')
+    if ($LASTEXITCODE -ne 0) { throw "signtool failed: $scannerOut\ScannerCore.exe" }
+    Write-Host "signed (rebuild): ScannerCore.exe"
+}
 
 Write-Host '=== 3. dotnet publish ==='
 $publishDir = Join-Path $root 'publish'
