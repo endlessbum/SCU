@@ -1,6 +1,6 @@
 # SCU
 
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F93%20detections-brightgreen?logo=virustotal)](https://www.virustotal.com/gui/url/045ecb6929775c21c262108dd68dac88d495233fc03173e26ca48c2301626d59?nocache=1)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F93%20detections-brightgreen?logo=virustotal)](https://www.virustotal.com/gui/url/b85ba9fe380ae77e480854ef58d80502fe3a50f86aaf8eec3a558197c64ba0f3)
 
 <p align="center">
   <img src="docs/images/scu-logo.png" alt="SCU" width="520">
