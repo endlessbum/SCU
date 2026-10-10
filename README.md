@@ -22,7 +22,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20x64-0078D4?style=flat-square&logo=windows" alt="Windows x64">
   <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet" alt=".NET 10">
-  <img src="https://img.shields.io/badge/version-3.1.2-2EA043?style=flat-square" alt="Version 3.1.2">
+  <img src="https://img.shields.io/badge/version-3.1.3-2EA043?style=flat-square" alt="Version 3.1.3">
   <img src="https://img.shields.io/badge/UI-WPF-5C2D91?style=flat-square" alt="WPF">
   <img src="https://img.shields.io/badge/C%2B%2B-CMake-00599C?style=flat-square&logo=cplusplus" alt="C++ CMake">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square" alt="MIT License">
