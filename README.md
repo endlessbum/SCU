@@ -1,6 +1,6 @@
 # SCU
 
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F92%20detections-brightgreen?logo=virustotal)](https://www.virustotal.com/gui/url/045ecb6929775c21c262108dd68dac88d495233fc03173e26ca48c2301626d59?nocache=1)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F93%20detections-brightgreen?logo=virustotal)](https://www.virustotal.com/gui/url/045ecb6929775c21c262108dd68dac88d495233fc03173e26ca48c2301626d59?nocache=1)
 
 <p align="center">
   <img src="docs/images/scu-logo.png" alt="SCU" width="520">
@@ -245,7 +245,7 @@ Security scanner разработан как **on-demand компонент**, �
 SCU рассчитан на:
 
 - **Windows x64**
-- современную Windows 10/11-среду;
+- современную Windows 11-среду;
 - административные права для операций, которые требуют изменения системного состояния.
 
 > Само приложение собирается как self-contained publish, поэтому отдельная установка .NET Runtime для release-сборки не требуется. WebView2 Runtime для встроенного браузера при необходимости приложение установит самостоятельно (пакет скачивается с проверкой подписи Microsoft в защищённый каталог).
