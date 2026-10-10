@@ -40,7 +40,7 @@ public sealed class RestorePointService
     // DisableSR: 1 = защита системы отключена; значение отсутствует = включена по умолчанию.
     // Глобальное DisableSR=0 не гарантирует защиту системного тома: защита может быть
     // снята выборочно (per-volume DisableSR в подключе с GUID тома).
-    public static bool IsSystemProtectionEnabled()
+    public bool IsSystemProtectionEnabled()
     {
         try
         {
@@ -58,8 +58,13 @@ public sealed class RestorePointService
 
             return !IsSystemVolumeProtectionDisabled(key);
         }
-        catch
+        catch (Exception exception)
         {
+            // Fail-open допустим только с логом: реестр нечитаем — состояние
+            // неизвестно, и гейт пропускает к созданию точки, где WMI вернёт
+            // честную ошибку, если защиты действительно нет. Молчаливое
+            // «включена» без лога выглядело бы как прочитанный факт.
+            _logger.Warn("RP | protection check failed | " + exception.Message);
             return true;
         }
     }

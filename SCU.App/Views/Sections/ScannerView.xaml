@@ -245,15 +245,36 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
+                                        <!-- У persistence-записи без файлового target
+                                             (псевдопуть HKCU\...\Run\X) смотреть/изолировать
+                                             нечего — кнопки скрываются. -->
                                         <Button Content="{DynamicResource S_ScannerView}"
-                                                Style="{StaticResource SmallButton}"
                                                 Command="{Binding DataContext.ViewDetectionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}" />
+                                                CommandParameter="{Binding}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource SmallButton}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasFileTarget}" Value="False">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
                                         <Button Margin="6,0,0,0"
                                                 Content="{DynamicResource S_ScannerQuarantine}"
-                                                Style="{StaticResource SmallButton}"
                                                 Command="{Binding DataContext.QuarantineCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}" />
+                                                CommandParameter="{Binding}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource SmallButton}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasFileTarget}" Value="False">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
                             </Border>

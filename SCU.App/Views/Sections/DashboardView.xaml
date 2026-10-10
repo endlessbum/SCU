@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:controls="clr-namespace:SCU.Views.Controls"
+             xmlns:ui="clr-namespace:SCU.Common"
              mc:Ignorable="d"
              d:DesignHeight="900" d:DesignWidth="860">
 
@@ -186,16 +187,24 @@
                                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
                             <Rectangle.Style>
                                 <Style TargetType="Rectangle">
+                                    <Setter Property="ui:UiAnimations.TriggerAnimations" Value="{DynamicResource UiAnimationsOn}" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                            <DataTrigger.EnterActions>
+                                        <!-- Гейт тумблера «Анимации интерфейса» (аудит UX):
+                                             при OFF кольцо статично, статус операции
+                                             остаётся видимым. -->
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsRunning}" Value="True" />
+                                                <Condition Binding="{Binding Path=(ui:UiAnimations.TriggerAnimations), RelativeSource={RelativeSource Self}}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <MultiDataTrigger.EnterActions>
                                                 <BeginStoryboard x:Name="BatchRingBegin"
                                                                  Storyboard="{StaticResource BatchRingStoryboard}" />
-                                            </DataTrigger.EnterActions>
-                                            <DataTrigger.ExitActions>
+                                            </MultiDataTrigger.EnterActions>
+                                            <MultiDataTrigger.ExitActions>
                                                 <RemoveStoryboard BeginStoryboardName="BatchRingBegin" />
-                                            </DataTrigger.ExitActions>
-                                        </DataTrigger>
+                                            </MultiDataTrigger.ExitActions>
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Rectangle.Style>
@@ -362,7 +371,7 @@
                                                                   Style="{StaticResource SystemToggleSwitch}"
                                                                   AutomationProperties.Name="{Binding Title}"
                                                                   IsChecked="{Binding IsIncluded, Mode=TwoWay}"
-                                                                  IsEnabled="{Binding DataContext.CanRunBatch, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  IsEnabled="{Binding DataContext.CanToggleRows, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                   Command="{Binding DataContext.ToggleUtilityCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                   CommandParameter="{Binding}" />
                                                 </Grid>

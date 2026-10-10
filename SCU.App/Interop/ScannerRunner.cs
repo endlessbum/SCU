@@ -273,23 +273,30 @@ public sealed class ScannerRunner
         {
             _logger.Warn("CANCEL | scan");
             await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
+            await ConfirmScannerTerminatedAsync(process, "cancel").ConfigureAwait(false);
             return ("Отменено", -1);
         }
         catch (OperationCanceledException)
         {
             _logger.Error($"TIMEOUT | scan | {RunnerGuard.DefaultTimeout}");
             await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
+            await ConfirmScannerTerminatedAsync(process, "timeout").ConfigureAwait(false);
             return ($"Превышено время ожидания сканирования ({RunnerGuard.DefaultTimeout.TotalMinutes:F0} мин) — процесс принудительно завершён.", -2);
         }
         catch (InvalidOperationException exception) when (ct.IsCancellationRequested)
         {
             _logger.Warn("CANCEL | scan | " + exception.Message);
             await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
+            await ConfirmScannerTerminatedAsync(process, "cancel").ConfigureAwait(false);
             return ("Отменено", -1);
         }
         catch (Exception exception)
         {
+            // Единая процедура выхода (аудит): reader tasks наблюдаются и в
+            // generic-ветке, иначе редкий сбой wait'а оставлял их
+            // неальянсированными с возможным поздним исключением.
             _logger.Error("SCAN | wait failed | " + exception.Message);
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
             return ("Ошибка ожидания ScannerCore: " + exception.Message, 1);
         }
 
@@ -300,6 +307,31 @@ public sealed class ScannerRunner
         }
 
         return null;
+    }
+
+    // L-02: Kill в обработчике отмены может сорваться (исключение проглатывается
+    // и логируется), и после возврата «Отменено» ScannerCore продолжал бы работу,
+    // пока UI считает операцию завершённой. Здесь мы ДОЖИДАЕМСЯ фактического
+    // завершения (до 5 секунд) и фиксируем в логе, если дерево не умерло.
+    private async Task ConfirmScannerTerminatedAsync(Process process, string context)
+    {
+        try
+        {
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            var completed = await Task.Run(() => process.WaitForExit(5000)).ConfigureAwait(false);
+            if (!completed)
+            {
+                _logger.Error($"SCAN | {context} | процесс не завершился после Kill — ScannerCore может продолжать работу");
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Error($"SCAN | {context} | подтверждение завершения не удалось | {exception.Message}");
+        }
     }
 
     // Краткое описание исхода для лога/истории; пользовательские тексты

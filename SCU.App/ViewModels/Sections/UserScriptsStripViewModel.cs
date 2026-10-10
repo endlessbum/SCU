@@ -85,9 +85,26 @@ public sealed class UserScriptsStripViewModel : ObservableObject
                 return;
             }
 
-            await _main.RunUserScriptAsync(liveCard).ConfigureAwait(true);
-            card.ResultText = liveCard.ResultText;
-            card.IsRunning = liveCard.IsRunning;
+            // Скрипт уже выполняется (запуск из другой карточки/полосы) — не дублируем.
+            if (liveCard.IsRunning)
+            {
+                return;
+            }
+
+            // Состояние выполнения показывается в копии полосы сразу: раньше
+            // IsRunning копировался только ПОСЛЕ завершения, и спиннер в полосе
+            // не работал, а кнопка оставалась активной.
+            card.IsRunning = true;
+            card.ResultText = null;
+            try
+            {
+                await _main.RunUserScriptAsync(liveCard).ConfigureAwait(true);
+            }
+            finally
+            {
+                card.ResultText = liveCard.ResultText;
+                card.IsRunning = false;
+            }
         }
         catch (Exception exception)
         {

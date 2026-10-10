@@ -267,8 +267,22 @@ public partial class DashboardView : UserControl
     }
 
     // Esc: спрятать подсказки → очистить запрос → снять фокус (закрыть поиск).
+    // ArrowDown (аудит a11y): фокус на первую подсказку — дальше по подсказкам
+    // работает обычная Tab/стрелочная навигация; Escape закрывает popup.
     private void OnSearchBoxKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Down && SearchVm().IsSearchSuggestionsOpen)
+        {
+            var button = FindFirstSuggestionButton(SearchSuggestionsPopup.Child);
+            if (button is not null)
+            {
+                button.Focus();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (e.Key != Key.Escape)
         {
             return;
@@ -290,6 +304,28 @@ public partial class DashboardView : UserControl
 
         e.Handled = true;
     }
+
+    private static Button? FindFirstSuggestionButton(DependencyObject root)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is Button button)
+            {
+                return button;
+            }
+
+            var nested = FindFirstSuggestionButton(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
 
     // Прокрутка подсказок колесом. Попап — отдельное окно (HWND): сообщение
     // колесо уходит сфокусированному окну (MainWindow), минуя содержимое

@@ -128,8 +128,11 @@ PeAnalysis PeAnalyzer::Analyze(const std::wstring& path)
         return result;
     }
 
+    // Проверки границ — от длины буфера, без ad-hoc сложений (аудит PE):
+    // «offset + size > read» выглядит безопасно, но ломается при переносе на
+    // 32-битный size_t или смене типов; вычитание не переполняется никогда.
     const DWORD ntOffset = static_cast<DWORD>(dosHeader->e_lfanew);
-    if (ntOffset == 0 || ntOffset + sizeof(IMAGE_NT_HEADERS) > read) {
+    if (ntOffset == 0 || ntOffset > read || sizeof(IMAGE_NT_HEADERS) > read - ntOffset) {
         CloseHandle(file);
         return result;
     }
@@ -143,9 +146,13 @@ PeAnalysis PeAnalyzer::Analyze(const std::wstring& path)
     result.isPe = true;
 
     const WORD sectionCount = ntHeaders->FileHeader.NumberOfSections;
-    const DWORD sectionTableOffset = ntOffset + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader)
-                                     + ntHeaders->FileHeader.SizeOfOptionalHeader;
-    if (sectionTableOffset + static_cast<DWORD>(sectionCount) * sizeof(IMAGE_SECTION_HEADER) > read) {
+    const unsigned long long sectionTableOffset =
+        static_cast<unsigned long long>(ntOffset)
+        + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader)
+        + ntHeaders->FileHeader.SizeOfOptionalHeader;
+    if (sectionTableOffset > read
+        || static_cast<unsigned long long>(sectionCount) * sizeof(IMAGE_SECTION_HEADER)
+               > read - sectionTableOffset) {
         // Некорректная таблица секций: malformed PE — только счётчик, не crash
         // (документ п. 22: безопасная обработка повреждённых PE).
         result.score += 1;
@@ -156,6 +163,11 @@ PeAnalysis PeAnalyzer::Analyze(const std::wstring& path)
     }
 
     unsigned long long endOfRaw = 0;
+    // Вклад одного класса сигналов ограничен (контракт kSuspiciousPeScore:
+    // «score >= 4 = два независимых сигнала») — две W+X-секции или две
+    // высокоэнтропийные секции не должны набирать порог в одиночку.
+    int writableExecutableScore = 0;
+    int highEntropyScore = 0;
     for (WORD i = 0; i < sectionCount; ++i) {
         const auto* raw = reinterpret_cast<const IMAGE_SECTION_HEADER*>(
             header.data() + sectionTableOffset + static_cast<size_t>(i) * sizeof(IMAGE_SECTION_HEADER));
@@ -174,14 +186,16 @@ PeAnalysis PeAnalyzer::Analyze(const std::wstring& path)
 
         // W+X секция с ненулевым размером: самозапаковка/самомодификация.
         // Частый признак packer'ов, но бывает и у легитимных — только сигнал.
-        if (writable && executable && section.rawSize > 0) {
+        if (writable && executable && section.rawSize > 0 && writableExecutableScore < 2) {
+            writableExecutableScore += 2;
             result.score += 2;
             result.signals.push_back(L"writable-executable-section:" + std::wstring(section.name, section.name + strlen(section.name)));
         }
 
-        if (isCode || executable) {
+        if ((isCode || executable) && highEntropyScore < 2) {
             const double entropy = SectionEntropy(file, section);
             if (entropy >= kHighEntropyThreshold) {
+                highEntropyScore += 2;
                 result.score += 2;
                 char entropyText[16];
                 snprintf(entropyText, sizeof(entropyText), "%.2f", entropy);

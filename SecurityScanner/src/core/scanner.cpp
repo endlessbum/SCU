@@ -3,6 +3,17 @@
 #include "core/path_util.h"
 
 #include <windows.h>
+#include <bcrypt.h>
+#include <sddl.h>
+#include <aclapi.h>
+
+// ntstatus.h тянет за собой ntdef.h и конфликтует с windows.h — STATUS_SUCCESS
+// определяем локально (аудит-фикс незакоммиченного блока HMAC-кэша).
+#ifndef STATUS_SUCCESS
+#define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
+#endif
+
+#pragma comment(lib, "bcrypt.lib")
 
 #include <algorithm>
 #include <cctype>
@@ -53,12 +64,26 @@ unsigned long long GetFileSizeSafe(const std::wstring& path)
 
 std::string ToLowerAscii(const std::wstring& text)
 {
-    std::string result;
-    result.reserve(text.size());
-    for (const wchar_t c : text) {
-        if (c < 0x80) {
-            result += static_cast<char>(std::tolower(static_cast<int>(c)));
-        }
+    // Аудит: прежняя версия молча выбрасывала не-ASCII символы — Unicode-путь
+    // в persistence-команде искажался до анализа (часть признаков могла
+    // пропасть, диагностика искажалась). Конвертация в UTF-8 без потерь;
+    // lowercase — только ASCII: паттерны эвристик ASCII, не-ASCII символы
+    // сохраняются как есть.
+    if (text.empty()) {
+        return {};
+    }
+    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(),
+                                         static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+    if (size <= 0) {
+        return {};
+    }
+    std::string result(static_cast<size_t>(size), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()),
+                            result.data(), size, nullptr, nullptr) <= 0) {
+        return {};
+    }
+    for (char& c : result) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return result;
 }
@@ -94,6 +119,343 @@ std::wstring VerdictToWide(Verdict verdict)
     }
 }
 
+// UTF-8 ↔ wide для дискового кэша (аудит): раньше ruleId/description писались
+// побайтовым усечением wchar_t — не-ASCII текст (имена/описания из базы) портился.
+std::string WideToUtf8(const std::wstring& wide)
+{
+    if (wide.empty()) {
+        return {};
+    }
+    const int size = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(),
+                                         static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+    if (size <= 0) {
+        return {};
+    }
+    std::string result(static_cast<size_t>(size), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()),
+                        result.data(), size, nullptr, nullptr);
+    return result;
+}
+
+std::wstring Utf8ToWide(const std::string& utf8)
+{
+    if (utf8.empty()) {
+        return {};
+    }
+    const int size = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(),
+                                         static_cast<int>(utf8.size()), nullptr, 0);
+    if (size <= 0) {
+        return {};
+    }
+    std::wstring result(static_cast<size_t>(size), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()), result.data(), size);
+    return result;
+}
+
+// ===================== Доверие к дисковому кэшу (аудит trust model) =====================
+// Кэш лежит в user-writable LocalAppData, а ScannerCore исполняется elevated:
+// не-админ-процесс мог подменить сохранённый вердикт, переходя границу
+// привилегий. Защита — HMAC-SHA256 каждой строки ключом из %LOCALAPPDATA%\SCU
+// \cache.key, созданного elevated-запуском с DACL только SYSTEM+Administrators.
+// Не-админ процесс ключ не читает → подделать MAC не может. Нет ключа →
+// дисковый кэш отключается (fail-closed, остаётся in-memory).
+
+std::vector<unsigned char> HexToBytes(const std::string& hex)
+{
+    std::vector<unsigned char> bytes;
+    if (hex.size() % 2 != 0) {
+        return bytes;
+    }
+    for (size_t i = 0; i < hex.size(); i += 2) {
+        auto nibble = [](wchar_t c) -> int {
+            if (c >= L'0' && c <= L'9') return c - L'0';
+            if (c >= L'a' && c <= L'f') return c - L'a' + 10;
+            if (c >= L'A' && c <= L'F') return c - L'A' + 10;
+            return -1;
+        };
+        const int high = nibble(hex[i]);
+        const int low = nibble(hex[i + 1]);
+        if (high < 0 || low < 0) {
+            return {};
+        }
+        bytes.push_back(static_cast<unsigned char>((high << 4) | low));
+    }
+    return bytes;
+}
+
+std::string BytesToHex(const unsigned char* data, size_t size)
+{
+    static const char* digits = "0123456789abcdef";
+    std::string hex;
+    hex.reserve(size * 2);
+    for (size_t i = 0; i < size; ++i) {
+        hex.push_back(digits[data[i] >> 4]);
+        hex.push_back(digits[data[i] & 0x0F]);
+    }
+    return hex;
+}
+
+// true, если процесс elevated: доверенный каталог кэша и ключ создаёт только
+// elevated-запуск. НЕ-elevated прогон не читает и не создаёт их вовсе: его
+// артефакты были бы доступны не-админ процессам, и «приём» такого ключа вернул
+// бы подмену через границу привилегий.
+bool ProcessIsElevated()
+{
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        return false;
+    }
+    DWORD elevation = 0;
+    DWORD returned = 0;
+    const bool ok = GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &returned)
+        && elevation != 0;
+    CloseHandle(token);
+    return ok;
+}
+
+// SID — SYSTEM (S-1-5-18) или встроенные Администраторы (S-1-5-32-544).
+bool SidIsTrustedPrincipal(const PSID sid)
+{
+    if (sid == nullptr || !IsValidSid(sid)) {
+        return false;
+    }
+
+    PSID system = nullptr;
+    PSID administrators = nullptr;
+    bool ok = false;
+    if (ConvertStringSidToSidW(L"S-1-5-18", &system) && system != nullptr) {
+        if (ConvertStringSidToSidW(L"S-1-5-32-544", &administrators) && administrators != nullptr) {
+            ok = EqualSid(sid, system) || EqualSid(sid, administrators);
+        }
+    }
+    if (system != nullptr) {
+        LocalFree(system);
+    }
+    if (administrators != nullptr) {
+        LocalFree(administrators);
+    }
+    return ok;
+}
+
+// DACL каталога не даёт доступа никому, кроме SYSTEM/Администраторов: каждая
+// ACE — ACCESS_ALLOWED для доверенного принципала. Иначе каталог мог создать
+// или переподчинить не-админ процесс.
+bool DirectoryDaclIsStrict(HANDLE dir)
+{
+    PSECURITY_DESCRIPTOR sd = nullptr;
+    PACL dacl = nullptr;
+    if (GetSecurityInfo(dir, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+                        nullptr, nullptr, &dacl, nullptr, &sd) != ERROR_SUCCESS
+        || dacl == nullptr) {
+        if (sd != nullptr) {
+            LocalFree(sd);
+        }
+        return false;
+    }
+
+    ACL_SIZE_INFORMATION size{};
+    bool ok = GetAclInformation(dacl, &size, sizeof(size), AclSizeInformation);
+    for (DWORD i = 0; ok && i < size.AceCount; ++i) {
+        LPVOID ace = nullptr;
+        if (!GetAce(dacl, i, &ace) || ace == nullptr) {
+            ok = false;
+            break;
+        }
+        const auto* header = static_cast<const ACE_HEADER*>(ace);
+        if (header->AceType != ACCESS_ALLOWED_ACE_TYPE) {
+            ok = false;
+            break;
+        }
+        auto* allowed = static_cast<ACCESS_ALLOWED_ACE*>(ace);
+        ok = SidIsTrustedPrincipal(reinterpret_cast<PSID>(&allowed->SidStart));
+    }
+
+    if (sd != nullptr) {
+        LocalFree(sd);
+    }
+    return ok;
+}
+
+// Доверенный каталог кэша: %ProgramData%\SCU\scanner-cache со строгим DACL.
+// Ключ HMAC и кэш-файл лежат там, куда не-админ не может писать: подмена
+// ключа удалением/пересозданием (user-writable %LOCALAPPDATA% допускал её)
+// стала невозможна физически. Каталог создаётся один раз elevated-запуском;
+// существующий каталог доверяется только при строгом DACL (fail-closed).
+std::wstring TrustedCacheDirectory()
+{
+    const std::wstring programData = GetEnvironmentValueDynamic(L"ProgramData");
+    if (programData.empty()) {
+        return {};
+    }
+
+    SECURITY_ATTRIBUTES sa{};
+    PSECURITY_DESCRIPTOR sd = nullptr;
+    if (ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:P(A;OICI;FA;;;S-1-5-18)(A;OICI;FA;;;BA)", SDDL_REVISION_1, &sd, nullptr)) {
+        sa.nLength = sizeof(sa);
+        sa.lpSecurityDescriptor = sd;
+        sa.bInheritHandle = FALSE;
+    }
+
+    const std::wstring root = programData + L"\\SCU";
+    const std::wstring dir = root + L"\\scanner-cache";
+    if (!CreateDirectoryW(root.c_str(), sa.nLength ? &sa : nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
+        if (sd != nullptr) {
+            LocalFree(sd);
+        }
+        return {};
+    }
+    if (!CreateDirectoryW(dir.c_str(), sa.nLength ? &sa : nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
+        if (sd != nullptr) {
+            LocalFree(sd);
+        }
+        return {};
+    }
+    if (sd != nullptr) {
+        LocalFree(sd);
+    }
+
+    // Уже существующий каталог: доверяем только при строгом DACL — иначе
+    // кто-то успел подложить свой каталог до нас.
+    HANDLE probe = CreateFileW(dir.c_str(), READ_CONTROL, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                               nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (probe == INVALID_HANDLE_VALUE) {
+        return {};
+    }
+    const bool trusted = DirectoryDaclIsStrict(probe);
+    CloseHandle(probe);
+    return trusted ? dir : std::wstring{};
+}
+
+// Ключ кэша: 32 байта из cache.key в доверенном каталоге кэша. Файл создаётся
+// elevated-запуском с DACL «только SYSTEM и Администраторы»; нет прав/нет
+// каталога → пустой вектор → дисковый кэш отключается (fail-closed).
+// Граница доверия — строгий DACL каталога (TrustedCacheDirectory): подмена
+// ключа не-elevated процессом физически невозможна, отдельная проверка
+// владельца файла не нужна (на системах, где даже elevated-токен создаёт
+// файлы user-owned, она давала бы ложное срабатывание и churn ключа).
+std::vector<unsigned char> LoadOrCreateCacheKey(const std::wstring& cacheDir)
+{
+    const std::wstring keyPath = cacheDir + L"\\cache.key";
+    const DWORD desiredAccess = GENERIC_READ | GENERIC_WRITE;
+    SECURITY_ATTRIBUTES sa{};
+    PSECURITY_DESCRIPTOR sd = nullptr;
+    if (ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:P(A;;FA;;;S-1-5-18)(A;;FA;;;BA)", SDDL_REVISION_1, &sd, nullptr)) {
+        sa.nLength = sizeof(sa);
+        sa.lpSecurityDescriptor = sd;
+        sa.bInheritHandle = FALSE;
+    }
+
+    // Единственный выход из функции — общий эпилог: sd освобождается на всех
+    // путях (раньше ветка CREATE_NEW возвращала ключ до LocalFree — утечка).
+    std::vector<unsigned char> key;
+    HANDLE keyFile = CreateFileW(keyPath.c_str(), desiredAccess,
+                                 0, sa.nLength ? &sa : nullptr, OPEN_EXISTING,
+                                 FILE_ATTRIBUTE_NORMAL, nullptr);
+    const bool missing = keyFile == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_NOT_FOUND;
+
+    if (keyFile == INVALID_HANDLE_VALUE && missing) {
+        // Создание — только elevated-запуском в доверенном каталоге: если
+        // raising не сработал, ключ не придумываем, а отключаем дисковый кэш.
+        keyFile = CreateFileW(keyPath.c_str(), desiredAccess,
+                              0, sa.nLength ? &sa : nullptr, CREATE_NEW,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (keyFile != INVALID_HANDLE_VALUE) {
+            unsigned char fresh[32] = {};
+            const bool generated = BCryptGenRandom(nullptr, fresh, sizeof(fresh),
+                                                   BCRYPT_USE_SYSTEM_PREFERRED_RNG) == STATUS_SUCCESS;
+            DWORD written = 0;
+            if (generated
+                && WriteFile(keyFile, fresh, sizeof(fresh), &written, nullptr)
+                && written == sizeof(fresh)) {
+                key.assign(fresh, fresh + sizeof(fresh));
+            }
+            CloseHandle(keyFile);
+            if (sd != nullptr) {
+                LocalFree(sd);
+            }
+            return key;
+        }
+    } else if (keyFile != INVALID_HANDLE_VALUE) {
+        unsigned char keyBuffer[32] = {};
+        DWORD read = 0;
+        const BOOL readOk = ReadFile(keyFile, keyBuffer, sizeof(keyBuffer), &read, nullptr);
+        CloseHandle(keyFile);
+        if (readOk && read == sizeof(keyBuffer)) {
+            key.assign(keyBuffer, keyBuffer + sizeof(keyBuffer));
+        }
+    }
+
+    if (sd != nullptr) {
+        LocalFree(sd);
+    }
+    return key;
+}
+
+// SHA-256 от конкатенации двух байтовых блоков поверх обычного (безключевого)
+// BCrypt-провайдера. На ряде систем BCryptGenerateSymmetricKey с HMAC-флагом
+// отвечает STATUS_NOT_SUPPORTED (0xC00000BB) — keyed-провайдер не работает,
+// и прежняя реализация молча отдавала пустой HMAC, отключая весь дисковый кэш.
+bool Sha256Of(const unsigned char* first, size_t firstLength,
+              const unsigned char* second, size_t secondLength, unsigned char out[32])
+{
+    BCRYPT_ALG_HANDLE alg = nullptr;
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != STATUS_SUCCESS) {
+        return false;
+    }
+
+    BCRYPT_HASH_HANDLE hash = nullptr;
+    bool ok = BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0) == STATUS_SUCCESS;
+    if (ok) {
+        ok = BCryptHashData(hash, const_cast<PUCHAR>(first),
+                            static_cast<ULONG>(firstLength), 0) == STATUS_SUCCESS;
+    }
+    if (ok && secondLength > 0) {
+        ok = BCryptHashData(hash, const_cast<PUCHAR>(second),
+                            static_cast<ULONG>(secondLength), 0) == STATUS_SUCCESS;
+    }
+    if (ok) {
+        ok = BCryptFinishHash(hash, out, 32, 0) == STATUS_SUCCESS;
+    }
+    if (hash != nullptr) {
+        BCryptDestroyHash(hash);
+    }
+    BCryptCloseAlgorithmProvider(alg, 0);
+    return ok;
+}
+
+// HMAC-SHA256 вручную: HMAC = H(K⊕opad || H(K⊕ipad || message)). Ключ 32 байта
+// меньше блока SHA-256 (64) и добивается нулями (RFC 2104).
+std::string HmacHex(const std::vector<unsigned char>& key, const std::string& data)
+{
+    if (key.empty()) {
+        return {};
+    }
+
+    constexpr size_t kShaBlock = 64;
+    std::vector<unsigned char> ipad(kShaBlock, 0x36);
+    std::vector<unsigned char> opad(kShaBlock, 0x5c);
+    for (size_t i = 0; i < kShaBlock; ++i) {
+        const unsigned char keyByte = i < key.size() ? key[i] : 0;
+        ipad[i] ^= keyByte;
+        opad[i] ^= keyByte;
+    }
+
+    unsigned char inner[32] = {};
+    if (!Sha256Of(ipad.data(), ipad.size(),
+                  reinterpret_cast<const unsigned char*>(data.data()), data.size(), inner)) {
+        return {};
+    }
+
+    unsigned char mac[32] = {};
+    if (!Sha256Of(opad.data(), opad.size(), inner, sizeof(inner), mac)) {
+        return {};
+    }
+
+    return BytesToHex(mac, sizeof(mac));
+}
+
 } // namespace
 
 Scanner::Scanner(EventWriter& events, ComponentAllowlist& allowlist, HashDatabase& database)
@@ -117,14 +479,13 @@ void Scanner::RememberVerdict(const std::string& sha256, Verdict verdict, Detect
 
 std::wstring Scanner::DiskCachePath() const
 {
-    // Динамический путь (аудит п. 9): длинный путь профиля не усекается.
-    const std::wstring localAppData = GetEnvironmentValueDynamic(L"LOCALAPPDATA");
-    if (localAppData.empty()) {
+    // Кэш живёт в доверенном каталоге (ProgramData, строгий DACL): путь недоступен
+    // не-elevated прогону или при подменённом каталоге — кэш просто отключён.
+    const std::wstring dir = TrustedCacheDirectory();
+    if (dir.empty()) {
         return {};
     }
-    std::wstring path = localAppData + L"\\SCU";
-    CreateDirectoryW(path.c_str(), nullptr);
-    return path + L"\\scan-cache.txt";
+    return dir + L"\\scan-cache.txt";
 }
 
 // Профиль скана в заголовке кэша (п. 2 аудита): кэш валиден только для той же
@@ -144,13 +505,28 @@ std::string Scanner::CacheProfileTag() const
 }
 
 // Формат: заголовок
-// "#scucache v1 engine=<ver> db=<ver> profile=<scripts=N;archives=N;...>",
-// далее строки "sha256<TAB>verdict<TAB>ruleId<TAB>score<TAB>signed<TAB>description".
-// Несовпадение версии движка, базы или профиля — весь кэш отбрасывается.
+// "#scucache v3 engine=<ver> db=<ver> profile=<scripts=N;archives=N;...>",
+// далее строки "<hex-hmac>\t<payload>", payload =
+// "sha256<TAB>verdict<TAB>ruleId<TAB>score<TAB>signed<TAB>description" в UTF-8.
+// v3: каждая строка подписана HMAC-SHA256 ключом из cache.key (DACL только
+// SYSTEM/Администраторы) — user-writable кэш больше не является доверенным
+// источником вердиктов (аудит trust model). v2: UTF-8 вместо усечённого
+// wchar_t. Любое несовпадение версии/ключа/движка/базы/профиля отбрасывает кэш.
 void Scanner::LoadDiskCache()
 {
     const std::wstring path = DiskCachePath();
     if (path.empty()) {
+        return;
+    }
+
+    // Ключ в том же доверенном каталоге, что и кэш; нет каталога/ключа/прав →
+    // дисковый кэш отключён. НЕ-elevated прогон: каталог нечитаем для него —
+    // кэш отключён сам по себе (гейт оставлен как короткое замыкание).
+    if (!ProcessIsElevated()) {
+        return;
+    }
+    const auto cacheKey = LoadOrCreateCacheKey(TrustedCacheDirectory());
+    if (cacheKey.empty()) {
         return;
     }
 
@@ -163,8 +539,8 @@ void Scanner::LoadDiskCache()
     if (!std::getline(file, header)) {
         return;
     }
-    const std::string expected = std::string("#scucache v1 engine=") + kEngineVersion
-                                 + " db=" + std::string(database_.Version().begin(), database_.Version().end())
+    const std::string expected = std::string("#scucache v3 engine=") + kEngineVersion
+                                 + " db=" + WideToUtf8(database_.Version())
                                  + " profile=" + CacheProfileTag();
     if (header != expected) {
         return; // другая версия движка/базы/профиля — кэш недействителен
@@ -172,7 +548,20 @@ void Scanner::LoadDiskCache()
 
     std::string line;
     while (std::getline(file, line) && verdictCache_.size() < kMaxCacheEntries) {
-        std::istringstream stream(line);
+        // Строка = "<hex-hmac>\t<payload>": неверный/отсутствующий MAC —
+        // строка отбрасывается (подмена вердикта не принимается).
+        const size_t separator = line.find('\t');
+        if (separator == std::string::npos) {
+            continue;
+        }
+        const std::string macHex = line.substr(0, separator);
+        const std::string payload = line.substr(separator + 1);
+        const std::string expectedMac = HmacHex(cacheKey, payload);
+        if (expectedMac.empty() || macHex != expectedMac) {
+            continue;
+        }
+
+        std::istringstream stream(payload);
         std::string sha256;
         std::string verdictText;
         std::string ruleId;
@@ -205,8 +594,8 @@ void Scanner::LoadDiskCache()
         Detection detection;
         detection.sha256 = sha256;
         detection.verdict = verdict;
-        detection.ruleId = std::wstring(ruleId.begin(), ruleId.end());
-        detection.description = std::wstring(description.begin(), description.end());
+        detection.ruleId = Utf8ToWide(ruleId);
+        detection.description = Utf8ToWide(description);
         detection.score = atoi(scoreText.c_str());
         detection.signedFile = signedText == "1";
         verdictCache_[sha256] = {verdict, std::move(detection)};
@@ -220,25 +609,41 @@ void Scanner::SaveDiskCache()
         return;
     }
 
+    // Аудит trust model: без ключа (нет прав на его создание/чтение) дисковый
+    // кэш не пишется вовсе — неподписанные вердикты на диск не попадают.
+    // НЕ-elevated прогон: не трогаем ключ вообще (см. LoadDiskCache).
+    if (!ProcessIsElevated()) {
+        return;
+    }
+    const auto cacheKey = LoadOrCreateCacheKey(TrustedCacheDirectory());
+    if (cacheKey.empty()) {
+        return;
+    }
+
     std::ostringstream out;
-    out << "#scucache v1 engine=" << kEngineVersion
-        << " db=" << std::string(database_.Version().begin(), database_.Version().end())
+    out << "#scucache v3 engine=" << kEngineVersion
+        << " db=" << WideToUtf8(database_.Version())
         << " profile=" << CacheProfileTag() << "\n";
     for (const auto& [sha256, cached] : verdictCache_) {
-        out << sha256 << '\t' << VerdictToString(cached.verdict);
+        std::ostringstream payload;
+        payload << sha256 << '\t' << VerdictToString(cached.verdict);
         if (cached.verdict == Verdict::Clean) {
-            out << '\n';
+            out << HmacHex(cacheKey, payload.str()) << '\t' << payload.str() << '\n';
             continue;
         }
-        out << '\t' << std::string(cached.detection.ruleId.begin(), cached.detection.ruleId.end())
-            << '\t' << cached.detection.score
-            << '\t' << (cached.detection.signedFile ? '1' : '0')
-            << '\t' << std::string(cached.detection.description.begin(), cached.detection.description.end())
-            << '\n';
+        payload << '\t' << WideToUtf8(cached.detection.ruleId)
+                << '\t' << cached.detection.score
+                << '\t' << (cached.detection.signedFile ? '1' : '0')
+                << '\t' << WideToUtf8(cached.detection.description);
+        out << HmacHex(cacheKey, payload.str()) << '\t' << payload.str() << '\n';
     }
 
     const std::string content = out.str();
-    const std::wstring tempPath = path + L".tmp";
+    // Tmp-файл уникален для процесса: общий фиксированный .tmp при двух
+    // параллельных ScannerCore приводил к взаимному затиранию ещё до
+    // MoveFileExW. Кэш fail-closed, поэтому гонка «кто последний переименовал»
+    // безопасна — проигравший просто не попадёт в кэш этого прогона.
+    const std::wstring tempPath = path + L"." + std::to_wstring(GetCurrentProcessId()) + L".tmp";
     HANDLE file = CreateFileW(tempPath.c_str(), GENERIC_WRITE, 0,
                               nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
@@ -267,6 +672,11 @@ bool Scanner::Run(const ScanOptions& options, ScanStats& stats, std::vector<Dete
     // Test-hook (только для интеграционных тестов): SCU_TEST_CANCEL_AFTER=<N>
     // прерывает скан после N обработанных файлов — тем же флагом, что и отмена
     // пользователя, поэтому поведение идентично прод-отмене (частичный отчёт).
+    // Компилируется только с -DSCU_ENABLE_TEST_HOOKS (CMake-опция, включается
+    // CI-ногой тестов): в production elevated-сканер наследует окружение
+    // пользовательской сессии, и hook через переменную окружения стал бы
+    // рычагом отказа в обслуживании без прав администратора.
+#ifdef SCU_ENABLE_TEST_HOOKS
     {
         wchar_t cancelAfter[16]{};
         if (GetEnvironmentVariableW(L"SCU_TEST_CANCEL_AFTER", cancelAfter, 16) > 0) {
@@ -276,6 +686,7 @@ bool Scanner::Run(const ScanOptions& options, ScanStats& stats, std::vector<Dete
             }
         }
     }
+#endif
 
     // 1. Обход дерева — быстрый однопоточный этап, результат в вектор.
     std::vector<FileEntry> entries;
@@ -568,7 +979,29 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
     // === Тяжёлый анализ — без общих блокировок ===
 
     if (fileType == FileType::Script && scanScripts_) {
-        const ScriptAnalysis script = ScriptScanner::Analyze(realPath);
+        // Аудит: неудача чтения скрипта — не Clean. Вердикт не пишется в кэш
+        // (отсутствие данных — не отрицательный ответ), потеря покрытия честно
+        // попадает в статистику: TooLarge → filesSkipped (итог Partial),
+        // IoError → errors (сбой чтения).
+        ScriptAnalysis script;
+        const ScriptReadStatus scriptStatus = ScriptScanner::Analyze(realPath, script);
+        if (scriptStatus == ScriptReadStatus::TooLarge) {
+            {
+                std::lock_guard lock(stateMutex_);
+                stats.filesSkipped++;
+            }
+            events_.Warning(L"skipped script (too large): " + displayPath);
+            return Verdict::Clean;
+        }
+        if (scriptStatus == ScriptReadStatus::IoError) {
+            {
+                std::lock_guard lock(stateMutex_);
+                stats.errors++;
+            }
+            events_.Warning(L"script read failed: " + displayPath);
+            return Verdict::Clean;
+        }
+
         if (script.score >= kSuspiciousScriptScore) {
             Detection detection;
             detection.path = displayPath;
@@ -703,6 +1136,8 @@ void Scanner::ScanPersistence(ScanStats& stats, std::vector<Detection>& detectio
 
         Detection detection;
         detection.path = displayPath;
+        // GUI показывает и изолирует реальный файл цели, а не псевдопуть записи.
+        detection.targetPath = entry.targetPath;
         detection.sha256 = entry.targetPath.empty() ? std::string() : HashTargetForReport(entry.targetPath);
         detection.verdict = verdict;
         detection.ruleId = L"PERSISTENCE";

@@ -119,7 +119,8 @@ public sealed class InfoGlyph : ToggleButton
             Placement = PlacementMode.Bottom,
             StaysOpen = false,
             AllowsTransparency = true,
-            PopupAnimation = PopupAnimation.Fade,
+            // Тумблер «Анимации интерфейса» (аудит UX): fade только при включённых.
+            PopupAnimation = UiAnimations.Enabled ? PopupAnimation.Fade : PopupAnimation.None,
             Focusable = false,
             Child = border
         };

@@ -58,7 +58,9 @@ public abstract class BrowserJsonStore
         }
     }
 
-    protected void Save<T>(T value)
+    // false — запись не попала на диск (аудит persistence): вызывающий код
+    // обязан не сообщать «сохранено» при фактическом сбое.
+    protected bool Save<T>(T value)
     {
         var temp = Path + ".tmp";
         try
@@ -66,6 +68,7 @@ public abstract class BrowserJsonStore
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
             File.WriteAllText(temp, JsonSerializer.Serialize(value, JsonOptions));
             File.Move(temp, Path, overwrite: true);
+            return true;
         }
         catch (Exception exception)
         {
@@ -81,6 +84,7 @@ public abstract class BrowserJsonStore
             }
 
             Logger.Warn("BROWSER | save failed | " + System.IO.Path.GetFileName(Path) + " | " + exception.Message);
+            return false;
         }
     }
 }
@@ -97,7 +101,7 @@ public sealed class BrowserSettingsService : BrowserJsonStore
         Load(BrowserSettingsModel.CreateDefault());
 
     // base.: иначе Save(settings) разрешается в саму себя — бесконечная рекурсия.
-    public void Save(BrowserSettingsModel settings) => base.Save(settings);
+    public new bool Save(BrowserSettingsModel settings) => base.Save(settings);
 }
 
 // История посещений: только top-level http/https навигации, без ресурсов страницы.

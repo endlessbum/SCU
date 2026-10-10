@@ -54,11 +54,30 @@ public sealed class ScuAiActionPlanStore
 
         lock (_plansLock)
         {
+            // Опportunistic-чистка протухших планов (аудит): раньше план, который
+            // пользователь просто проигнорировал, оставался в памяти до конца
+            // сессии — протухание проверялось только при обращении.
+            PruneExpiredUnsafe();
             _plans[plan.PlanId] = plan;
         }
 
         _logger.Info($"SCU_AI | action_plan | utility={template.UtilityId} | risk={template.Risk}");
         return plan;
+    }
+
+    // Вызывается только под _plansLock.
+    private void PruneExpiredUnsafe()
+    {
+        var now = DateTime.Now;
+        foreach (var plan in _plans.Values
+                     .Where(plan => now > plan.ExpiresAt && !_applying.Contains(plan.PlanId))
+                     .Select(plan => plan.PlanId)
+                     .ToList())
+        {
+            _plans.Remove(plan);
+            _confirmed.Remove(plan);
+            _logger.Info($"SCU_AI | action_plan | expired plan {plan} pruned");
+        }
     }
 
     public ScuAiActionPlan? Get(string planId)

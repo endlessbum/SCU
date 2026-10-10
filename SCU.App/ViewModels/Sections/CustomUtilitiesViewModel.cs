@@ -30,8 +30,14 @@ public sealed partial class CustomUtilitiesViewModel : ObservableObject
 
     // Пересборка содержимого после изменений в «Редактировании меню».
     // utils — упорядоченный список id из модели меню.
+    // Аудит утечки: удаляемые строки отписываются от L.LanguageChanged.
     public void Rebuild(IReadOnlyList<string> utils, Func<string, BatchUtility?> resolve)
     {
+        foreach (var row in Rows)
+        {
+            row.Dispose();
+        }
+
         Rows.Clear();
         foreach (var id in utils)
         {

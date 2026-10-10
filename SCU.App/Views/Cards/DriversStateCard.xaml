@@ -3,26 +3,30 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:SCU.Views.Controls">
     <Border Style="{StaticResource SectionCard}">
-        <StackPanel>
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvStateTitle}" />
-                        <controls:PinGlyph CardId="drivers.state" />
-                    </StackPanel>
-                    <TextBlock Style="{StaticResource CardIntroText}"
-                               Text="{DynamicResource S_DrvStateDesc}" />
+        <!-- Кнопка в Grid.RowSpan=2: центрируется по высоте всей карточки
+             (заголовок + описание + сводка), а не только блока заголовка. -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Column="0" Grid.Row="0" Margin="0,0,16,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_DrvStateTitle}" />
+                    <controls:PinGlyph CardId="drivers.state" />
                 </StackPanel>
-                <Button Grid.Column="1"
-                        VerticalAlignment="Center"
-                        Content="{DynamicResource S_DrvRescan}"
-                        Command="{Binding RefreshCommand}" />
-            </Grid>
-            <TextBlock Text="{Binding SummaryText}">
+                <TextBlock Style="{StaticResource CardIntroText}"
+                           Text="{DynamicResource S_DrvStateDesc}" />
+            </StackPanel>
+            <Button Grid.Column="1" Grid.Row="0" Grid.RowSpan="2"
+                    VerticalAlignment="Center"
+                    Content="{DynamicResource S_DrvRescan}"
+                    Command="{Binding RefreshCommand}" />
+            <TextBlock Grid.Column="0" Grid.Row="1" Text="{Binding SummaryText}">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock" BasedOn="{StaticResource SectionStatusText}">
                         <Style.Triggers>
@@ -33,6 +37,6 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
-        </StackPanel>
+        </Grid>
     </Border>
 </UserControl>

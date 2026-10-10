@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -165,11 +165,15 @@ public partial class BloatViewModel : ObservableObject, IDisposable, ISectionOpe
     private bool CanRefresh() => !IsBusy && IsScanAvailable;
     private bool CanCancel() => IsBusy;
 
-    // «Удалить всё» активна, только если есть что удалять: скан должен быть
-    // выполнен, и хотя бы один пункт — установлен. Когда все приложения и
-    // компоненты удалены, кнопка гаснет.
+    // «Удалить всё» активна, только если выполнен успешный скан и есть что удалять.
+    // IsScanAvailable — лишь доступность скрипта, а не факт сканирования: до первого
+    // успешного скана все строки «неизвестны», и деструктивная операция обязана
+    // быть заблокирована. Когда все приложения и компоненты удалены, кнопка гаснет.
+    private bool _scanCompleted;
+
     private bool CanRemoveAll() =>
-        !IsBusy && IsAdmin && IsScanAvailable && Rows.Any(r => r.CanRemove || r.IsUnknown);
+        !IsBusy && IsAdmin && IsScanAvailable && _scanCompleted
+        && Rows.Any(r => r.CanRemove || r.IsUnknown);
 
     // Статусы строк меняются вне команд (скан/рескан) — следим за ними напрямую.
     private BloatRow TrackRow(BloatRow row)
@@ -194,6 +198,10 @@ public partial class BloatViewModel : ObservableObject, IDisposable, ISectionOpe
             UpdateRows(scan.IsSuccess && scan.Value is not null
                 ? scan.Value
                 : new AppxScanState(false, new Dictionary<string, string>()));
+            // «Удалить всё» разблокируется только подтверждённым сканом
+            // (полный список AppX прочитан), а не одной доступностью скрипта.
+            _scanCompleted = scan.IsSuccess && scan.Value is { Scanned: true };
+            RemoveAllCommand.NotifyCanExecuteChanged();
             StatusText = scan.IsSuccess && scan.Value is not null && scan.Value.Scanned
                 ? L.T("Скан завершён. Удаление необратимо: восстановление возможно только переустановкой из Store/winget.")
                 : L.T("Полный список AppX не прочитан — удаление заблокировано, статусы не считаются подтверждёнными.");
@@ -242,7 +250,9 @@ public partial class BloatViewModel : ObservableObject, IDisposable, ISectionOpe
             // Дать системе время применить состояние AppX, иначе рескан видит ещё не удалённый пакет.
             await Task.Delay(2500, ct).ConfigureAwait(true);
             var scanState = await RescanIntoRowsAsync(ct).ConfigureAwait(true);
-            if (row.ScanKey == "Xbox")
+            // Статус «пакеты удалены» честен только после успешной операции удаления:
+            // при сбое рескан оставляет строке фактическое состояние, а ошибку показывает StatusText.
+            if (row.ScanKey == "Xbox" && result.IsSuccess)
             {
                 // Попытка удаления уже выполнена: оставляем галочку, даже если часть
                 // компонентов удалить не удалось — список остатков пишем под пакетами.
@@ -313,6 +323,10 @@ public partial class BloatViewModel : ObservableObject, IDisposable, ISectionOpe
             ? scan.Value
             : new AppxScanState(false, new Dictionary<string, string>());
         UpdateRows(state);
+        // Рескан после удаления — тоже скан: его результат определяет доступность
+        // «Удалить всё» наравне с первичным сканом раздела.
+        _scanCompleted = state.Scanned;
+        RemoveAllCommand.NotifyCanExecuteChanged();
         return state;
     }
 
@@ -338,33 +352,5 @@ public partial class BloatViewModel : ObservableObject, IDisposable, ISectionOpe
         }
     }
 
-    private async Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action)
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        _operationCts?.Dispose();
-        _operationCts = new CancellationTokenSource();
-        IsBusy = true;
-        try
-        {
-            await action(_operationCts.Token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = L.T("Операция отменена.");
-            _logger.Warn("CANCEL | " + title);
-        }
-        catch (Exception exception)
-        {
-            StatusText = L.T("Ошибка: {0}", exception.Message);
-            _logger.Error("BLOAT | " + title + " | " + exception);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-}
+    private Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action) =>
+        SectionOperations.RunExclusiveAsync(title, "BLOAT", () => IsBusy, value => IsBusy = value, () => _operationCts, value => _operationCts = value, value => StatusText = value, _logger, action);}

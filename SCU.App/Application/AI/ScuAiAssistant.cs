@@ -102,9 +102,11 @@ public sealed class ScuAiAssistant
             return new TurnResult { Text = L.T(ScuAiPolicy.OutOfScopeMessage) };
         }
 
-        history.Add(ScuAiAgentMessage.User(question));
-
-        return await RunLoopAsync(apiKey, model, provider, history, cancellationToken)
+        // Сообщение пользователя добавляется внутри _turnLock (RunLoopAsync):
+        // мутация общего history до захвата лока — гонка, если ApplyConfirmedPlanAsync
+        // стартует параллельно с незавершённым ходом (аудит AI).
+        return await RunLoopAsync(apiKey, model, provider, [ScuAiAgentMessage.User(question)], history,
+                cancellationToken)
             .ConfigureAwait(true);
     }
 
@@ -135,19 +137,29 @@ public sealed class ScuAiAssistant
 
         // Результат идёт в историю как tool-сообщение: модель продолжает диалог,
         // зная реальный итог операции (п. 13 ТЗ — {success, changed, before, after}).
-        history.Add(ScuAiAgentMessage.Tool("plan_" + planId, "apply_scu_change", JsonSerializer.Serialize(new
-        {
-            success = true,
-            changed = true,
-            plan_id = planId,
-            utility = result.UtilityTitle,
-            before = result.BeforeState,
-            after = result.AfterState,
-            status = result.Status,
-        })));
+        // Провайдеры валидируют порядок: tool обязан следовать за assistant
+        // с tool_calls — добавляем синтетический вызов от имени ассистента,
+        // иначе предыдущий ход (заканчивающийся текстом) делал бы историю
+        // невалидной и следующий шаг получал 400 (аудит AI).
+        ScuAiAgentMessage[] seed =
+        [
+            ScuAiAgentMessage.Assistant(
+                string.Empty,
+                [new ScuAiToolCall("plan_" + planId, "apply_scu_change", "{}")]),
+            ScuAiAgentMessage.Tool("plan_" + planId, "apply_scu_change", JsonSerializer.Serialize(new
+            {
+                success = true,
+                changed = true,
+                plan_id = planId,
+                utility = result.UtilityTitle,
+                before = result.BeforeState,
+                after = result.AfterState,
+                status = result.Status,
+            })),
+        ];
 
         _logger.Info($"SCU_AI | apply ui | plan={planId} | continuing turn");
-        var continuation = await RunLoopAsync(apiKey, model, provider, history, cancellationToken)
+        var continuation = await RunLoopAsync(apiKey, model, provider, seed, history, cancellationToken)
             .ConfigureAwait(true);
 
         // Карточку результата показываем даже если продолжение не удалось.
@@ -172,18 +184,55 @@ public sealed class ScuAiAssistant
 
     // ===================== Внутреннее =====================
 
+    // Лимит истории агентного диалога (аудит AI): без тримминга контекст рос
+    // линейно — на длинной сессии стоимость шагов росла, а провайдер рано или
+    // поздно отвечал 400 «context length exceeded». Окно последних сообщений
+    // начинается с user-сообщения: провайдеры валидируют порядок (tool только
+    // после assistant с tool_calls), обрезка по границе хода это сохраняет.
+    internal const int MaxHistoryMessages = 40;
+
+    internal static void TrimHistory(List<ScuAiAgentMessage> history)
+    {
+        if (history.Count <= MaxHistoryMessages)
+        {
+            return;
+        }
+
+        var start = history.Count - MaxHistoryMessages;
+        while (start < history.Count && history[start].Role != "user")
+        {
+            start++;
+        }
+
+        if (start >= history.Count)
+        {
+            // User-сообщения в окне нет — берём окно как есть (границы ходов
+            // сохранить нельзя, но и терять контекст целиком тоже).
+            start = history.Count - MaxHistoryMessages;
+        }
+
+        history.RemoveRange(0, start);
+    }
+
     // Агентный цикл с лимитом итераций: модель → tools → модель. Каждая итерация
     // выполняется только под внешним токеном отмены (п. 25 ТЗ).
+    // seed — сообщения, открывающие ход (вопрос пользователя или синтетический
+    // apply-вызов). Добавляются внутри _turnLock: весь lifecycle хода — от первой
+    // мутации общего history до финального ответа — живёт в одной критической
+    // секции (аудит AI: race на общем history).
     private async Task<TurnResult> RunLoopAsync(
         string apiKey,
         string model,
         DeepSeekProviderConfig provider,
+        IReadOnlyList<ScuAiAgentMessage> seed,
         List<ScuAiAgentMessage> history,
         CancellationToken cancellationToken)
     {
         await _turnLock.WaitAsync(cancellationToken).ConfigureAwait(true);
         try
         {
+            history.AddRange(seed);
+            TrimHistory(history);
             var context = _contextBuilder.Build();
             var systemPrompt = BuildSystemPrompt(context);
             var schemas = _tools.GetSchemas(context.SupportsToolCalling);
@@ -213,13 +262,20 @@ public sealed class ScuAiAssistant
                 }
 
                 // Финальный ответ — цикл закончен. Карточки от earlier-итераций
-                // идут вместе с текстом.
+                // идут вместе с текстом. Пустой финальный completion — ошибка,
+                // как и в обычном chat-пути (аудит AI): молчаливый «успех»
+                // выглядел бы для пользователя как пустой ответ.
                 if (!step.HasToolCalls)
                 {
-                    if (!string.IsNullOrWhiteSpace(step.Content))
+                    if (string.IsNullOrWhiteSpace(step.Content))
                     {
-                        history.Add(ScuAiAgentMessage.Assistant(step.Content, null));
+                        var empty = ToTurnResult(
+                            L.T("Модель вернула пустой ответ — повторите запрос."),
+                            executionContext);
+                        return empty with { IsError = true };
                     }
+
+                    history.Add(ScuAiAgentMessage.Assistant(step.Content, null));
 
                     return ToTurnResult(step.Content, executionContext);
                 }

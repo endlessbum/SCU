@@ -27,35 +27,47 @@ public sealed class HistoryStore
 
     private static readonly Task WriterLoop = Task.Run(DrainAsync);
 
+    // Счётчик событий, ещё не записанных на диск (аудит flush-семантики):
+    // инкремент в Enqueue, декремент в DrainAsync после фактической записи.
+    // FlushPendingAsync ждёт именно нуля, а не завершения WriterLoop —
+    // тот живёт до конца процесса и никогда не завершается.
+    private static int _pendingCount;
+
     private static async Task DrainAsync()
     {
         try
         {
             await foreach (var (store, @event) in Pending.Reader.ReadAllAsync().ConfigureAwait(false))
             {
-                // RecordAsync логирует сбои записи сама и никогда не бросает.
-                await store.RecordAsync(@event).ConfigureAwait(false);
+                // RecordAsync логирует сбои записи сама и никогда не бросает;
+                // декремент — в finally, чтобы счётчик не залип при любом исходе.
+                try
+                {
+                    await store.RecordAsync(@event).ConfigureAwait(false);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _pendingCount);
+                }
             }
         }
         catch
         {
-            // Канал завершён при flush — норма на выключении.
+            // Канал завершён — норма на выключении (WriterLoop живёт до конца процесса).
         }
     }
 
-    // Контролируемый flush при завершении приложения; не блокирует дольше timeout.
+    // Контролируемый flush при завершении приложения: ждёт, пока очередь ДОЙДЁТ
+    // до нуля необработанных событий (гарантия записи), но не дольше timeout.
+    // Возврат сразу после выписки — без лишней полной задержки; сам WriterLoop
+    // продолжает жить: фоновые операции, доживающие до закрытия окна, дописывают
+    // свои события после flush.
     public static async Task FlushPendingAsync(TimeSpan timeout)
     {
-        Pending.Writer.TryComplete();
-        try
+        var deadline = DateTime.UtcNow + timeout;
+        while (Volatile.Read(ref _pendingCount) > 0 && DateTime.UtcNow < deadline)
         {
-            await WriterLoop.WaitAsync(timeout).ConfigureAwait(false);
-        }
-        catch (TimeoutException)
-        {
-        }
-        catch (Exception)
-        {
+            await Task.Delay(50).ConfigureAwait(false);
         }
     }
 
@@ -77,11 +89,14 @@ public sealed class HistoryStore
     public static string DefaultPath() => Path.Combine(DashboardStatePaths.Directory, "history.json");
 
     // Постановка события в фоновую очередь: не блокирует UI-поток, порядок
-    // сохраняется, ошибки записи логируются писателем.
+    // сохраняется, ошибки записи логируются писателем. Счётчик _pendingCount
+    // инкрементируется до TryWrite (декремент при отказе канала).
     public void Enqueue(HistoryEvent @event)
     {
+        Interlocked.Increment(ref _pendingCount);
         if (!Pending.Writer.TryWrite((this, @event)))
         {
+            Interlocked.Decrement(ref _pendingCount);
             _logger.Warn("HISTORY | enqueue failed | очередь закрыта (flush при выходе)");
         }
     }

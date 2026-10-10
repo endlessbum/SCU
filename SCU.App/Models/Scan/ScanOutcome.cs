@@ -32,7 +32,7 @@ public static class ScanOutcomeMapper
 {
     public static ScanOutcome Map(ScanResultDto? finished)
     {
-        if (finished is null)
+        if (finished is null || finished.Summary is null)
         {
             return ScanOutcome.Failed;
         }
@@ -47,6 +47,10 @@ public static class ScanOutcomeMapper
             return ScanOutcome.Partial;
         }
 
-        return finished.Detections.Count > 0 ? ScanOutcome.Threats : ScanOutcome.Clean;
+        // Согласование двух источников количества: summary.detections и длина
+        // detections[]. Протокол присылает оба; расхождение (malformed-пейлоад)
+        // трактуется консервативно — детекты есть, если есть хоть в одном.
+        var detectionCount = Math.Max(finished.Summary.Detections, finished.Detections.Count);
+        return detectionCount > 0 ? ScanOutcome.Threats : ScanOutcome.Clean;
     }
 }

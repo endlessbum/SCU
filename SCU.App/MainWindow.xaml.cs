@@ -68,8 +68,26 @@ public partial class MainWindow : Window
 
         // Navigation host: подписка на смену раздела + начальный раздел.
         _viewModel.CurrentSectionChanged += ShowSectionView;
+        _viewModel.CurrentSectionChanged += OnCurrentSectionChangedForNavPill;
         _viewModel.MenuApplied += OnMenuApplied;
         ShowSectionView(_viewModel.CurrentSection?.Number);
+        QueueNavPillUpdate(animate: false);
+
+        // Пилюля сайдбара всегда следует за CurrentSection — тем же источником
+        // истины, который переключает контент. Нельзя опираться на
+        // SidebarList.SelectedItem: SelectionChanged и ItemContainerGenerator.StatusChanged
+        // могут приходить в промежуточном состоянии (особенно при TwoWay binding и
+        // перестроении сгруппированного списка), из-за чего индикатор «отстаёт» на
+        // предыдущем пункте. StatusChanged и ScrollChanged здесь только повторно
+        // пересчитывают геометрию уже активного пункта.
+        SidebarList.ItemContainerGenerator.StatusChanged += (_, _) => QueueNavPillUpdate(animate: false);
+        SidebarList.Loaded += (_, _) =>
+        {
+            if (FindDescendant<ScrollViewer>(SidebarList) is { } scroll)
+            {
+                scroll.ScrollChanged += (_, _) => QueueNavPillUpdate(animate: false);
+            }
+        };
 
 
         _textSelection = new TextSelectionManager(this);
@@ -143,6 +161,7 @@ public partial class MainWindow : Window
         }
 
         Activate();
+        UiAnimations.FadeIn(this, 160);
     }
 
     // Внутренние горячие клавиши: Ctrl+1..9 — быстрый переход к разделам меню.
@@ -167,8 +186,11 @@ public partial class MainWindow : Window
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
+        // Единое правило заголовка (п. 8): разворачивание строго в рабочую область —
+        // строка заголовка одной высоты во всех состояниях окна.
+        Interop.WorkAreaMaximize.Attach(this);
+
         var source = (HwndSource)PresentationSource.FromVisual(this)!;
-        source.AddHook(new Interop.WindowMinMaxHandler(this).WndProc);
 
         // Глобальная горячая клавиша Ctrl+Alt+S: показать/скрыть SCU из любого
         // приложения. Включается тумблером в «Настройки → Горячие клавиши».
@@ -319,7 +341,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // WndProc/монитор/MINMAXINFO: Interop/WindowMinMaxHandler (п. 13).
+    // Разворачивание в рабочую область монитора: Interop/WorkAreaMaximize (п. 13 и п. 8).
     // Кнопки заголовка и перетаскивание — системные (как в окне браузера).
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -329,6 +351,59 @@ public partial class MainWindow : Window
     }
 
     // Выделение/копирование текста: подсистема в Views/Controls/TextSelectionManager (п. 13).
+
+    // ===================== Горячие клавиши =====================
+
+    // Ctrl+Shift+A — окно SCU AI Assistant из любого раздела; F5 — обновление
+    // данных текущего раздела. F5 работает только там, где данные могут устареть
+    // после правок и есть кнопка «Обновить» (Автозагрузка 7, Очистка 3,
+    // Кэш приложений 26); на остальных разделах — no-op.
+    private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F5)
+        {
+            RefreshCurrentSectionByHotkey();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.A && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            OpenAiAssistantByHotkey();
+            e.Handled = true;
+        }
+    }
+
+    private void RefreshCurrentSectionByHotkey()
+    {
+        var command = _viewModel.CurrentSection?.Number switch
+        {
+            7 => _viewModel.Startup.RefreshCommand,
+            3 => _viewModel.Cleanup.RefreshCommand,
+            26 => _viewModel.AppCache.RefreshCommand,
+            _ => null,
+        };
+
+        // CanExecute учитывает busy-состояния раздела: во время скана/операции
+        // F5 повторный запуск не инициирует.
+        if (command is { } refresh && refresh.CanExecute(null))
+        {
+            refresh.Execute(null);
+        }
+    }
+
+    private void OpenAiAssistantByHotkey()
+    {
+        // Раздел 24 «DeepSeek»: если view ещё не создавалась — создаём и
+        // кэшируем без переключения текущего раздела; создание подписывает
+        // её события на VM, окно ассистента открывается как по кнопке.
+        if (!_sectionViews.TryGetValue(24, out var cached))
+        {
+            cached = CreateSectionView(24);
+        }
+
+        (cached as Views.Sections.DeepSeekView)?.OpenAssistantWindow();
+    }
 
     // ===================== Navigation host (п. 13 аудита) =====================
 
@@ -341,16 +416,48 @@ public partial class MainWindow : Window
     {
         if (number is null)
         {
-            // Разделов не осталось (все скрыты): контент очищается.
+            // Разделов не осталось (все скрыты): контент очищается. Пилюлю прячет
+            // обработчик CurrentSectionChanged при сбросе активного раздела.
             SectionHost.Content = null;
+            _lastShownSectionNumber = null;
             return;
         }
 
         try
         {
-            SectionHost.Content = _sectionViews.TryGetValue(number.Value, out var cached)
-                ? cached
-                : CreateSectionView(number.Value);
+            var isFirstShow = _lastShownSectionNumber is null;
+            var isCached = _sectionViews.TryGetValue(number.Value, out var cached);
+            var content = isCached ? cached! : CreateSectionView(number.Value);
+            SectionHost.Content = content;
+
+            // Переход между разделами: повторное открытие — выезд сбоку по
+            // направлению списка (вперёд — слева направо, назад — наоборот);
+            // первое открытие — каскадное появление карточек. Первый показ
+            // раздела при старте приложения — без анимации.
+            if (!isFirstShow && number.Value != _lastShownSectionNumber)
+            {
+                if (isCached)
+                {
+                    var fromX = 0d;
+                    if (_lastShownSectionNumber is { } previous)
+                    {
+                        var (oldIndex, newIndex) = (IndexOfSection(previous), IndexOfSection(number.Value));
+                        if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
+                        {
+                            fromX = newIndex > oldIndex ? 16 : -16;
+                        }
+                    }
+
+                    UiAnimations.SlideFadeIn(content, fromX, fromY: 0);
+                }
+                else
+                {
+                    StaggerSectionView(content);
+                }
+
+                UiAnimations.FadeIn(SectionHeaderPanel, UiAnimations.SectionMs);
+            }
+            _lastShownSectionNumber = number;
 
             // Вкладка всегда открывается с начала страницы: смещение общего
             // ContentScroll иначе сохраняется между вкладками и переживает
@@ -359,11 +466,146 @@ public partial class MainWindow : Window
             ContentScroll.ScrollToHome();
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
                 () => ContentScroll.ScrollToHome());
+
+            // Пилюлю здесь не двигаем: обработчик CurrentSectionChanged запускает
+            // отдельное обновление после текущего цикла layout и использует сам
+            // CurrentSection, а не промежуточный SidebarList.SelectedItem.
         }
         catch (Exception exception)
         {
             _logger.Error("NAV | view create failed | " + number + " | " + exception);
         }
+    }
+
+    private int? _lastShownSectionNumber;
+
+    // Каскад при первом открытии раздела: раскрываем корневую панель view.
+    // Корень не обязан быть панелью (часто Border/ScrollViewer) — раскрываем до 3 слоёв.
+    private static void StaggerSectionView(FrameworkElement view)
+    {
+        var content = view is ContentControl control ? control.Content : null;
+        if (FindStaggerRoot(content) is { } panel && panel.Children.Count > 0)
+        {
+            UiAnimations.StaggerIn(panel);
+        }
+        else
+        {
+            UiAnimations.SlideFadeIn(view);
+        }
+    }
+
+    private static Panel? FindStaggerRoot(object? content)
+    {
+        for (var depth = 0; depth < 3 && content is not null; depth++)
+        {
+            if (content is Panel panel)
+            {
+                return panel;
+            }
+
+            content = content switch
+            {
+                Border border => border.Child,
+                ScrollViewer scroll => scroll.Content,
+                _ => null
+            };
+        }
+
+        return null;
+    }
+
+    private int IndexOfSection(int number)
+    {
+        for (var i = 0; i < _viewModel.Sections.Count; i++)
+        {
+            if (_viewModel.Sections[i].Number == number)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    // ===================== Едущая пилюля сайдбара =====================
+
+    // Последнее запланированное обновление. При серии быстрых событий генератора
+    // списка старый callback не должен перетирать уже выбранную вкладку.
+    private int _navPillUpdateVersion;
+
+    private void OnCurrentSectionChangedForNavPill(int? _) => QueueNavPillUpdate(animate: true);
+
+    private void QueueNavPillUpdate(bool animate)
+    {
+        var version = ++_navPillUpdateVersion;
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Loaded,
+            new Action(() =>
+            {
+                if (version != _navPillUpdateVersion || !IsLoaded)
+                {
+                    return;
+                }
+
+                UpdateNavPill(animate);
+            }));
+    }
+
+    // Позиция общего индикатора NavPill: по левому краю ListBoxItem,
+    // соответствующего CurrentSection, по центру вертикали. Источник истины
+    // намеренно не SidebarList.SelectedItem: при TwoWay binding и перестроении
+    // сгруппированного списка SelectedItem некоторое время может указывать на
+    // предыдущую вкладку. Так индикатор физически следует за активной вкладкой.
+    private void UpdateNavPill(bool animate)
+    {
+        var selectedSection = _viewModel.CurrentSection;
+        if (selectedSection is null)
+        {
+            NavPill.Opacity = 0;
+            return;
+        }
+
+        var item = SidebarList.ItemContainerGenerator.ContainerFromItem(selectedSection) as ListBoxItem;
+        if (item is null || !item.IsLoaded || item.ActualHeight <= 0)
+        {
+            NavPill.Opacity = 0;
+            return;
+        }
+
+        Point origin;
+        try
+        {
+            origin = item.TranslatePoint(new Point(0, 0), NavListHost);
+        }
+        catch (InvalidOperationException)
+        {
+            // Элементы ещё не в одном визуальном дереве (перестройка списка).
+            QueueNavPillUpdate(animate: false);
+            return;
+        }
+
+        NavPillTranslate.X = origin.X;
+        var targetY = origin.Y + (item.ActualHeight - NavPill.Height) / 2;
+
+        // Плавный переезд — только при фактической смене вкладки; скролл/
+        // перевёрстка должны мгновенно следовать за тем же пунктом.
+        var fromY = NavPillTranslate.Y;
+        if (!animate || !UiAnimations.Enabled || Math.Abs(fromY - targetY) < 0.5)
+        {
+            NavPillTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            NavPillTranslate.Y = targetY;
+            NavPill.Opacity = 1;
+            return;
+        }
+
+        NavPill.Opacity = 1;
+        NavPillTranslate.Y = targetY;
+        NavPillTranslate.BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation(fromY, targetY, new Duration(TimeSpan.FromMilliseconds(UiAnimations.SectionMs)))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            });
     }
 
     // После правок меню: кэш view пользовательских вкладок недействителен
@@ -392,6 +634,7 @@ public partial class MainWindow : Window
             1 => new Views.Sections.InfoView { DataContext = viewModel.Info },
             2 => new Views.Sections.ComponentsView { DataContext = viewModel.Components },
             3 => new Views.Sections.CleanupView { DataContext = viewModel.Cleanup },
+            26 => new Views.Sections.AppCacheView { DataContext = viewModel.AppCache },
             4 => new Views.Sections.BloatView { DataContext = viewModel.Bloat },
             5 => new Views.Sections.PrivacyView { DataContext = viewModel.Privacy },
             6 => new Views.Sections.ServicesView { DataContext = viewModel.Services },
@@ -445,7 +688,9 @@ public partial class MainWindow : Window
             _viewModel.SectionHighlightRequested -= highlight.OnSectionHighlightRequested;
         }
 
+        _viewModel.CurrentSectionChanged -= OnCurrentSectionChangedForNavPill;
         _viewModel.CurrentSectionChanged -= ShowSectionView;
+        Interop.WorkAreaMaximize.Detach(this);
         if (_globalHotkeyRegistered && _hwndSource is not null)
         {
             Interop.GlobalHotkeys.Unregister(_hwndSource.Handle);

@@ -110,16 +110,30 @@ public class ConsoleOutputDecoderTests
     }
 
     [Fact]
-    public async Task ReadLinesAsync_SwallowsStandaloneCr_InsideLine()
+    public async Task ReadLinesAsync_StandaloneCr_IsLineTerminator()
     {
-        // Одиночный \r внутри строки проглатывается: разрезание идёт только по \n,
-        // поэтому "a\rb\r\nc" даёт ["ab", "c"].
+        // Одиночный \r — терминатор строки (CR-перерисовка прогресса утилитами
+        // «10%\r 20%\r…»): раньше выбрасывался, и весь прогресс сливался в одну
+        // растущую строку. "a\rb\r\nc" теперь даёт ["a", "b", "c"].
         using var stream = new MemoryStream(Encoding.ASCII.GetBytes("a\rb\r\nc"));
         var lines = new List<string>();
 
         await ConsoleOutputDecoder.ReadLinesAsync(stream, lines.Add, CancellationToken.None);
 
-        Assert.Equal(new[] { "ab", "c" }, lines);
+        Assert.Equal(new[] { "a", "b", "c" }, lines);
+    }
+
+    [Fact]
+    public async Task ReadLinesAsync_CrAtChunkBoundary_TreatedAsTerminator()
+    {
+        // \r на границе чанка чтения: следующий байт приходит в новом чанке —
+        // решение откладывается, дублирующего разреза быть не должно.
+        using var stream = new MemoryStream(Encoding.ASCII.GetBytes("ok\r\nend"));
+        var lines = new List<string>();
+
+        await ConsoleOutputDecoder.ReadLinesAsync(stream, lines.Add, CancellationToken.None);
+
+        Assert.Equal(new[] { "ok", "end" }, lines);
     }
 
     [Fact]

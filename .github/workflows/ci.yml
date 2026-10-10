@@ -44,7 +44,9 @@ jobs:
 
       - name: Build ScannerCore (cmake)
         run: |
-          cmake -S SecurityScanner -B SecurityScanner/build -A x64
+          # SCU_ENABLE_TEST_HOOKS: интеграционные тесты используют SCU_TEST_*;
+          # release.yml хуки не включает — production-бинарник их не читает.
+          cmake -S SecurityScanner -B SecurityScanner/build -A x64 -DSCU_ENABLE_TEST_HOOKS=ON
           cmake --build SecurityScanner/build --config Release
         shell: pwsh
 

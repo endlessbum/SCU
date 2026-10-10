@@ -147,18 +147,26 @@ public sealed class BrowserService : IBrowserService
     // Таймаут обязателен: вместо вечного спиннера — понятная ошибка и повтор.
     private static readonly TimeSpan EnvironmentTimeout = TimeSpan.FromSeconds(30);
 
-    // Создание среды: ровно один раз за запуск SCU.
-    public Task InitializeEnvironmentAsync() => InitializeEnvironmentAsync(null);
+    // Тестовый шов: ждать реальные 30 секунд в unit-тестах невозможно.
+    internal TimeSpan EnvironmentTimeoutForTests { get; set; } = EnvironmentTimeout;
 
-    public async Task InitializeEnvironmentAsync(string? userDataFolderOverride)
+    // Единственная физическая задача CreateAsync за запуск SCU (H-01): таймаут
+    // ожидания НЕ отменяет сам CreateAsync — он продолжает выполняться в фоне.
+    // Повторный «Запустить» обязан дождаться той же задачи, а не создавать второй
+    // CreateAsync для того же профиля: конкурирующие операции ломают профиль.
+    // При сбое задачи ссылка сбрасывается — повтор возможен, когда предыдущая
+    // попытка уже завершилась (успехом или исключением).
+    private Task<CoreWebView2Environment>? _environmentTask;
+
+    // Тестовый шов: физическое CreateAsync недоступно без WebView2 Runtime.
+    internal Func<string?, Task<CoreWebView2Environment>>? CreateEnvironmentOverride { get; set; }
+
+    private Task<CoreWebView2Environment> CreateEnvironmentTask(string? userDataFolder)
     {
-        if (_environment is not null)
+        if (CreateEnvironmentOverride is not null)
         {
-            return;
+            return CreateEnvironmentOverride(userDataFolder);
         }
-
-        var userDataFolder = userDataFolderOverride ?? BrowserDataPaths.UserDataFolder;
-        _logger.Info("BROWSER | environment create | " + userDataFolder);
 
         var options = new CoreWebView2EnvironmentOptions
         {
@@ -171,19 +179,54 @@ public sealed class BrowserService : IBrowserService
             EnableTrackingPrevention = true,
         };
 
-        var creation = CoreWebView2Environment.CreateAsync(
+        return CoreWebView2Environment.CreateAsync(
             browserExecutableFolder: null,
             userDataFolder: userDataFolder,
             options: options);
+    }
 
-        var completed = await Task.WhenAny(creation, Task.Delay(EnvironmentTimeout)).ConfigureAwait(true);
-        if (completed != creation)
+    // Создание среды: одна физическая задача на запуск SCU; первый вызов
+    // фиксирует папку профиля, последующие (в том числе после таймаута) ждут её.
+    public Task InitializeEnvironmentAsync() => InitializeEnvironmentAsync(null);
+
+    public async Task InitializeEnvironmentAsync(string? userDataFolderOverride)
+    {
+        if (_environment is not null)
+        {
+            return;
+        }
+
+        var userDataFolder = userDataFolderOverride ?? BrowserDataPaths.UserDataFolder;
+        if (_environmentTask is null)
+        {
+            _logger.Info("BROWSER | environment create | " + userDataFolder);
+            _environmentTask = CreateEnvironmentTask(userDataFolder);
+        }
+
+        var creation = _environmentTask;
+        try
+        {
+            // Таймаут применяется к ОЖИДАНИЮ: сама задача создания не отменяется
+            // и продолжается фоном — при повторном запуске дождёмся её же.
+            await creation.WaitAsync(EnvironmentTimeoutForTests).ConfigureAwait(true);
+        }
+        catch (TimeoutException)
         {
             _logger.Error("BROWSER | environment create | timeout after " + EnvironmentTimeout.TotalSeconds + "s");
             throw new TimeoutException(L.T("Создание браузерной среды не завершилось за отведённое время."));
         }
+        catch (Exception)
+        {
+            // Состоявшийся сбой: разрешаем повторную попытку (новый CreateAsync),
+            // но только когда предыдущая задача уже мертва — гонки нет.
+            if (ReferenceEquals(_environmentTask, creation))
+            {
+                _environmentTask = null;
+            }
+            throw;
+        }
 
-        _environment = await creation.ConfigureAwait(true);
+        _environment = creation.Result;
         _logger.Info("BROWSER | environment created");
     }
 

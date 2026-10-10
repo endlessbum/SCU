@@ -104,13 +104,16 @@ public sealed class BrowserDownloadItem : ObservableObject
     private long? _totalBytes;
     private string? _scanResult;
 
-    public BrowserDownloadItem(string fileName, string filePath, string stateKey, string url)
+    // timestamp — из журнала при восстановлении (L-01): иначе после перезапуска
+    // все записи получали свежую метку и время загрузки терялось.
+    public BrowserDownloadItem(
+        string fileName, string filePath, string stateKey, string url, DateTime? timestamp = null)
     {
         FileName = fileName;
         FilePath = filePath;
         _stateKey = stateKey;
         Url = url;
-        Timestamp = DateTime.Now;
+        Timestamp = timestamp ?? DateTime.Now;
     }
 
     public string FileName { get; }

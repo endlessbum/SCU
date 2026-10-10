@@ -19,6 +19,8 @@ public partial class ScriptWizardWindow : Window
     public ScriptWizardWindow(MainViewModel main, string sourcePath)
     {
         InitializeComponent();
+        // Появление окна: fade + подъём корня (единый паттерн ConfirmDialog/OnboardingWindow).
+        Loaded += (_, _) => SCU.Common.UiAnimations.AppearWindow(this);
         _main = main;
         _sourcePath = sourcePath;
         SectionCombo.ItemsSource = main.Sections;
@@ -62,13 +64,19 @@ public partial class ScriptWizardWindow : Window
                 return;
 
             case 2:
-                _main.AddUserScript(
-                    _sourcePath,
-                    (SectionCombo.SelectedItem as SectionItem)?.Number ?? 0,
-                    TitleBox.Text.Trim(),
-                    CommentBox.Text.Trim(),
-                    TooltipBox.Text.Trim());
-                Close();
+                // При неудаче (файл занят, scripts.json не записался) мастер
+                // остаётся открытым: ошибка уже показана тостом, а закрытие
+                // молча теряло введённые пользователем данные размещения.
+                if (_main.AddUserScript(
+                        _sourcePath,
+                        (SectionCombo.SelectedItem as SectionItem)?.Number ?? 0,
+                        TitleBox.Text.Trim(),
+                        CommentBox.Text.Trim(),
+                        TooltipBox.Text.Trim()))
+                {
+                    Close();
+                }
+
                 break;
         }
     }

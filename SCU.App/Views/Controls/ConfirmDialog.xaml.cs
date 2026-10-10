@@ -23,8 +23,13 @@ public partial class ConfirmDialog : Window
         DataContext = this;
         Loaded += (_, _) =>
         {
-            var storyboard = (Storyboard)Resources["AppearStoryboard"];
-            storyboard.Begin(this);
+            // Тумблер «Анимации интерфейса» (аудит UX): при OFF диалог появляется
+            // мгновенно, без fade/slide.
+            if (UiAnimations.Enabled)
+            {
+                var storyboard = (Storyboard)Resources["AppearStoryboard"];
+                storyboard.Begin(this);
+            }
         };
     }
 

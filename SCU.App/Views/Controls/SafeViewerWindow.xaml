@@ -45,6 +45,7 @@
             <TextBlock TextWrapping="NoWrap"
                        TextTrimming="CharacterEllipsis"
                        FontWeight="SemiBold"
+                       ToolTip="{Binding LocationText}"
                        Text="{Binding LocationText}" />
             <TextBlock Text="{Binding InfoText}" Style="{StaticResource CaptionText}" />
             <TextBlock Text="{Binding VerdictLine}"

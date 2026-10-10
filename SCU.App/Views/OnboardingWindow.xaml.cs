@@ -59,7 +59,14 @@ public partial class OnboardingWindow : Window
                 L.T("Раздел «История» помнит, что и когда делалось; поддерживающие операции откатываются из записи журнала.")),
         ];
         DataContext = this;
-        Loaded += (_, _) => ((Storyboard)Resources["AppearStoryboard"]).Begin(this);
+        // Тумблер «Анимации интерфейса» (аудит UX): при OFF — мгновенный показ.
+        Loaded += (_, _) =>
+        {
+            if (UiAnimations.Enabled)
+            {
+                ((Storyboard)Resources["AppearStoryboard"]).Begin(this);
+            }
+        };
     }
 
     public string TitleText { get; }

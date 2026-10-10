@@ -35,10 +35,13 @@ public class UninstallLifecycleTests
             var result = await service.UninstallCompletelyAsync(app, CancellationToken.None);
 
             // Graceful-first: процессы приложения не снимаются до истечения
-            // таймаута; после — снимаются, операция завершается успешно с
-            // явной пометкой о таймауте, а не молчаливым «успехом».
-            Assert.True(result.IsSuccess, result.Message);
+            // таймаута; после — снимаются. H-02: после принудительного снятия
+            // зависшего деинсталлятора нельзя ни зачищать хвосты (приложение могло
+            // остаться установленным), ни отчитываться успехом — только честная
+            // ошибка с пометкой о таймауте, а папка установки обязана уцелеть.
+            Assert.False(result.IsSuccess, result.Message);
             Assert.Contains("таймаут", result.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.True(Directory.Exists(root), "папка установки после таймаута удаляться не должна");
         }
         finally
         {

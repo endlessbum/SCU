@@ -59,6 +59,7 @@ endif()
 
 add_executable(ScannerCore
     src/main.cpp
+    src/app.manifest
     src/core/types.cpp
     src/core/path_util.cpp
     src/core/scanner.cpp
@@ -88,6 +89,15 @@ target_compile_definitions(ScannerCore PRIVATE
     WIN32_LEAN_AND_MEAN
     _CRT_SECURE_NO_WARNINGS
 )
+
+# Тест-хуки SCU_TEST_* (отмена после N файлов, тестовый Run-ключ) — только для
+# интеграционных тестов. В production (release.yml) не включаются: elevated-
+# сканер наследует окружение пользовательской сессии, и hook через переменную
+# окружения стал бы рычагом отказа в обслуживании без прав администратора.
+set(SCU_ENABLE_TEST_HOOKS OFF CACHE BOOL "Compile SCU_TEST_* hooks (integration tests only)")
+if (SCU_ENABLE_TEST_HOOKS)
+    target_compile_definitions(ScannerCore PRIVATE SCU_ENABLE_TEST_HOOKS)
+endif()
 
 # /utf-8: исходники в UTF-8, широкие литералы с кириллицей/тире должны
 # компилироваться без перекодировки в системную кодовую страницу.

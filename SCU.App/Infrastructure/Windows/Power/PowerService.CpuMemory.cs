@@ -145,11 +145,11 @@ public sealed partial class PowerService
         var formatted = PowerParsers.FormatThermalZoneTemperature(temperature);
         if (formatted is not null)
         {
-            lines.Add("Температура по ACPI Thermal Zone: " + formatted);
+            lines.Add("Температура: " + formatted);
         }
         else
         {
-            lines.Add("Температура по ACPI Thermal Zone: нет данных");
+            lines.Add("Температура: нет данных");
         }
 
         return Result<string>.Success(string.Join(Environment.NewLine, lines));

@@ -47,6 +47,42 @@ public static class BrowserDownloadPolicy
         }
     }
 
+    // Атомарное резервирование имени загрузки (L-02): CreateNew вместо проверки
+    // File.Exists закрывает окно гонки между «имя свободно» и созданием файла
+    // WebView2. Существующий файл по документации ResultFilePath перезаписывается,
+    // поэтому пустой файл-резерв безопасен — WebView2 затрёт его содержимым.
+    // Принимает путь от BuildDownloadPath; если имя занял другой процесс,
+    // перебирает кандидаты «(1)», «(2)»… как EnsureUnique.
+    public static string? ReserveDownloadPath(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        var name = Path.GetFileNameWithoutExtension(path);
+        var extension = Path.GetExtension(path);
+        for (var index = 0; index < 1000; index++)
+        {
+            try
+            {
+                new FileStream(path, FileMode.CreateNew, FileAccess.Write).Dispose();
+                return path;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                or System.Security.SecurityException)
+            {
+                // UnauthorizedAccessException (аудит): read-only/сетевая папка или
+                // лок антивируса раньше вылетали из DownloadStarting как
+                // необработанное исключение вместо штатной отмены загрузки.
+                if (index == 999 || directory is null || exception is not IOException)
+                {
+                    return null;
+                }
+
+                path = Path.Combine(directory, $"{name} ({index + 1}){extension}");
+            }
+        }
+
+        return null;
+    }
+
     public static string? SanitizeFileName(string? suggestedFileName)
     {
         var raw = (suggestedFileName ?? string.Empty).Trim();

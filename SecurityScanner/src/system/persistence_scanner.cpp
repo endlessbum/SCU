@@ -3,6 +3,8 @@
 #include "core/path_util.h"
 
 #include <windows.h>
+#include <objbase.h>
+#include <shlobj.h>
 
 #include <algorithm>
 #include <cctype>
@@ -14,6 +16,14 @@ namespace {
 const wchar_t* kRunLocations[] = {
     L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",
     L"Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce",
+};
+
+// 32-bit view HKLM Run-ключей (M-01): 32-битные приложения пишут автозагрузку
+// в WOW6432Node — без отдельного прохода такие записи выпадали из анализа.
+// HKCU Run-ключи отражения не имеют и не разделяются по представлению.
+const wchar_t* kRunLocationsWow64[] = {
+    L"Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run",
+    L"Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\RunOnce",
 };
 
 const wchar_t* kHiveNames[] = { L"HKCU", L"HKLM" };
@@ -71,16 +81,81 @@ std::wstring ResolveTarget(const std::wstring& command)
         }
         space = value.find(L' ', space + 1);
     }
+
+    // Голое имя хост-процесса (regsvr32.exe, rundll32.exe): относительно cwd
+    // сканера оно не существует, и цель записи выпадала из анализа. Резолвим
+    // через SearchPathW — как это сделала бы система при запуске.
+    if (best.find(L'\\') == std::wstring::npos && best.find(L'/') == std::wstring::npos
+        && !FileExists(best)) {
+        wchar_t resolved[MAX_PATH]{};
+        if (SearchPathW(nullptr, best.c_str(), L".exe", MAX_PATH, resolved, nullptr) > 0) {
+            return resolved;
+        }
+    }
+
     return best;
 }
 
+// Существующий файл-путь в АРГУМЕНТАХ команды (rundll32.exe C:\x\evil.dll,Entry,
+// regsvr32.exe /s C:\x\evil.dll): цель записи не всегда — первый токен. Ищем
+// токен с разделителем пути, отрезая хвостовые спецификаторы (rundll32 …,Entry).
+std::wstring ResolveExistingPathInArguments(const std::wstring& command)
+{
+    const size_t firstSpace = command.find(L' ');
+    if (firstSpace == std::wstring::npos) {
+        return {};
+    }
+
+    const std::wstring args = Trim(command.substr(firstSpace + 1));
+    size_t start = 0;
+    while (start < args.size()) {
+        const size_t space = args.find(L' ', start);
+        std::wstring token = args.substr(start, space == std::wstring::npos ? std::wstring::npos : space - start);
+        if (!token.empty() && token.find(L'\\') != std::wstring::npos) {
+            if (!token.empty() && token.front() == L'"') {
+                token = token.substr(1);
+            }
+            while (!token.empty() && token.back() == L'"') {
+                token.pop_back();
+            }
+            // Хвост вида „,Entry“ rundll32 отрезается порционно: каждый префикс
+            // до очередной запятой проверяется как файл.
+            while (!token.empty()) {
+                if (FileExists(token)) {
+                    return token;
+                }
+                const size_t comma = token.find_last_of(L',');
+                if (comma == std::wstring::npos) {
+                    break;
+                }
+                token = token.substr(0, comma);
+            }
+        }
+        if (space == std::wstring::npos) {
+            break;
+        }
+        start = space + 1;
+    }
+    return {};
+}
+
 // Цель записи автозапуска: окружение раскрывается ДО разбора — иначе пути с
-// %ProgramFiles% (x86) не находятся как существующие префиксы.
+// %ProgramFiles% (x86) не находятся как существующие префиксы. Если цель не
+// существует, ищем файл-путь в аргументах (rundll32/regsvr32-класс: exe —
+// хост-процесс, payload — в аргументах), иначе такие записи выпадали из анализа.
 std::wstring ResolveEntryTarget(const std::wstring& command)
 {
     std::wstring expanded = ExpandEnvironmentDynamic(command);
     std::wstring target = ResolveTarget(expanded.empty() ? command : expanded);
     ExpandEnvironment(target);
+    if (!FileExists(target)) {
+        std::wstring argumentTarget =
+            ResolveExistingPathInArguments(expanded.empty() ? command : expanded);
+        if (!argumentTarget.empty()) {
+            ExpandEnvironment(argumentTarget);
+            return argumentTarget;
+        }
+    }
     return target;
 }
 
@@ -228,34 +303,101 @@ void EnumWinlogon(HKEY hive, int hiveIndex, const std::function<void(const Persi
 
 // ---------- Startup-папки ----------
 
+// Разрешение цели ярлыка (H-01): .lnk сам по себе не PE и не скрипт — без
+// раскрытия цели вредоносный exe, запущенный ярлыком из Startup, оставался
+// вне анализа. Извлекаем target и аргументы: command строится как
+// «target args», чтобы ScriptScanner увидел и командную строку (типичный
+// путь атаки — cmd.exe /c powershell …). Битый/недекодировавшийся ярлык
+// остаётся со своей собственной командой (файлом ярлыка).
+std::wstring ResolveShortcutTarget(const std::wstring& shortcutPath, std::wstring& arguments)
+{
+    // COM мог быть уже инициализирован другим режимом на этом потоке —
+    // RPC_E_CHANGED_MODE означает «инициализация есть», а не отказ.
+    const HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (FAILED(init) && init != RPC_E_CHANGED_MODE) {
+        return {};
+    }
+
+    std::wstring target;
+    IShellLinkW* shellLink = nullptr;
+    if (SUCCEEDED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
+                                   IID_PPV_ARGS(&shellLink)))) {
+        IPersistFile* persistFile = nullptr;
+        if (SUCCEEDED(shellLink->QueryInterface(IID_PPV_ARGS(&persistFile)))) {
+            if (SUCCEEDED(persistFile->Load(shortcutPath.c_str(), STGM_READ))) {
+                wchar_t path[MAX_PATH]{};
+                if (SUCCEEDED(shellLink->GetPath(path, MAX_PATH, nullptr, SLGP_RAWPATH))) {
+                    target = path;
+                }
+                wchar_t argsBuffer[INFOTIPSIZE]{};
+                if (SUCCEEDED(shellLink->GetArguments(argsBuffer, INFOTIPSIZE))) {
+                    arguments = argsBuffer;
+                }
+            }
+            persistFile->Release();
+        }
+        shellLink->Release();
+    }
+
+    if (SUCCEEDED(init)) {
+        CoUninitialize();
+    }
+    return target;
+}
+
 void EnumStartupFolder(const std::wstring& folder,
-                       const std::function<void(const PersistenceEntry&)>& onEntry)
+                       const std::function<void(const PersistenceEntry&)>& onEntry,
+                       const PersistenceScanner::SkipCallback& onSkipped)
 {
     WIN32_FIND_DATAW findData{};
     HANDLE find = FindFirstFileExW((folder + L"\\*").c_str(), FindExInfoBasic, &findData,
                                    FindExSearchNameMatch, nullptr, 0);
     if (find == INVALID_HANDLE_VALUE) {
+        // Нет каталога/нет доступа — не ошибка сканирования, но потерю
+        // перечисления посреди каталога репортим после цикла.
         return;
     }
 
+    const std::wstring lnkSuffix = L".lnk";
     do {
         const std::wstring name = findData.cFileName;
         if (name == L"." || name == L".." || (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             continue;
         }
+        const std::wstring path = folder + L"\\" + name;
         PersistenceEntry entry;
         entry.location = L"startup-folder";
         entry.name = name;
-        entry.command = folder + L"\\" + name;
-        entry.targetPath = entry.command;
+        entry.command = path;
+        entry.targetPath = path;
+
+        // H-01: .lnk анализируется по цели, а не по самому ярлыку.
+        if (name.size() >= lnkSuffix.size()
+            && _wcsicmp(name.c_str() + name.size() - lnkSuffix.size(), lnkSuffix.c_str()) == 0) {
+            std::wstring arguments;
+            const std::wstring target = ResolveShortcutTarget(path, arguments);
+            if (!target.empty()) {
+                entry.command = arguments.empty() ? target : target + L" " + arguments;
+                entry.targetPath = ResolveEntryTarget(entry.command);
+            }
+        }
+
         onEntry(entry);
     } while (FindNextFileW(find, &findData));
+
+    // Обрыв перечисления (права отозваны посреди каталога) — остаток файлов
+    // молча терялся и не делал прогон Partial.
+    const DWORD findError = GetLastError();
     FindClose(find);
+    if (findError != ERROR_NO_MORE_FILES && findError != ERROR_SUCCESS && onSkipped) {
+        onSkipped(folder, L"startup-enumeration-aborted");
+    }
 }
 
 // ---------- Службы (ImagePath из реестра) ----------
 
-void EnumServices(const std::function<void(const PersistenceEntry&)>& onEntry)
+void EnumServices(const std::function<void(const PersistenceEntry&)>& onEntry,
+                  const PersistenceScanner::SkipCallback& onSkipped)
 {
     const wchar_t* servicesKey = L"SYSTEM\\CurrentControlSet\\Services";
     HKEY key = nullptr;
@@ -280,9 +422,17 @@ void EnumServices(const std::function<void(const PersistenceEntry&)>& onEntry)
         // буфер 2048 молча резал длинные пути сервисов.
         DWORD dataSize = 0;
         DWORD type = 0;
-        if (RegQueryValueExW(serviceKey, L"ImagePath", nullptr, &type, nullptr, &dataSize) == ERROR_SUCCESS
-            && (type == REG_SZ || type == REG_EXPAND_SZ)
-            && dataSize > 0 && dataSize <= 65536) {
+        const LSTATUS queryStatus = RegQueryValueExW(serviceKey, L"ImagePath", nullptr, &type, nullptr, &dataSize);
+        const bool isStringType = type == REG_SZ || type == REG_EXPAND_SZ;
+        if (queryStatus == ERROR_SUCCESS && isStringType && dataSize > 65536) {
+            // Чрезмерный ImagePath не читаем, но потерю coverage не скрываем
+            // (наравне с EnumRegistryValues) — иначе прогон не станет Partial.
+            if (onSkipped) {
+                onSkipped(L"HKLM\\" + std::wstring(servicesKey) + L"\\" + serviceName + L"\\ImagePath",
+                          L"registry-value-too-large");
+            }
+        }
+        else if (queryStatus == ERROR_SUCCESS && isStringType && dataSize > 0) {
             std::wstring imagePath(dataSize / sizeof(wchar_t) + 1, L'\0');
             dataSize = static_cast<DWORD>(imagePath.size() * sizeof(wchar_t));
             if (RegQueryValueExW(serviceKey, L"ImagePath", nullptr, &type,
@@ -347,7 +497,16 @@ std::wstring DecodeXmlEntities(const std::wstring& text)
                 ok = end != nullptr && *end == L'\0' && code > 0 && code <= 0x10FFFF;
             }
             if (ok) {
-                result.push_back(static_cast<wchar_t>(code));
+                if (code > 0xFFFF) {
+                    // Astral-плоскость (аудит): без суррогатной пары
+                    // static_cast<wchar_t> усекал код до младших 16 бит и
+                    // подставлял мусорный символ из приватной зоны.
+                    const unsigned long offset = code - 0x10000;
+                    result.push_back(static_cast<wchar_t>(0xD800 + (offset >> 10)));
+                    result.push_back(static_cast<wchar_t>(0xDC00 + (offset & 0x3FF)));
+                } else {
+                    result.push_back(static_cast<wchar_t>(code));
+                }
             } else {
                 result.append(text.substr(i, semicolon - i + 1)); // не сущность — как есть
             }
@@ -434,6 +593,17 @@ std::wstring ExtractXmlElementText(const std::wstring& xml, const wchar_t* local
             pos = xml.find(L'<', pos);
             if (pos == std::wstring::npos) {
                 return {};
+            }
+            // Комментарий может содержать «</Command …>» — пропускаем его целиком,
+            // как при поиске открывающего тега (иначе команда усекалась на теле
+            // комментария, обрезая часть признаков).
+            if (pos + 4 <= xml.size() && xml.compare(pos + 1, 3, L"!--") == 0) {
+                const size_t commentEnd = xml.find(L"-->", pos + 4);
+                if (commentEnd == std::wstring::npos) {
+                    return {};
+                }
+                pos = commentEnd + 3;
+                continue;
             }
             if (pos + 1 < xml.size() && xml[pos + 1] != L'/') {
                 // Вложенный элемент/CDATA/PI — пропускаем его открывающий тег.
@@ -592,7 +762,13 @@ void WalkTasksFolder(const std::wstring& tasksRoot, const std::wstring& folder, 
         entry.targetPath = ResolveEntryTarget(command);
         onEntry(entry);
     } while (FindNextFileW(find, &findData));
+
+    // Обрыв перечисления посреди дерева задач — остаток молча терялся.
+    const DWORD findError = GetLastError();
     FindClose(find);
+    if (findError != ERROR_NO_MORE_FILES && findError != ERROR_SUCCESS) {
+        onSkipped(folder, L"tasks-enumeration-aborted");
+    }
 }
 
 void EnumScheduledTasks(const std::function<void(const PersistenceEntry&)>& onEntry,
@@ -623,30 +799,41 @@ void PersistenceScanner::Enumerate(const std::function<void(const PersistenceEnt
             EnumRegistryValues(hkey, hive, runKey, onEntry, onSkipped);
         }
         EnumWinlogon(hkey, hive, onEntry, onSkipped);
+
+        // M-01: 32-bit Run-ветки HKLM — та же гарантия coverage, что у
+        // StartupProbe в основном приложении (SOFTWARE\WOW6432Node\…).
+        if (hive == 1) {
+            for (const wchar_t* runKey : kRunLocationsWow64) {
+                EnumRegistryValues(hkey, hive, runKey, onEntry, onSkipped);
+            }
+        }
     }
 
     const std::wstring profile = GetEnvironmentValueDynamic(L"APPDATA");
     if (!profile.empty()) {
         EnumStartupFolder(profile
                               + L"\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
-                          onEntry);
+                          onEntry, onSkipped);
     }
     const std::wstring commonProfile = GetEnvironmentValueDynamic(L"ProgramData");
     if (!commonProfile.empty()) {
         EnumStartupFolder(commonProfile
                               + L"\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
-                          onEntry);
+                          onEntry, onSkipped);
     }
 
-    EnumServices(onEntry);
+    EnumServices(onEntry, onSkipped);
     EnumScheduledTasks(onEntry, onSkipped);
 
     // Тестовый хук (SCU.Tests): дополнительный Run-подобный ключ в HKCU,
-    // указывается переменной окружения. В production не задаётся.
+    // указывается переменной окружения. Компилируется только с опцией
+    // SCU_ENABLE_TEST_HOOKS — в production не читается вовсе.
+#ifdef SCU_ENABLE_TEST_HOOKS
     wchar_t testKey[256]{};
     if (GetEnvironmentVariableW(L"SCU_TEST_RUN_KEY", testKey, 256) > 0) {
         EnumRegistryValues(HKEY_CURRENT_USER, 0, testKey, onEntry, onSkipped);
     }
+#endif
 }
 
 } // namespace scan

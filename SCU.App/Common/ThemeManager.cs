@@ -63,6 +63,93 @@ public static class ThemeManager
     // (glass/control/card/popup) перекрываются набором значений выбранного режима.
     public static AppTransparency Transparency { get; private set; } = AppTransparency.Transparent;
 
+    // Анимации интерфейса (тумблер в «Настройках»): значение из настроек,
+    // параметр отсутствует — включены. Читается лениво, кэшируется в UiAnimations.
+    public static bool LoadAnimations()
+    {
+        try
+        {
+            var json = GetSettingsText();
+            if (json.Length > 0)
+            {
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.TryGetProperty("animations", out var animations)
+                    && (animations.ValueKind == JsonValueKind.True || animations.ValueKind == JsonValueKind.False))
+                {
+                    return animations.GetBoolean();
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return true;
+    }
+
+    // Переключение анимаций в рантайме: выбор сохраняется в settings.json,
+    // XAML-триггерные анимации (стиль NavListItem) читают ресурс «UiAnimationsOn».
+    public static void SetAnimations(bool enabled)
+    {
+        AnimationsEnabled = enabled;
+        if (Application.Current is not null)
+        {
+            Application.Current.Resources["UiAnimationsOn"] = enabled;
+        }
+
+        SaveSettings(GetCachedThemeMode(), Accent, L.Current, LoadShowLog(), LoadUacConfirmations(), animations: enabled);
+    }
+
+    // Текущее состояние тумблера: запрашивается при старте настроек и при переключении.
+    public static bool AnimationsEnabled
+    {
+        get => _animationsEnabled ??= LoadAnimations();
+        private set => _animationsEnabled = value;
+    }
+
+    private static bool? _animationsEnabled;
+
+    // Путь дополнительной папки очистки загрузок (карточка «Путь очистки загрузок»
+    // в «Настройках»): очищается вместе со стандартными «Загрузками». Пустая
+    // строка — путь не задан. Хранится в settings.json.
+    public static string LoadDownloadsCleanupPath()
+    {
+        try
+        {
+            var json = GetSettingsText();
+            if (json.Length > 0)
+            {
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.TryGetProperty("downloadsCleanupPath", out var value)
+                    && value.ValueKind == JsonValueKind.String)
+                {
+                    return value.GetString() ?? string.Empty;
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return string.Empty;
+    }
+
+    public static string DownloadsCleanupPath
+    {
+        get => _downloadsCleanupPath ??= LoadDownloadsCleanupPath();
+        private set => _downloadsCleanupPath = value;
+    }
+
+    private static string? _downloadsCleanupPath;
+
+    // Установка пути дополнительной папки: пустая/пробельная строка снимает
+    // настройку. Выбор сохраняется в settings.json (вместе с остальными).
+    public static void SetDownloadsCleanupPath(string path)
+    {
+        DownloadsCleanupPath = path.Trim();
+        SaveSettings(GetCachedThemeMode(), Accent, L.Current, LoadShowLog(), LoadUacConfirmations(), downloadsCleanupPath: DownloadsCleanupPath);
+    }
+
     public static event Action<bool>? ThemeApplied;
 
     // Поднимается при каждом применении акцента (SetAccent и ApplyTheme) — на него
@@ -107,6 +194,12 @@ public static class ThemeManager
     {
         _cachedThemeMode = null;
         _cachedAccentColor = null;
+        _animationsEnabled = null;
+        _downloadsCleanupPath = null;
+        // Снимок текста settings.json тоже сбрасывается: SaveSettings пишет
+        // новые значения, Load* должны читать именно их (аудит производительности:
+        // раньше каждый Load* независимо читал и парсил файл — до 10 IO за старт).
+        _cachedSettingsText = null;
     }
 
     private static AppTheme GetCachedThemeMode()
@@ -200,13 +293,13 @@ public static class ThemeManager
     {
         try
         {
-            var path = GetSettingsPath();
-            if (!File.Exists(path))
+            var json = GetSettingsText();
+            if (json.Length == 0)
             {
                 return AppTheme.Auto;
             }
 
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            using var document = JsonDocument.Parse(json);
             var raw = document.RootElement.TryGetProperty("theme", out var theme)
                 ? theme.GetString()
                 : null;
@@ -227,13 +320,13 @@ public static class ThemeManager
     {
         try
         {
-            var path = GetSettingsPath();
-            if (!File.Exists(path))
+            var json = GetSettingsText();
+            if (json.Length == 0)
             {
                 return AppAccent.Blue;
             }
 
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            using var document = JsonDocument.Parse(json);
             var raw = document.RootElement.TryGetProperty("accent", out var accent)
                 ? accent.GetString()
                 : null;
@@ -262,10 +355,10 @@ public static class ThemeManager
     {
         try
         {
-            var path = GetSettingsPath();
-            if (File.Exists(path))
+            var json = GetSettingsText();
+            if (json.Length > 0)
             {
-                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                using var document = JsonDocument.Parse(json);
                 var raw = document.RootElement.TryGetProperty("iconAccent", out var iconAccent)
                     ? iconAccent.GetString()
                     : null;
@@ -305,10 +398,10 @@ public static class ThemeManager
     {
         try
         {
-            var path = GetSettingsPath();
-            if (File.Exists(path))
+            var json = GetSettingsText();
+            if (json.Length > 0)
             {
-                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                using var document = JsonDocument.Parse(json);
                 if (document.RootElement.TryGetProperty("transparency", out var transparency))
                 {
                     return transparency.GetString()?.ToLowerInvariant() switch
@@ -339,7 +432,7 @@ public static class ThemeManager
     // в «Настройки → Горячие клавиши», хранятся в общем settings.json.
     public static bool GlobalHotkeysEnabled { get; internal set; } = true;
 
-    public static void SaveSettings(AppTheme theme, AppAccent accent, AppLanguage language, bool showLog, bool uacConfirmations = true, bool? onboardingShown = null)
+    public static void SaveSettings(AppTheme theme, AppAccent accent, AppLanguage language, bool showLog, bool uacConfirmations = true, bool? onboardingShown = null, bool? animations = null, string? downloadsCleanupPath = null)
     {
         InvalidateCaches();
         try
@@ -359,7 +452,11 @@ public static class ThemeManager
                     iconAccent = IconAccent.ToString().ToLowerInvariant(),
                     // null — сохранить ранее записанное значение (флаг первого
                     // запуска меняется только через MarkOnboardingShown).
-                    onboardingShown = onboardingShown ?? LoadOnboardingShown()
+                    onboardingShown = onboardingShown ?? LoadOnboardingShown(),
+                    // null — сохранить текущее значение тумблера анимаций.
+                    animations = animations ?? AnimationsEnabled,
+                    // null — сохранить текущее значение пути очистки загрузок.
+                    downloadsCleanupPath = downloadsCleanupPath ?? DownloadsCleanupPath
                 },
                 new JsonSerializerOptions { WriteIndented = true });
 
@@ -385,10 +482,10 @@ public static class ThemeManager
     {
         try
         {
-            var path = GetSettingsPath();
-            if (File.Exists(path))
+            var json = GetSettingsText();
+            if (json.Length > 0)
             {
-                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                using var document = JsonDocument.Parse(json);
                 if (document.RootElement.TryGetProperty("uacConfirmations", out var uac)
                     && (uac.ValueKind == JsonValueKind.True || uac.ValueKind == JsonValueKind.False))
                 {
@@ -408,10 +505,10 @@ public static class ThemeManager
     {
         try
         {
-            var path = GetSettingsPath();
-            if (File.Exists(path))
+            var json = GetSettingsText();
+            if (json.Length > 0)
             {
-                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                using var document = JsonDocument.Parse(json);
                 if (document.RootElement.TryGetProperty("globalHotkeys", out var hotkeys)
                     && (hotkeys.ValueKind == JsonValueKind.True || hotkeys.ValueKind == JsonValueKind.False))
                 {
@@ -432,10 +529,10 @@ public static class ThemeManager
     {
         try
         {
-            var path = GetSettingsPath();
-            if (File.Exists(path))
+            var json = GetSettingsText();
+            if (json.Length > 0)
             {
-                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                using var document = JsonDocument.Parse(json);
                 if (document.RootElement.TryGetProperty("onboardingShown", out var shown)
                     && (shown.ValueKind == JsonValueKind.True || shown.ValueKind == JsonValueKind.False))
                 {
@@ -460,10 +557,10 @@ public static class ThemeManager
     public static bool LoadShowLog()    {
         try
         {
-            var path = GetSettingsPath();
-            if (File.Exists(path))
+            var json = GetSettingsText();
+            if (json.Length > 0)
             {
-                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                using var document = JsonDocument.Parse(json);
                 if (document.RootElement.TryGetProperty("showLog", out var log)
                     && (log.ValueKind == JsonValueKind.True || log.ValueKind == JsonValueKind.False))
                 {
@@ -704,4 +801,29 @@ public static class ThemeManager
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         SettingsDirectory,
         SettingsFileName);
+
+    // Снимок текста settings.json: все Load* читают его вместо личного IO
+    // (аудит производительности — раньше до 10 чтений+парсов за один старт).
+    // Инвалидация — в InvalidateCaches (вызывается любым SaveSettings).
+    private static string? _cachedSettingsText;
+
+    private static string GetSettingsText()
+    {
+        if (_cachedSettingsText is not null)
+        {
+            return _cachedSettingsText;
+        }
+
+        try
+        {
+            var path = GetSettingsPath();
+            _cachedSettingsText = File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+        }
+        catch
+        {
+            _cachedSettingsText = string.Empty;
+        }
+
+        return _cachedSettingsText;
+    }
 }

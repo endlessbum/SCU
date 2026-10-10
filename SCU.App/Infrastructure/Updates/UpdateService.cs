@@ -116,7 +116,11 @@ public sealed class UpdateService
         if (result.IsSuccess)
         {
             _logger.Info("WU | pause removed");
-            if (File.Exists(backupFile))
+            // Бэкап удаляется только после ПОЛНОГО восстановления (код 0).
+            // Restore с пропусками (старый формат бэкапа) возвращает успех с
+            // оговоркой — тогда бэкап остаётся единственным источником для
+            // пропущенных значений и уничтожать его нельзя.
+            if (result.Code == 0 && File.Exists(backupFile))
             {
                 try
                 {
@@ -126,6 +130,10 @@ public sealed class UpdateService
                 {
                     _logger.Warn("WU | pause backup cleanup failed: " + exception.Message);
                 }
+            }
+            else if (result.Code != 0)
+            {
+                _logger.Warn("WU | pause backup retained | restore skipped values | rc=" + result.Code);
             }
         }
 
@@ -157,9 +165,29 @@ public sealed class UpdateService
         }
     }
 
-    // Читает PauseUpdatesExpiryTime и разбирает дату (общий хелпер для IsPaused и текста паузы).
-    // null — значения нет или дата не распознана.
-    private static DateTime? ReadPauseExpiryUtc()
+    // Пауза активна: срок существует и ещё не наступил.
+    public static bool IsPaused()
+    {
+        var (readable, expiry) = TryReadPauseExpiryUtc();
+        return readable && expiry.HasValue && expiry.Value.ToLocalTime() > DateTime.Now;
+    }
+
+    // null — сбой чтения реестра: «паузы нет» и «прочитать не удалось» — разные
+    // состояния (иначе бэнчмарк-метрика updates.readable никогда не Unknown).
+    public static bool? TryIsPaused()
+    {
+        var (readable, expiry) = TryReadPauseExpiryUtc();
+        if (!readable)
+        {
+            return null;
+        }
+
+        return expiry.HasValue && expiry.Value.ToLocalTime() > DateTime.Now;
+    }
+
+    // (readable=false) — ключ не читается (сбой), а не «паузы нет»: только
+    // отсутствие значения в ключе является достоверным «паузы нет».
+    private static (bool Readable, DateTime? Expiry) TryReadPauseExpiryUtc()
     {
         try
         {
@@ -167,7 +195,7 @@ public sealed class UpdateService
             var expiry = key?.GetValue("PauseUpdatesExpiryTime") as string;
             if (string.IsNullOrWhiteSpace(expiry))
             {
-                return null;
+                return (true, null);
             }
 
             return DateTime.TryParse(
@@ -175,20 +203,13 @@ public sealed class UpdateService
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.RoundtripKind,
                 out var moment)
-                ? moment
-                : null;
+                ? (true, moment)
+                : (true, null);
         }
         catch
         {
-            return null;
+            return (false, null);
         }
-    }
-
-    // Пауза активна: срок существует и ещё не наступил.
-    public static bool IsPaused()
-    {
-        var expiry = ReadPauseExpiryUtc();
-        return expiry.HasValue && expiry.Value.ToLocalTime() > DateTime.Now;
     }
 
     // Текст паузы для карточки: читаем срок из UX\Settings.
@@ -203,7 +224,7 @@ public sealed class UpdateService
                 return "Пауза не задана — Windows обновляется по своему расписанию.";
             }
 
-            var moment = ReadPauseExpiryUtc();
+            var moment = TryReadPauseExpiryUtc().Expiry;
             if (moment is null)
             {
                 return "Пауза задана (не удалось разобрать срок: " + expiry + ").";
@@ -221,16 +242,19 @@ public sealed class UpdateService
     }
 
     // Обновления заблокированы = служба wuauserv переведена в «Отключена» (Start=4).
-    public static bool IsBlocked()
+    public static bool IsBlocked() => TryIsBlocked() ?? false;
+
+    // null — сбой чтения реестра: UI/бэнчмарк показывают «неизвестно».
+    public static bool? TryIsBlocked()
     {
         try
         {
             using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\wuauserv");
-            return key?.GetValue("Start") is int start && start == 4;
+            return key?.GetValue("Start") is int start ? start == 4 : false;
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 

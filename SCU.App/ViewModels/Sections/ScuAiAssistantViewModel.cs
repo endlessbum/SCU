@@ -78,9 +78,9 @@ public partial class ScuAiAssistantViewModel : ObservableObject
             return;
         }
 
-        ModeHint = DeepSeekClient.ProviderSupportsToolCalling(_provider)
+        ModeHint = DeepSeekClient.SupportsToolCalling(_provider, _model)
             ? L.T("Полный режим: ответы по справке SCU, чтение состояния, навигация и изменение настроек с подтверждением.")
-            : L.T("Этот провайдер не поддерживает вызов функций: ответы по справке и текстовые подсказки. Изменения настроек недоступны.");
+            : L.T("Эта модель не поддерживает вызов функций: ответы по справке и текстовые подсказки. Изменения настроек недоступны.");
     }
 
     partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();

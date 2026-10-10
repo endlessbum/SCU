@@ -15,6 +15,11 @@ public sealed class Result
 
     public static Result Success(string message = "") => new(true, message, 0);
 
+    // Успех с оговоркой (код > 0): операция выполнена, но не полностью —
+    // например Restore пропустил значения из бэкапа старого формата. Вызывающий
+    // код по такому коду решает, можно ли уничтожать источник восстановления.
+    public static Result Success(string message, int code) => new(true, message, code);
+
     public static Result Failure(string message, int code = 1) => new(false, message, code);
 }
 

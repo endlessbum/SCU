@@ -59,7 +59,10 @@ public sealed class BatchUtility
 
 // Строка списка настроек: включённость в пакет (сохраняется) и результат
 // последнего запуска. Заголовок перечитывается при смене языка.
-public sealed partial class BatchUtilityRow : ObservableObject
+// Подписка на статический L.LanguageChanged живёт до Dispose (аудит утечки):
+// Rebuild() CustomUtilitiesViewModel пересоздаёт строки — старые обязаны
+// отписываться, иначе static-событие копит мёртвые обработчики.
+public sealed partial class BatchUtilityRow : ObservableObject, IDisposable
 {
     public BatchUtilityRow(BatchUtility utility, bool isIncluded)
     {
@@ -67,12 +70,19 @@ public sealed partial class BatchUtilityRow : ObservableObject
         _isIncluded = isIncluded;
         // Строки живут столько же, сколько приложение — отписка не требуется
         // (тот же подход, что у SectionItem в MainViewModel).
-        L.LanguageChanged += () =>
-        {
-            OnPropertyChanged(nameof(Title));
-            OnPropertyChanged(nameof(TargetText));
-            OnPropertyChanged(nameof(SearchText));
-        };
+        L.LanguageChanged += OnLanguageChanged;
+    }
+
+    private void OnLanguageChanged()
+    {
+        OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(TargetText));
+        OnPropertyChanged(nameof(SearchText));
+    }
+
+    public void Dispose()
+    {
+        L.LanguageChanged -= OnLanguageChanged;
     }
 
     // internal set — для переиспользования строки при обновлении поисковых строк

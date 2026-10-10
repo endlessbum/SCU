@@ -13,8 +13,13 @@ namespace SCU.Tests;
 // целиком. Вторая частичная часть ScannerCoreIntegrationTests (общие хелперы).
 public partial class ScannerCoreIntegrationTests
 {
-    private static string CacheFilePath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SCU", "scan-cache.txt");
+    // Кэш и ключ переехали в доверенный каталог (ProgramData, строгий DACL —
+    // подмена ключа не-elevated процессом невозможна); LocalApplicationData
+    // остался только хранилищем старого кэша.
+    private static string CacheDirectory() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SCU", "scanner-cache");
+
+    private static string CacheFilePath() => Path.Combine(CacheDirectory(), "scan-cache.txt");
 
     private static string Sha256Hex(string content) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
@@ -29,9 +34,18 @@ public partial class ScannerCoreIntegrationTests
 
     private static void WriteCacheLines(IReadOnlyList<string> lines)
     {
+        // Формат кэша LF-only (пишет ScannerCore '\n'): CRLF ломал бы сравнение
+        // заголовка и HMAC строк при загрузке.
         Directory.CreateDirectory(Path.GetDirectoryName(CacheFilePath())!);
-        File.WriteAllLines(CacheFilePath(), lines);
+        File.WriteAllText(CacheFilePath(), string.Join("\n", lines) + "\n");
     }
+
+    // Формат v3: строка = "<hex-hmac>\t<payload>", payload = "<sha256>\t<вердикт>
+    // …". Проверка принадлежности хэша — по payload, а не по началу строки:
+    // строку открывает HMAC, а не хэш записи.
+    private static bool CacheLineHasPayload(string line, string sha256) =>
+        line.EndsWith("\t" + sha256 + "\tclean", StringComparison.Ordinal)
+        || line.Contains("\t" + sha256 + "\t", StringComparison.Ordinal);
 
     // Подмена вердикта в кэше на clean: если движок доверяет кэшу больше, чем
     // подписанной базе, детект исчезнет — тест это ловит.
@@ -59,7 +73,20 @@ public partial class ScannerCoreIntegrationTests
         {
             return; // нет кэша — некуда сеять; тест упадёт на assert и это честно
         }
-        lines.Insert(1, sha256 + "\tclean");
+
+        // Формат v3: каждая строка = "<hex-hmac>\t<payload>". Сеяная запись
+        // обязана быть подписана тем же ключом (cache.key), иначе движок
+        // отбросит её при загрузке — как и любую подделанную.
+        var keyPath = Path.Combine(CacheDirectory(), "cache.key");
+        if (!File.Exists(keyPath))
+        {
+            return; // ключа нет — дисковый кэш отключён; assert поймает это честно
+        }
+
+        var payload = sha256 + "\tclean";
+        using var hmac = new HMACSHA256(File.ReadAllBytes(keyPath));
+        var mac = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
+        lines.Insert(1, mac + "\t" + payload);
         WriteCacheLines(lines);
     }
 
@@ -147,6 +174,11 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
+        if (SkipIfNotElevated())
+        {
+            return;
+        }
+
         var sandbox = TryCreateScannerSandbox();
         if (sandbox is null)
         {
@@ -222,7 +254,7 @@ public partial class ScannerCoreIntegrationTests
             await ScanDirectoryAsync(scannerPath, temp);
 
             var lines = ReadCacheLines();
-            Assert.DoesNotContain(lines, line => line.StartsWith(markerHash, StringComparison.Ordinal));
+            Assert.DoesNotContain(lines, line => line.Contains(markerHash, StringComparison.Ordinal));
             Assert.Contains(lines, line => line.StartsWith("#scucache", StringComparison.Ordinal)
                                             && line.Contains("db=2099.03.02", StringComparison.Ordinal));
         }
@@ -246,6 +278,11 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
+        if (SkipIfNotElevated())
+        {
+            return;
+        }
+
         var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -260,13 +297,13 @@ public partial class ScannerCoreIntegrationTests
 
             // Контроль: тот же профиль — сеяная запись переживает скан.
             await ScanWithProfileAsync(scannerPath, temp, maxFileSize: 1048576);
-            Assert.Contains(ReadCacheLines(), line => line.StartsWith(markerHash, StringComparison.Ordinal));
+            Assert.Contains(ReadCacheLines(), line => line.Contains(markerHash, StringComparison.Ordinal));
 
             // Другой профиль — весь старый кэш отброшен.
             var changed = await ScanWithProfileAsync(scannerPath, temp, maxFileSize: 104857600);
             Assert.NotNull(changed);
             var lines = ReadCacheLines();
-            Assert.DoesNotContain(lines, line => line.StartsWith(markerHash, StringComparison.Ordinal));
+            Assert.DoesNotContain(lines, line => line.Contains(markerHash, StringComparison.Ordinal));
             Assert.Contains(lines, line => line.StartsWith("#scucache", StringComparison.Ordinal)
                                             && line.Contains("maxbytes=104857600", StringComparison.Ordinal));
         }
@@ -307,8 +344,9 @@ public partial class ScannerCoreIntegrationTests
 
             var zipHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(zipPath))).ToLowerInvariant();
 
-            // Контейнер не должен попасть в кэш вовсе.
-            Assert.DoesNotContain(ReadCacheLines(), line => line.StartsWith(zipHash + "\t", StringComparison.Ordinal));
+            // Контейнер не должен попасть в кэш вовсе (v3: payload внутри строки
+            // за HMAC, поэтому проверка не по началу строки).
+            Assert.DoesNotContain(ReadCacheLines(), line => CacheLineHasPayload(line, zipHash));
 
             // Даже подсаженная «чистая» запись не прячет malware в членах.
             TamperCacheVerdictToClean(zipHash);
@@ -618,6 +656,11 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
+        if (SkipIfNotElevated())
+        {
+            return;
+        }
+
         var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
@@ -639,7 +682,7 @@ public partial class ScannerCoreIntegrationTests
             await ScanDirectoryAsync(scannerPath, temp);
 
             var after = ReadCacheLines();
-            Assert.DoesNotContain(after, line => line.StartsWith(markerHash, StringComparison.Ordinal));
+            Assert.DoesNotContain(after, line => line.Contains(markerHash, StringComparison.Ordinal));
             Assert.Contains(after, line => line.StartsWith("#scucache", StringComparison.Ordinal)
                                             && !line.Contains("0.0.0-forged", StringComparison.Ordinal));
         }
@@ -689,7 +732,7 @@ public partial class ScannerCoreIntegrationTests
             var outerHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(outerPath)))
                 .ToLowerInvariant();
             Assert.DoesNotContain(ReadCacheLines(),
-                line => line.StartsWith(outerHash + "\t", StringComparison.Ordinal));
+                line => CacheLineHasPayload(line, outerHash));
 
             // Подсаживаем «чистый» вердикт для внешнего контейнера — не помогает.
             TamperCacheVerdictToClean(outerHash);
@@ -830,6 +873,256 @@ public partial class ScannerCoreIntegrationTests
             Directory.Delete(temp, recursive: true);
             Directory.Delete(sandbox, recursive: true);
         }
+    }
+
+    // Аудит пакета базы (P1): член архива, распаковывающийся в огромный размер,
+    // отклоняется по заголовку ZIP ДО выделения памяти — сжатый член при этом
+    // копеечный, поэтому раньше лимит срабатывал только после аллокации.
+    [Fact]
+    public async Task ScannerCore_RejectsPackageWithOversizedUncompressedEntry()
+    {
+        var scannerPath = FindScannerCore();
+        if (scannerPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var packagePath = Path.Combine(temp, "oversized.zip");
+            using (var stream = File.Create(packagePath))
+            using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                // ~70 МБ повторяющихся строк: сжатие делает член копеечным,
+                // распакованный размер — сверх лимита 64 МБ.
+                var entry = zip.CreateEntry("hashes.txt");
+                using var writer = new StreamWriter(entry.Open());
+                var line = new string('a', 100) + "\n";
+                for (var i = 0; i < 700_000; i++)
+                {
+                    writer.Write(line);
+                }
+            }
+
+            var (exitCode, events) = await RunScannerAsync(scannerPath, startInfo =>
+            {
+                startInfo.ArgumentList.Add("update");
+                startInfo.ArgumentList.Add("--package");
+                startInfo.ArgumentList.Add(packagePath);
+                startInfo.ArgumentList.Add("--dev-unsigned-ok");
+            });
+
+            Assert.NotEqual(0, exitCode);
+            var updateEvent = Assert.Single(events, e => e.Kind == ScanEventKind.Update);
+            Assert.Equal("failed", updateEvent.UpdateStatus);
+            Assert.Contains("too large", updateEvent.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    // Аудит пакета базы (P1): лимит на число членов архива — защита от
+    // мусорных/злонамеренных пакетов с сотнями членов.
+    [Fact]
+    public async Task ScannerCore_RejectsPackageWithTooManyMembers()
+    {
+        var scannerPath = FindScannerCore();
+        if (scannerPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var packagePath = Path.Combine(temp, "many-members.zip");
+            using (var stream = File.Create(packagePath))
+            using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                for (var i = 0; i < 40; i++)
+                {
+                    AddZipEntry(zip, $"filler-{i}.txt", Encoding.UTF8.GetBytes("x"));
+                }
+            }
+
+            var (exitCode, events) = await RunScannerAsync(scannerPath, startInfo =>
+            {
+                startInfo.ArgumentList.Add("update");
+                startInfo.ArgumentList.Add("--package");
+                startInfo.ArgumentList.Add(packagePath);
+                startInfo.ArgumentList.Add("--dev-unsigned-ok");
+            });
+
+            Assert.NotEqual(0, exitCode);
+            var updateEvent = Assert.Single(events, e => e.Kind == ScanEventKind.Update);
+            Assert.Equal("failed", updateEvent.UpdateStatus);
+            Assert.Contains("too many entries", updateEvent.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    // Аудит пакета базы: metadata entries не совпадает с фактическим числом
+    // записей — пакет с рассинхроном metadata отклоняется целиком.
+    [Fact]
+    public async Task ScannerCore_RejectsPackageWithEntriesMetadataMismatch()
+    {
+        var keyPath = FindDatabaseSigningKey();
+        if (FindScannerCore() is null || keyPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
+        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            // Подпись валидна, схема валидна, но metadata объявляет 2 записи
+            // при одной фактической.
+            var hashesBytes = Encoding.UTF8.GetBytes(
+                "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\tmalware\tMismatch\n");
+            var versionJson = Encoding.UTF8.GetBytes(
+                "{\n  \"version\": \"2099.09.01\",\n  \"date\": \"2099-01-01\",\n  \"entries\": 2\n}\n");
+            var packagePath = Path.Combine(temp, "mismatch.zip");
+            await File.WriteAllBytesAsync(packagePath, BuildSignedPackage(hashesBytes, versionJson, keyPath));
+
+            var (exitCode, events) = await RunScannerAsync(scannerPath, startInfo =>
+            {
+                startInfo.ArgumentList.Add("update");
+                startInfo.ArgumentList.Add("--package");
+                startInfo.ArgumentList.Add(packagePath);
+                startInfo.ArgumentList.Add("--dev-unsigned-ok");
+            });
+
+            Assert.NotEqual(0, exitCode);
+            var updateEvent = Assert.Single(events, e => e.Kind == ScanEventKind.Update);
+            Assert.Equal("failed", updateEvent.UpdateStatus);
+            Assert.Contains("entries mismatch", updateEvent.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    // Аудит PE-анализатора: malformed PE с экстремальными значениями заголовков
+    // обязан обрабатываться без crash — corpus проходит скан целиком, сканер
+    // завершает анализ с валидным кодом возврата (checked в ScanDirectoryAsync).
+    [Fact]
+    public async Task ScannerCore_MalformedPeCorpus_AnalyzesWithoutCrash()
+    {
+        var scannerPath = FindScannerCore();
+        if (scannerPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var sandbox = TryCreateScannerSandbox();
+        if (sandbox is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var scannerPathInSandbox = Path.Combine(sandbox, "ScannerCore.exe");
+        var temp = Path.Combine(Path.GetTempPath(), "scu-pe-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            // e_lfanew: 0, UINT32_MAX, ровно размер буфера чтения, на границе.
+            await File.WriteAllBytesAsync(Path.Combine(temp, "pe-lfanew-zero.bin"),
+                BuildMalformedPe(eLfanew: 0, withNtHeaders: false, numberOfSections: 0, sizeOfOptionalHeader: 0));
+            await File.WriteAllBytesAsync(Path.Combine(temp, "pe-lfanew-max.bin"),
+                BuildMalformedPe(eLfanew: unchecked((int)0xFFFFFFFF), withNtHeaders: false, numberOfSections: 0, sizeOfOptionalHeader: 0));
+            await File.WriteAllBytesAsync(Path.Combine(temp, "pe-lfanew-at-read.bin"),
+                BuildMalformedPe(eLfanew: 64 * 1024, withNtHeaders: false, numberOfSections: 0, sizeOfOptionalHeader: 0));
+            await File.WriteAllBytesAsync(Path.Combine(temp, "pe-lfanew-inside.bin"),
+                BuildMalformedPe(eLfanew: 100, withNtHeaders: false, numberOfSections: 0, sizeOfOptionalHeader: 0));
+            // Валидная сигнатура PE, но экстремальные FileHeader: секционная таблица
+            // не влезает в 64-КБ буфер — malformed, не crash.
+            await File.WriteAllBytesAsync(Path.Combine(temp, "pe-sections-ffff.bin"),
+                BuildMalformedPe(eLfanew: 64, withNtHeaders: true, numberOfSections: 0xFFFF, sizeOfOptionalHeader: 0xFFFF));
+            await File.WriteAllBytesAsync(Path.Combine(temp, "pe-sections-max-opt.bin"),
+                BuildMalformedPe(eLfanew: 64, withNtHeaders: true, numberOfSections: 0x2000, sizeOfOptionalHeader: 0x1000));
+
+            var result = await ScanDirectoryAsync(scannerPathInSandbox, temp);
+
+            // Главное утверждение: сканер дожил до finished с результатом.
+            Assert.NotNull(result);
+        }
+        finally
+        {
+            Directory.Delete(temp, recursive: true);
+            Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    // Сборка malformed PE: «MZ» + e_lfanew по смещению 0x3C; при withNtHeaders —
+    // «PE\0\0» + IMAGE_FILE_HEADER с заданными NumberOfSections/SizeOfOptionalHeader.
+    private static byte[] BuildMalformedPe(int eLfanew, bool withNtHeaders, ushort numberOfSections, ushort sizeOfOptionalHeader)
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        writer.Write((ushort)0x5A4D); // IMAGE_DOS_SIGNATURE «MZ»
+        writer.Write(new byte[0x3A]); // хвост DOS header до e_lfanew
+        writer.Write(eLfanew);        // LONG e_lfanew на смещении 0x3C
+        if (withNtHeaders)
+        {
+            writer.Seek(eLfanew, SeekOrigin.Begin);
+            writer.Write(0x00004550u); // IMAGE_NT_SIGNATURE «PE\0\0»
+            writer.Write((ushort)0x8664);             // Machine
+            writer.Write(numberOfSections);           // NumberOfSections
+            writer.Write(0u);                         // TimeDateStamp
+            writer.Write(0u);                         // PointerToSymbolTable
+            writer.Write(0u);                         // NumberOfSymbols
+            writer.Write(sizeOfOptionalHeader);       // SizeOfOptionalHeader
+            writer.Write((ushort)0x0102);             // Characteristics
+        }
+
+        // Минимум 64 байта: меньше читатель заголовков не рассматривает.
+        if (stream.Length < 64)
+        {
+            writer.Write(new byte[64 - stream.Length]);
+        }
+
+        writer.Flush();
+        return stream.ToArray();
     }
 
     // Замена содержимого одной записи в уже собранном zip-пакете.

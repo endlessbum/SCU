@@ -9,31 +9,54 @@
                 <controls:InfoGlyph x:Name="MtuInfoGlyph" VerticalAlignment="Center" />
                 <controls:PinGlyph CardId="net.mtu" />
             </StackPanel>
-            <!-- Выбор интерфейса: кликабельные строки с подсветкой выделения
-                 (SelectedInterface) — применённые параметры идут в выбранный адаптер. -->
-            <ListBox MaxHeight="160"
+            <!-- Выбор интерфейса: строки в стиле пункта меню (NavListItem) —
+                 скруглённая подложка при выборе/наведении и акцентная «пилюля»
+                 слева вместо сплошной полосы. Применённые параметры идут в
+                 выбранный адаптер. -->
+            <ListBox MaxHeight="208"
                      Margin="0,8,0,0"
                      HorizontalAlignment="Stretch"
                      ItemsSource="{Binding Interfaces}"
-                     SelectedItem="{Binding SelectedInterface}">
+                     SelectedItem="{Binding SelectedInterface}"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                        <Setter Property="Height" Value="36" />
+                        <Setter Property="Margin" Value="0,2" />
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="RowBorder"
-                                            Background="Transparent"
-                                            CornerRadius="6"
-                                            Padding="8,4">
-                                        <ContentPresenter />
-                                    </Border>
+                                    <Grid>
+                                        <Border x:Name="RowBorder"
+                                                Background="Transparent"
+                                                CornerRadius="8"
+                                                Padding="12,0">
+                                            <ContentPresenter
+                                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                        </Border>
+                                        <!-- Акцентная «пилюля» выделения — как в боковом меню -->
+                                        <Rectangle x:Name="Pill"
+                                                   Width="3"
+                                                   Height="14"
+                                                   HorizontalAlignment="Left"
+                                                   VerticalAlignment="Center"
+                                                   RadiusX="1.5"
+                                                   RadiusY="1.5"
+                                                   Fill="{DynamicResource AccentFillBrush}"
+                                                   Opacity="0" />
+                                    </Grid>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="RowBorder" Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
+                                            <Setter TargetName="RowBorder" Property="Background" Value="{DynamicResource SubtleFillSecondaryBrush}" />
                                         </Trigger>
                                         <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="RowBorder" Property="Background" Value="{DynamicResource AccentTintBrush}" />
+                                            <Setter TargetName="RowBorder" Property="Background" Value="{DynamicResource NavSelectedFillBrush}" />
+                                            <Setter TargetName="Pill" Property="Opacity" Value="1" />
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -43,14 +66,16 @@
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <TextBlock Text="{Binding Display}" />
+                        <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-            <!-- Кому применятся параметры: подсвеченный в списке интерфейс -->
+            <!-- Кому применятся параметры: подсвеченный в списке интерфейс.
+                 Локализация (аудит UI): префикс — ресурс S_NetworkSelectedInterface,
+                 имя интерфейса — Run с биндингом; StringFormat не принимает
+                 DynamicResource, поэтому строка собирается из двух Run. -->
             <TextBlock Margin="0,6,0,0"
-                       Foreground="{DynamicResource SecondaryTextBrush}"
-                       Text="{Binding SelectedInterface.Display, StringFormat=Выбран: {0}}">
+                       Foreground="{DynamicResource SecondaryTextBrush}">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
                         <Style.Triggers>
@@ -60,6 +85,8 @@
                         </Style.Triggers>
                     </Style>
                 </TextBlock.Style>
+                <Run Text="{DynamicResource S_NetworkSelectedInterface}" />
+                <Run Text="{Binding SelectedInterface.Display, Mode=OneWay}" />
             </TextBlock>
             <WrapPanel Margin="0,8,0,0">
                 <StackPanel Orientation="Horizontal" Margin="0,0,8,8">

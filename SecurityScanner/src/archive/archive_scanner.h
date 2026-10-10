@@ -8,11 +8,36 @@
 // из имён членов невозможен; оригинальное имя живёт только в virtual path.
 
 #include <atomic>
+#include <condition_variable>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <vector>
 
 namespace scan {
+
+// Глобальный бюджет памяти архивных буферов (M-02): воркеров до 8 × maxArchiveSize
+// 256 МБ ≈ 2 ГБ пикового потребления только на ZIP-буферах. Кредитный пул
+// ограничивает суммарный размер одновременно прочитанных в память архивов
+// независимо от числа воркеров; вложенные архивы учитываются отдельно
+// (рекурсивный ScanZip резервирует свой кредит).
+class ArchiveMemoryBudget {
+public:
+    static ArchiveMemoryBudget& Instance();
+
+    // Блокирующе резервирует bytes, ожидая освобождения кредита с учётом отмены.
+    // Возврат false — отмена во время ожидания. Если bytes больше всего бюджета,
+    // резерв выдаётся при пустом пуле — защита от ливлока на предельном архиве.
+    bool Acquire(unsigned long long bytes, const std::atomic<bool>& isCancelled);
+    void Release(unsigned long long bytes) noexcept;
+
+    static constexpr unsigned long long kBudgetBytes = 1024ull * 1024 * 1024; // 1 ГБ
+
+private:
+    std::mutex mutex_;
+    std::condition_variable released_;
+    unsigned long long inUse_ = 0;
+};
 
 struct ArchiveLimits {
     uint32_t maxNesting = 3;                                        // документ п. 4

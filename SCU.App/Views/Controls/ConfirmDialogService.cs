@@ -1,3 +1,4 @@
+using System.Windows;
 using SCU.Common;
 
 namespace SCU.Views.Controls;
@@ -13,7 +14,7 @@ public sealed class ConfirmDialogService : IConfirmDialogService
             return true;
         }
 
-        return ConfirmDialog.Ask(title, message, confirmText);
+        return ShowOnUiThread(() => ConfirmDialog.Ask(title, message, confirmText));
     }
 
     // П. 14 аудита: структурированный флоу опасного изменения — отдельные
@@ -35,6 +36,21 @@ public sealed class ConfirmDialogService : IConfirmDialogService
             L.T("Последствия") + ":\n" + change.Consequences,
             L.T("Откат") + ": " + rollback);
 
-        return ConfirmDialog.Ask(change.Title, message, change.ConfirmText);
+        return ShowOnUiThread(() => ConfirmDialog.Ask(change.Title, message, change.ConfirmText));
+    }
+
+    // WPF-окно можно создавать и показывать только в STA UI-потоке. Часть
+    // вызывающих (полный uninstall приложений) выполняется на потоковом пуле
+    // через Task.Run — без маршалинга получили бы InvalidOperationException
+    // вместо диалога.
+    private static bool ShowOnUiThread(Func<bool> show)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            return show();
+        }
+
+        return dispatcher.Invoke(show);
     }
 }

@@ -275,9 +275,22 @@ public sealed class RuntimeInstaller
             }
         });
 
+        // Дедлайн: зависший DISM не должен держать операцию в ожидании бесконечно
+        // (отмена пользователем — отдельно). 30 минут — с запасом для легитимной
+        // догрузки пакета из Windows Update.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(ExternalProcessTimeout);
+
         try
         {
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.Warn($"RUNTIME | install netfx35 | timeout | kill process tree");
+            TryKillProcessTree(process, "install netfx35 deadline");
+            return Result.Failure(
+                $"DISM не завершился за {ExternalProcessTimeout.TotalMinutes:0} мин и был снят — установка .NET Framework 3.5 не подтверждена.", -3);
         }
         catch (OperationCanceledException)
         {
@@ -543,9 +556,21 @@ public sealed class RuntimeInstaller
             }
         });
 
+        // Дедлайн: зависший установщик не должен держать операцию в ожидании
+        // бесконечно (отмена пользователем — отдельно).
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(ExternalProcessTimeout);
+
         try
         {
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.Warn($"RUNTIME | install {definition.Id} | timeout | kill process tree");
+            TryKillProcessTree(process, $"install {definition.Id} deadline");
+            return Result.Failure(
+                $"{definition.Name}: установщик не завершился за {ExternalProcessTimeout.TotalMinutes:0} мин и был снят.", -3);
         }
         catch (OperationCanceledException)
         {
@@ -599,6 +624,26 @@ public sealed class RuntimeInstaller
         Directory.CreateDirectory(directory);
         EnsureSecureDownloadsDirectory(directory);
         return directory;
+    }
+
+    // Предельный срок внешнего процесса (DISM, установщик/деинсталлятор рантайма):
+    // продолжительность чужого процесса приложением не контролируется, зависший
+    // процесс снимается по дедлайну, а не ждёт ручной отмены.
+    private static readonly TimeSpan ExternalProcessTimeout = TimeSpan.FromMinutes(30);
+
+    private void TryKillProcessTree(Process process, string context)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Error($"RUNTIME | kill failed | {context} | " + exception.Message);
+        }
     }
 
     // Логика ACL вынесена в SecureDirectory.EnsureAdminsOnly (используется также

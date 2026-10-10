@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
 using SCU.Views.Controls;
@@ -147,33 +147,5 @@ public partial class SecurityViewModel : ObservableObject, IDisposable, ISection
         _operationCts?.Cancel();
     }
 
-    private async Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action)
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        _operationCts?.Dispose();
-        _operationCts = new CancellationTokenSource();
-        IsBusy = true;
-        try
-        {
-            await action(_operationCts.Token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = L.T("Операция отменена.");
-            _logger.Warn("CANCEL | " + title);
-        }
-        catch (Exception exception)
-        {
-            StatusText = L.T("Ошибка: {0}", exception.Message);
-            _logger.Error("SECURITY | " + title + " | " + exception);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-}
+    private Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action) =>
+        SectionOperations.RunExclusiveAsync(title, "SECURITY", () => IsBusy, value => IsBusy = value, () => _operationCts, value => _operationCts = value, value => StatusText = value, _logger, action);}

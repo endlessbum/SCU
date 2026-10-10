@@ -19,7 +19,7 @@
     <RootNamespace>SCU</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <!-- Версия сборки: показывается в «Настройки → О приложении» (три части). -->
-    <Version>3.1.2</Version>
+    <Version>3.1.3</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -58,8 +58,16 @@
 
   <!-- ScannerCore.exe (C++/CMake, SecurityScanner/) кладётся в вывод приложения.
        Бинарник собирается отдельно командой cmake build SecurityScanner/build (Release).
-       Если бинарника нет — сборка SCU не падает, вкладка покажет «ScannerCore.exe не найден». -->
-  <Target Name="CopyScannerCore" AfterTargets="Build" Condition="Exists('..\SecurityScanner\out\Release\ScannerCore.exe')">
+       Аудит: молчаливый пропуск отсутствующего бинарника позволял собирать и
+       тестировать приложение без нативного движка; теперь отсутствие — ошибка
+       сборки. Inputs включают исходники C++: изменение исходников делает таргет
+       устаревшим и провоцирует повторное копирование (контроль свежести самого
+       бинарника делает build-release.ps1 — в MSBuild-условиях это не выражается). -->
+  <Target Name="CopyScannerCore" AfterTargets="Build"
+          Inputs="..\SecurityScanner\out\Release\ScannerCore.exe;..\SecurityScanner\src\**\*.cpp;..\SecurityScanner\src\**\*.h"
+          Outputs="$(OutDir)ScannerCore.exe">
+    <Error Condition="!Exists('..\SecurityScanner\out\Release\ScannerCore.exe')"
+           Text="ScannerCore.exe не собран — сначала соберите нативный движок: cmake -S SecurityScanner -B SecurityScanner/build -A x64 &amp;&amp; cmake --build SecurityScanner/build --config Release" />
     <Copy SourceFiles="..\SecurityScanner\out\Release\ScannerCore.exe" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
 
@@ -97,7 +105,9 @@
        (ScannerRunner ищет по AppContext.BaseDirectory; setup.iss пакует
        publish\* рекурсивно). -->
   <Target Name="PublishScannerRuntime" AfterTargets="Publish">
-    <Copy SourceFiles="..\SecurityScanner\out\Release\ScannerCore.exe" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="Exists('..\SecurityScanner\out\Release\ScannerCore.exe')" />
+    <Error Condition="!Exists('..\SecurityScanner\out\Release\ScannerCore.exe')"
+           Text="ScannerCore.exe не собран — publish неполный. Соберите SecurityScanner перед публикацией." />
+    <Copy SourceFiles="..\SecurityScanner\out\Release\ScannerCore.exe" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
     <ItemGroup>
       <_ScannerDatabase Include="..\SecurityScanner\database\**\*.*" />
     </ItemGroup>

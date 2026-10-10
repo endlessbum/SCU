@@ -124,6 +124,18 @@ public sealed class StartupProbe : DiagnosticProbe
         try
         {
             path = Environment.ExpandEnvironmentVariables(path);
+            // L-04: существование самого .lnk ни о чём не говорит — ярлык в
+            // автозагрузке проверяется по цели, иначе битые ярлыки (target
+            // удалён) выглядели исправными, пока жив сам файл ярлыка.
+            if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+            {
+                var target = ResolveShortcutTarget(path);
+                if (!string.IsNullOrWhiteSpace(target))
+                {
+                    path = Environment.ExpandEnvironmentVariables(target);
+                }
+            }
+
             if (!File.Exists(path) && !Directory.Exists(path))
             {
                 return "missing";
@@ -135,6 +147,44 @@ public sealed class StartupProbe : DiagnosticProbe
         }
 
         return null;
+    }
+
+    // Цель ярлыка через WScript.Shell COM (late binding — без дополнительной ссылки).
+    // null — распознать не удалось (не .lnk, COM недоступен): тогда проверяем сам файл.
+    private static string? ResolveShortcutTarget(string shortcutPath)
+    {
+        object? shell = null;
+        try
+        {
+            var shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType is null)
+            {
+                return null;
+            }
+
+            shell = Activator.CreateInstance(shellType);
+            if (shell is null)
+            {
+                return null;
+            }
+
+            dynamic? shortcut = shellType.InvokeMember(
+                "CreateShortcut",
+                System.Reflection.BindingFlags.InvokeMethod,
+                null, shell, [shortcutPath]);
+            return shortcut?.TargetPath as string;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (shell is not null)
+            {
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(shell);
+            }
+        }
     }
 
     // Достаём путь исполняемого файла из команды запуска (кавычки, аргументы, env-переменные).

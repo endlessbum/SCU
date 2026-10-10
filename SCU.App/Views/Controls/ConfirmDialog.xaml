@@ -3,7 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{DynamicResource S_DialogConfirmTitle}"
         FontFamily="{DynamicResource AppFontFamily}"
-        SizeToContent="WidthAndHeight"
+        Width="520"
+        MinHeight="200"
+        MaxWidth="640"
+        SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
@@ -24,7 +27,6 @@
     </Window.Resources>
     <Grid>
         <Border x:Name="Card"
-                MinWidth="452"
                 Margin="24"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
@@ -44,8 +46,13 @@
                 <TextBlock Style="{StaticResource PageTitleText}"
                            Text="{Binding TitleText}" />
 
+                <!-- Аудит layout: фиксированная ширина окна + Wrap — длинные
+                     сообщения ConfirmChange (Сейчас/Станет/Последствия/Откат)
+                     больше не растягивают диалог по ширине экрана. -->
                 <TextBlock Margin="0,12,0,0"
+                           MaxWidth="472"
                            Style="{StaticResource PageSubtitleText}"
+                           TextWrapping="Wrap"
                            Text="{Binding MessageText}" />
 
                 <StackPanel Margin="0,24,0,0"

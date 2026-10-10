@@ -253,6 +253,15 @@ public partial class SafeViewerViewModel : ObservableObject
 
     private void StartHash(string path, long length)
     {
+        // Аудит: предыдущий подсчёт отменяется ДО любых early-return — иначе
+        // после открытия файла >200 МБ старая hash task продолжала жить, а
+        // IsHashComputing оставался в true до её окончания.
+        _hashCts?.Cancel();
+        _hashCts?.Dispose();
+        _hashCts = new CancellationTokenSource();
+        var cancellationToken = _hashCts.Token;
+        var generation = ++_hashGeneration;
+
         // SHA-256 считаем фоном и только для разумных размеров — просмотр
         // не должен блокироваться хешированием больших файлов.
         if (length > 200_000_000)
@@ -260,14 +269,6 @@ public partial class SafeViewerViewModel : ObservableObject
             InfoText += " · " + L.T("SHA-256: — (файл слишком велик)");
             return;
         }
-
-        // Предыдущий подсчёт (другой файл) больше не актуален: отменяем и
-        // фиксируем новое поколение — его завершение не снимет спиннер за нас.
-        _hashCts?.Cancel();
-        _hashCts?.Dispose();
-        _hashCts = new CancellationTokenSource();
-        var cancellationToken = _hashCts.Token;
-        var generation = ++_hashGeneration;
 
         IsHashComputing = true;
         Task.Run(async () =>
@@ -287,7 +288,9 @@ public partial class SafeViewerViewModel : ObservableObject
                         InfoText += " · SHA-256: " + hex;
                     }
                 });
-                return;
+                // Без return: успешный путь тоже должен пройти через финальный
+                // блок — иначе IsHashComputing оставался в true навсегда
+                // (латентный дефект, аудиторская находка).
             }
             catch (OperationCanceledException)
             {

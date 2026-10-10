@@ -73,7 +73,9 @@ jobs:
         shell: pwsh
 
       - name: Build app (publish)
-        run: dotnet publish SCU.App/SCU.App.csproj -c Release -o publish/app
+        # Путь publish\ — ровно тот, что читает setup.iss (GetVersionNumbersString
+        # и Source: "publish\*"); publish/app ломал сборку установщика молча.
+        run: dotnet publish SCU.App/SCU.App.csproj -c Release -o publish
         shell: pwsh
 
       # ---- Sign (Authenticode) ----
@@ -108,7 +110,7 @@ jobs:
           if (-not $signtool) { Write-Host "::error::signtool не найден"; exit 1 }
           & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /n "SCU Code Signing" SecurityScanner/out/Release/ScannerCore.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          Get-ChildItem publish/app -Filter *.exe -Recurse | ForEach-Object {
+          Get-ChildItem publish -Filter *.exe -Recurse | ForEach-Object {
             & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /n "SCU Code Signing" $_.FullName
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
@@ -135,16 +137,24 @@ jobs:
       # ---- Package ----
       - name: Build installer (Inno Setup)
         run: |
-          if (Test-Path setup.iss) {
-            choco install innosetup -y --no-progress
-            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-            if (Test-Path $iscc) { & $iscc setup.iss }
-            else { Write-Host "::warning::ISCC не найден, installer пропущен" }
+          if (-not (Test-Path setup.iss)) { Write-Host "::error::setup.iss не найден"; exit 1 }
+          choco install innosetup -y --no-progress
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { Write-Host "::error::ISCC не найден"; exit 1 }
+          # Подпись установщика и деинсталлятора (SignedUninstaller в setup.iss)
+          # активируется только /DUSE_SIGNTOOL + /Ssigntool; $p Inno заменяет
+          # на путь подписываемого файла. /sha1 вместо /n — без вложенных
+          # кавычек внутри /Ssigntool; $p экранируется от PowerShell.
+          if ($env:HAS_CERT -eq 'true') {
+            $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+              Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
+            if (-not $signtool) { Write-Host "::error::signtool не найден"; exit 1 }
+            & $iscc /DUSE_SIGNTOOL "/Ssigntool=$signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /sha1 $env:SIGN_THUMBPRINT `$p" setup.iss
           } else {
-            Write-Host "::warning::setup.iss не найден, installer пропущен"
+            & $iscc setup.iss
           }
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::Сборка установщика не удалась"; exit 1 }
         shell: pwsh
-        continue-on-error: true
 
       # ---- Verify artifacts ----
       - name: Verify package integrity and build manifest

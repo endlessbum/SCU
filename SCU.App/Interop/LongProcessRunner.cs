@@ -20,7 +20,8 @@ public sealed class LongProcessRunner
         string fileName,
         IReadOnlyList<string> arguments,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        TimeSpan? timeout = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -57,9 +58,11 @@ public sealed class LongProcessRunner
         }
 
         // Таймаут комбинируется с пользовательской отменой; зависший powercfg/DISM
-        // не должен блокировать вкладку навсегда.
+        // не должен блокировать вкладку навсегда. Таймаут переопределяется для
+        // легитимно долгих операций (DISM /RestoreHealth, sfc /scannow — ауд:
+        // на медленном диске идут дольше DefaultTimeout и убивались на середине).
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(RunnerGuard.DefaultTimeout);
+        timeoutCts.CancelAfter(timeout ?? RunnerGuard.DefaultTimeout);
         var effectiveCt = timeoutCts.Token;
 
         using var registration = effectiveCt.Register(() =>
@@ -114,14 +117,31 @@ public sealed class LongProcessRunner
         }
         catch (OperationCanceledException)
         {
-            _logger.Error($"TIMEOUT | {fileName} | {RunnerGuard.DefaultTimeout}");
+            var usedTimeout = timeout ?? RunnerGuard.DefaultTimeout;
+            _logger.Error($"TIMEOUT | {fileName} | {usedTimeout}");
             await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
             return Result<string>.Failure(
-                $"Превышено время ожидания {fileName} ({RunnerGuard.DefaultTimeout.TotalMinutes:F0} мин) — процесс принудительно завершён.", -2);
+                $"Превышено время ожидания {fileName} ({usedTimeout.TotalMinutes:F0} мин) — процесс принудительно завершён.", -2);
         }
         catch (Exception exception)
         {
+            // Единая процедура выхода (аудит): симметрично ScannerRunner —
+            // observe read-тасков и снять процесс, иначе при редком сбое wait'а
+            // дочерний процесс оставался жить, а read-таски — неальянсированными.
             _logger.Error($"PROC | wait failed | {exception.Message}");
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception killException)
+            {
+                _logger.Warn($"PROC | kill after failure | {killException.Message}");
+            }
+
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
             return Result<string>.Failure($"Ошибка ожидания {fileName}: {exception.Message}");
         }
 

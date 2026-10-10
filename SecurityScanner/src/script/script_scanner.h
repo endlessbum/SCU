@@ -11,6 +11,16 @@
 
 namespace scan {
 
+// Статус чтения скрипта (аудит): неудача чтения — не «чистый» вердикт, а
+// потеря покрытия. Сканер обязан учесть её в статистике (TooLarge → filesSkipped,
+// IoError → errors) и не кэшировать Clean: отсутствие данных — не отрицательный
+// ответ.
+enum class ScriptReadStatus {
+    Ok,
+    TooLarge,
+    IoError,
+};
+
 struct ScriptAnalysis {
     int score = 0;
     std::vector<std::wstring> signals;
@@ -18,8 +28,9 @@ struct ScriptAnalysis {
 
 class ScriptScanner {
 public:
-    // Анализ скрипта по пути (файл читается с лимитом размера).
-    static ScriptAnalysis Analyze(const std::wstring& path);
+    // Анализ скрипта по пути (файл читается с лимитом размера). При неудаче
+    // чтения analysis остаётся пустым, статус сообщает причину.
+    static ScriptReadStatus Analyze(const std::wstring& path, ScriptAnalysis& analysis);
 
     // Анализ текста (уже lowercase, как даёт ReadText/AppendDecodedBase64):
     // используется для команд persistence-записей (п. 17: command line).

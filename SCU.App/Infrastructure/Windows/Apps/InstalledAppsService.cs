@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -255,8 +255,12 @@ public sealed class InstalledAppsService
             return AppImportance.User;
         }
 
-        // Компонент официальной сборки Windows — по имени записи.
-        if (IsCriticalPattern(name))
+        // Компонент официальной сборки Windows — по имени записи. Шаблоны
+        // обновлений («Update for», «Security Update») слишком широки, чтобы
+        // матчить по имени в одиночку: стороннее приложение с таким названием
+        // стало бы неудаляемым, поэтому обновления считаем компонентами только
+        // при издателе Microsoft.
+        if (IsCriticalPattern(name, publisher))
         {
             return AppImportance.Critical;
         }
@@ -287,14 +291,29 @@ public sealed class InstalledAppsService
                 .Contains(@"\Users\", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsCriticalPattern(string name) =>
-        ContainsAny(name,
+    private static bool IsCriticalPattern(string name, string publisher)
+    {
+        var isMicrosoft = publisher.Contains("Microsoft", StringComparison.OrdinalIgnoreCase);
+        if (!isMicrosoft)
+        {
+            // Без издателя Microsoft остаются только узнаваемые имена продуктов:
+            // «Update for …» стороннего вендора не делает приложение компонентом Windows.
+            return ContainsAny(name,
+                [
+                    "Microsoft Edge", "WebView2", "Visual C++", "DirectX",
+                    ".NET", "DotNet", "Windows App Runtime", "Windows SDK",
+                ],
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        return ContainsAny(name,
             [
                 "Microsoft Edge", "WebView2", "Visual C++", "DirectX",
                 ".NET", "DotNet", "Windows App Runtime", "Windows SDK",
                 "Обновление", "Update for", "Security Update", "Накопительное",
             ],
             StringComparison.OrdinalIgnoreCase);
+    }
 
     // Драйвер/фирменная утилита производителя железа — единственный класс вне
     // официальной сборки Windows, которому оставлен жёлтый прочерк (не реклама
@@ -319,8 +338,10 @@ public sealed class InstalledAppsService
     private static bool ContainsAny(string text, IReadOnlyList<string> patterns, StringComparison comparison) =>
         patterns.Any(pattern => text.Contains(pattern, comparison));
 
-    // MSI-записи вида «MsiExec.exe /I{GUID}» переключаются на /X: иначе вместо
-    // удаления открывается диалог «изменить установку».
+    // MSI-записи переключаются с /I на /X: иначе вместо удаления открывается
+    // диалог «изменить установку». Исполняемый файл бывает как без кавычек
+    // (MsiExec.exe /I{GUID}), так и с полным путём в кавычках
+    // ("C:\Windows\System32\msiexec.exe" /I{GUID}) — распознаём оба вида.
     private static string? NormalizeUninstallString(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -328,9 +349,13 @@ public sealed class InstalledAppsService
             return null;
         }
 
-        if (value.StartsWith("MsiExec.exe /I", StringComparison.OrdinalIgnoreCase))
+        var (fileName, arguments) = SplitCommandLine(value);
+        var isMsiExec = Path.GetFileName(fileName.Trim('"'))
+            .Equals("msiexec.exe", StringComparison.OrdinalIgnoreCase);
+        if (isMsiExec && arguments.StartsWith("/I", StringComparison.OrdinalIgnoreCase))
         {
-            return "MsiExec.exe /X" + value["MsiExec.exe /I".Length..];
+            var executable = fileName.Contains(' ') ? $"\"{fileName}\"" : fileName;
+            return $"{executable} /X{arguments[2..]}";
         }
 
         return value;
@@ -434,6 +459,11 @@ public sealed class InstalledAppsService
 
     // Дата установки из реестра: стандартный формат ARP — yyyyMMdd, но часть
     // установщиков пишет другие варианты; нераспознанное — null (не сортируется).
+    // Двусмысленные форматы (dd/MM vs M/d) разбираются по составу: компонент > 12
+    // однозначно указывает день; при неоднозначности точка означает день-первым
+    // (ру-конвенция), слэш — месяц-первым (установщики с датой через слэш
+    // почти всегда американские). Фиксированный порядок форматов читал
+    // «05/07/2024» (7 мая по-американски) как 5 июля.
     internal static DateTime? ParseInstallDate(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -441,11 +471,36 @@ public sealed class InstalledAppsService
             return null;
         }
 
-        string[] formats = ["yyyyMMdd", "yyyy-MM-dd", "dd/MM/yyyy", "dd.MM.yyyy", "M/d/yyyy"];
-        return DateTime.TryParseExact(
-            raw, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
-            ? date
-            : null;
+        if (DateTime.TryParseExact(raw, ["yyyyMMdd", "yyyy-MM-dd"],
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+        {
+            return date;
+        }
+
+        var parts = raw.Split(['/', '.', '-'], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 3
+            || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var first)
+            || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var second)
+            || !int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var year)
+            || year is < 1 or > 9999)
+        {
+            return null;
+        }
+
+        // first > 12 — точно день; second > 12 — точно месяц; неоднозначно —
+        // точка означает день-первым (ру-конвенция), слэш — месяц-первым.
+        var isDayFirst = first > 12
+            || (second > 12 ? false : raw.Contains('.', StringComparison.Ordinal));
+        try
+        {
+            return isDayFirst
+                ? new DateTime(year, second, first)
+                : new DateTime(year, first, second);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     // Размер в человекочитаемый вид («244 МБ», «1.5 ГБ») через локализацию.
@@ -484,13 +539,29 @@ public sealed class InstalledAppsService
         InstalledApp app,
         CancellationToken ct,
         Func<IReadOnlyList<string>, Task<bool>>? confirmDataCleanup = null) =>
-        Task.Run(() => UninstallCompletelyCore(app, ct, confirmDataCleanup), CancellationToken.None);
+        Task.Run(async () =>
+        {
+            try
+            {
+                return await UninstallCompletelyCore(app, ct, confirmDataCleanup).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Отмена до/во время старта деинсталлятора — честный статус,
+                // а не необработанное исключение.
+                return Result.Failure("Отменено", -1);
+            }
+        }, CancellationToken.None);
 
     private async Task<Result> UninstallCompletelyCore(
         InstalledApp app,
         CancellationToken ct,
         Func<IReadOnlyList<string>, Task<bool>>? confirmDataCleanup)
     {
+        // Аудит отмены: проверка в самом начале — гонка «queued → Cancel → worker
+        // стартовал» не должна доходить до запуска деинсталлятора.
+        ct.ThrowIfCancellationRequested();
+
         if (!app.HasUninstaller)
         {
             return Result.Failure("У приложения нет программы удаления.", 1);
@@ -512,6 +583,9 @@ public sealed class InstalledAppsService
         var uninstallExitCode = 0;
         try
         {
+            // Деструктивное действие начинается здесь — последняя точка отмены
+            // до запуска стороннего деинсталлятора.
+            ct.ThrowIfCancellationRequested();
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
@@ -576,6 +650,23 @@ public sealed class InstalledAppsService
         // Пользовательская отмена: ничего не удаляем после снятия деинсталлятора.
         ct.ThrowIfCancellationRequested();
 
+        // Таймаут: деинсталлятор снят принудительно. Невозможно доказать, что
+        // приложение удалено (деинсталлятор мог зависнуть ДО удаления ARP-записи,
+        // служб, файлов) — удаление папки установки вслепую оставило бы
+        // повреждённую полу-регистрацию и вернуло бы пользователю ложный успех.
+        // Хвосты не зачищаются; решение — за пользователем.
+        if (!exited)
+        {
+            var timeoutText = UninstallTimeoutForTests.TotalMinutes >= 1
+                ? $"{UninstallTimeoutForTests.TotalMinutes:0} мин"
+                : $"{UninstallTimeoutForTests.TotalSeconds:0} с";
+            return Result.Failure(
+                $"Деинсталлятор «{app.DisplayName}» не завершился за {timeoutText} (истёк таймаут) и был снят. "
+                + "Приложение могло остаться установленным — остатки не зачищались, "
+                + "проверьте список приложений и удалите вручную.",
+                -2);
+        }
+
         // Аудит 3, п. 9: нормальное завершение процесса ≠ успешное удаление.
         // Код возврата деинсталлятора (например 1603 у MSI) анализируется:
         // при сбое хвосты НЕ зачищаются — приложение могло остаться установленным,
@@ -591,7 +682,7 @@ public sealed class InstalledAppsService
 
         // Хвосты: папка установки (только при подтверждённом ownership) и папки
         // данных, совпадающие по имени приложения — после явного подтверждения.
-        var residual = await RemoveResidualFolders(app, fileName, confirmDataCleanup).ConfigureAwait(false);
+        var residual = await RemoveResidualFolders(app, fileName, confirmDataCleanup, ct).ConfigureAwait(false);
         var removed = residual.Removed;
         var failedFolders = residual.Failed;
         var skippedDataFolders = residual.SkippedDataFolders;
@@ -627,9 +718,15 @@ public sealed class InstalledAppsService
             return arguments + " /qn /norestart";
         }
 
-        if (exe.StartsWith("unins") && exe.Contains("000"))
+        // Inno Setup: unins000.exe/unins001.exe… — имя «unins» + номер + «.exe».
+        // Явная проверка номера отсекает чужие деинсталляторы вида uninstaller.exe,
+        // которые попадут в ветку NSIS ниже.
+        var stem = exe.EndsWith(".exe", StringComparison.Ordinal) ? exe[..^4] : null;
+        if (stem is not null
+            && stem.StartsWith("unins", StringComparison.Ordinal)
+            && stem.Length > "unins".Length
+            && stem["unins".Length..].All(char.IsDigit))
         {
-            // Inno Setup: unins000.exe/unins001.exe…
             return arguments + " /VERYSILENT /NORESTART /SUPPRESSMSGBOXES";
         }
 
@@ -714,7 +811,8 @@ public sealed class InstalledAppsService
     private async Task<ResidualCleanupReport> RemoveResidualFolders(
         InstalledApp app,
         string uninstallerFileName,
-        Func<IReadOnlyList<string>, Task<bool>>? confirmDataCleanup)
+        Func<IReadOnlyList<string>, Task<bool>>? confirmDataCleanup,
+        CancellationToken ct)
     {
         var failed = new List<string>();
         var skippedDataFolders = new List<string>();
@@ -782,8 +880,13 @@ public sealed class InstalledAppsService
                     return new ResidualCleanupReport(removed, failures, skippedDataFolders);
                 }
 
+                // Аудит отмены: между подтверждением и физическим удалением —
+                // обязательная проверка, иначе отмена не спасает от destructive.
+                ct.ThrowIfCancellationRequested();
+
                 foreach (var directory in dataFolders)
                 {
+                    ct.ThrowIfCancellationRequested();
                     if (TryDeleteResidual(directory))
                     {
                         removed++;
@@ -799,10 +902,15 @@ public sealed class InstalledAppsService
             try
             {
                 // Предохранитель: не трогаем корни дисков и системные каталоги.
+                // Обе стороны сравниваются обрезанными: GetPathRoot возвращает
+                // «C:\», а full после TrimEnd — «C:» (см. NormalizeDirectory).
                 var full = Path.GetFullPath(directory).TrimEnd(
                     Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var anchor = Path.GetPathRoot(full)?.TrimEnd(
+                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 if (full.Length < 10
-                    || string.Equals(Path.GetPathRoot(full), full, StringComparison.OrdinalIgnoreCase)
+                    || (anchor is not null
+                        && string.Equals(anchor, full, StringComparison.OrdinalIgnoreCase))
                     || IsProtectedSharedDirectory(full))
                 {
                     return false;
@@ -870,10 +978,10 @@ public sealed class InstalledAppsService
             return false;
         }
 
-        if (string.Equals(
-                anchor.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                full,
-                StringComparison.OrdinalIgnoreCase))
+        // NormalizeDirectory возвращает корень с разделителем («C:\»), поэтому
+        // сравниваем с необрезанным anchor: обрезка дала бы «C:» ≠ «C:\» и корень
+        // диска перестал бы считаться защищённым.
+        if (string.Equals(anchor, full, StringComparison.OrdinalIgnoreCase))
         {
             return true; // корень диска
         }
@@ -950,7 +1058,16 @@ public sealed class InstalledAppsService
 
         try
         {
-            return Path.GetFullPath(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            // GetFullPath до TrimEnd: «C:\» после TrimEnd превращается в «C:» —
+            // путь, относительный к текущему каталогу диска C, а не корень.
+            var full = Path.GetFullPath(path);
+            var root = Path.GetPathRoot(full);
+            // Корень диска оставляем с завершающим разделителем («C:\»), иначе
+            // TrimEnd снова дал бы «C:»; прочие пути освобождаем от хвостового
+            // разделителя, чтобы сравнения были каноничными.
+            return root is not null && full.Length == root.Length
+                ? full
+                : full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         }
         catch
         {

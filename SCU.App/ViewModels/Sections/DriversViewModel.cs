@@ -429,36 +429,8 @@ public partial class DriversViewModel : ObservableObject, IDisposable, ISectionO
 
     public void Dispose() => _operationCts?.Cancel();
 
-    private async Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action)
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        _operationCts?.Dispose();
-        _operationCts = new CancellationTokenSource();
-        IsBusy = true;
-        try
-        {
-            await action(_operationCts.Token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = L.T("Операция отменена.");
-            _logger.Warn("CANCEL | " + title);
-        }
-        catch (Exception exception)
-        {
-            StatusText = L.T("Ошибка: {0}", exception.Message);
-            _logger.Error("DRV | " + title + " | " + exception);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-}
+    private Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action) =>
+        SectionOperations.RunExclusiveAsync(title, "DRV", () => IsBusy, value => IsBusy = value, () => _operationCts, value => _operationCts = value, value => StatusText = value, _logger, action);}
 
 // Строка доступного обновления драйвера.
 public sealed partial class DriverUpdateRow : ObservableObject
@@ -485,10 +457,7 @@ public sealed partial class DriverUpdateRow : ObservableObject
     [ObservableProperty]
     private bool _isInstalling;
 
-    private static string FormatBytes(long bytes) =>
-        bytes >= 1024 * 1024
-            ? (bytes / (1024 * 1024.0)).ToString("0.#") + " " + L.T("МБ")
-            : (bytes / 1024.0).ToString("0") + " " + L.T("КБ");
+    private static string FormatBytes(long bytes) => HumanSize.Format(bytes);
 }
 
 // Строка устройства с установленным драйвером.

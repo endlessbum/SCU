@@ -1,4 +1,4 @@
-using Xunit;
+﻿using Xunit;
 
 namespace SCU.Tests;
 
@@ -77,5 +77,26 @@ public class PowerParsersTests
     public void TryParseFsutilValue_NoNumber_ReturnsNull()
     {
         Assert.Null(PowerParsers.TryParseFsutilValue("нет цифр"));
+    }
+
+    // Тумблер «Отключение диска»: парсинг Current AC Power Setting Index из
+    // powercfg /q SCHEME_CURRENT SUB_DISK DISKIDLE (подписи локализованы,
+    // GUID и hex-значения — нет).
+    [Theory]
+    [InlineData(0x4B0, 1200)]
+    [InlineData(0x0, 0)]
+    public void ParseDiskIdleAcIndex_ParsesLocalizedPowercfgOutput(int raw, int expected)
+    {
+        var output = "  Power Setting GUID: 6738e2c4-e8a5-4a42-b16a-e040e769756e  (таймаут отключения)" +
+                     "\r\n    GUID Alias: DISKIDLE" +
+                     $"\r\n    Текущее значение параметра питания от сети: 0x{raw:X8}" +
+                     $"\r\n    Текущее значение параметра питания от батареи: 0x{raw:X8}";
+        Assert.Equal(expected, SCU.Infrastructure.Windows.Power.PowerService.ParseDiskIdleAcIndex(output));
+    }
+
+    [Fact]
+    public void ParseDiskIdleAcIndex_MissingGuid_ReturnsMinusOne()
+    {
+        Assert.Equal(-1, SCU.Infrastructure.Windows.Power.PowerService.ParseDiskIdleAcIndex("no matching block"));
     }
 }

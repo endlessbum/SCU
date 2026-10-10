@@ -105,6 +105,27 @@ public partial class ScannerCoreIntegrationTests
         Assert.Fail(message);
     }
 
+    // Дисковый кэш доверенного ключа работает только в elevated-прогоне
+    // (владелец cache.key — SYSTEM/Администраторы). Не-elevated сканер кэш
+    // отключает целиком, поэтому кэш-тесты вне elevated-сессии неосмысленны.
+    private static bool RunningElevated()
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        return new System.Security.Principal.WindowsPrincipal(identity)
+            .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+    }
+
+    private static bool SkipIfNotElevated()
+    {
+        if (RunningElevated())
+        {
+            return false;
+        }
+
+        Console.WriteLine("SKIPPED: кэш-тесты требуют elevated-прогон (ScannerCore не-elevated отключает дисковый кэш).");
+        return true;
+    }
+
     // Стандартная EICAR-тестовая строка (публичный справочный образец для
     // проверки антивирусных движков; безвредна, не исполняется тестом).
     private const string Eicar =
@@ -384,6 +405,41 @@ public partial class ScannerCoreIntegrationTests
             Assert.NotNull(result);
             Assert.Equal(0, result!.Summary.Detections);
             Assert.Equal(2, result.Summary.FilesScanned);
+        }
+        finally
+        {
+            Directory.Delete(temp, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ScannerCore_OversizedScript_CountedAsSkipped_NotClean()
+    {
+        // Аудит: скрипт > 2 MiB не читается сканером. Неудача чтения не имеет
+        // права выглядеть как Clean-вердикт: filesSkipped > 0 (итог Partial),
+        // файл НЕ считается полноценно просканированным.
+        var scannerPath = FindScannerCore();
+        if (scannerPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            // 2 MiB (лимит script_scanner) + 1 байт, валидный PowerShell-текст.
+            var payload = "# padded benign script\r\n" + new string('A', 2 * 1024 * 1024);
+            await File.WriteAllTextAsync(Path.Combine(temp, "huge.ps1"), payload);
+            await File.WriteAllTextAsync(Path.Combine(temp, "clean.txt"), "clean");
+
+            var result = await ScanDirectoryAsync(scannerPath, temp);
+
+            Assert.NotNull(result);
+            Assert.Equal(0, result!.Summary.Detections);
+            Assert.True(result.Summary.FilesSkipped >= 1,
+                $"ожидали filesSkipped >= 1, получено {result.Summary.FilesSkipped} (scanned={result.Summary.FilesScanned})");
         }
         finally
         {

@@ -10,7 +10,8 @@ param(
     [string]$Names,
     [string]$Path,
     [string]$ComponentId,
-    [int]$Index = 0,     [Int64]$MinBytes = 262144
+    [int]$Index = 0,     [Int64]$MinBytes = 262144,
+    [string]$NoBackupWrite
 )
 
 $ErrorActionPreference = 'Stop'
@@ -198,8 +199,16 @@ switch ($Action.ToLowerInvariant()) {
 
     'tasksdisable' {
         if ($OutFile -and (Test-Path -LiteralPath $OutFile)) {
-            $arch = $OutFile + '.' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.bak'
-            Move-Item -LiteralPath $OutFile -Destination $arch -Force
+            # Повторное отключение при живом бэкапе (аудит): перезаписывать бэкап
+            # нельзя — в нём уже записаны ИСХОДНЫЕ состояния задач (сейчас они
+            # Disabled). Запись подавляется флагом NoBackupWrite из приложения.
+            if ($NoBackupWrite -eq '1') {
+                Write-Line 'SKIP: backup already exists - keeping original states'
+                $OutFile = $null
+            } else {
+                $arch = $OutFile + '.' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.bak'
+                Move-Item -LiteralPath $OutFile -Destination $arch -Force
+            }
         }
         $res = New-Object System.Collections.Generic.List[string]; $fail = 0
         foreach ($full in ($Tasks -split ';')) {
@@ -303,13 +312,15 @@ switch ($Action.ToLowerInvariant()) {
         }
         # UWP/упакованные StartupTask — источник, который Диспетчер задач показывает
         # как «приложения» автозагрузки (State: 1=отключено пользователем, 2=включено,
-        # 3/4=политика). State=0 (задача ни разу не включалась) не показываем.
+        # 3/4=политика). State=0 (задача ни разу не включалась) и State=1 (уже
+        # отключена — в том числе через startupdisable) не показываем: список —
+        # только активная автозагрузка, отключённый элемент исчезает сразу.
         $saRoot = 'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData'
         if (Test-Path $saRoot) {
             foreach ($pkgKey in (Get-ChildItem -Path $saRoot -ErrorAction SilentlyContinue)) {
                 foreach ($taskKey in (Get-ChildItem -Path $pkgKey.PSPath -ErrorAction SilentlyContinue)) {
                     $state = $taskKey.GetValue('State')
-                    if ($state -isnot [int] -or $state -eq 0) { continue }
+                    if ($state -isnot [int] -or $state -eq 0 -or $state -eq 1) { continue }
                     $items.Add([pscustomobject]@{ Source = 'StartupTask'; Name = $pkgKey.PSChildName; Cmd = ($taskKey.PSChildName + ' (State=' + $state + ')') })
                 }
             }
@@ -351,6 +362,10 @@ switch ($Action.ToLowerInvariant()) {
             catch { $items = @() }
         }
         $entry = $null
+        # Аудит: мутация выполняется ПОСЛЕ записи манифеста. Раньше Remove-ItemProperty /
+        # Move-Item шли до Set-Content — сбой записи манифеста терял элемент безвозвратно
+        # (состояние уже изменено, а manifest.json о бэкапе не знает).
+        $applyStep = $null
         if ($src -match '^HKCU |^HKLM ') {
             $hive = if ($src -like 'HKCU*') { 'HKCU' } else { 'HKLM' }
             $sub = switch -Wildcard ($src) {
@@ -362,8 +377,7 @@ switch ($Action.ToLowerInvariant()) {
             $psPath = $hive + ':\' + $sub
             $key = Get-Item -Path $psPath -ErrorAction Stop
             $kind = $key.GetValueKind($name).ToString(); $val = $key.GetValue($name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $entry = [pscustomobject]@{ type = 'reg'; hive = $hive; subkey = $sub; name = $name; kind = $kind; value = $val; src = $src }
-            Remove-ItemProperty -Path $psPath -Name $name -Force -ErrorAction Stop
-            Write-Line ('OK: removed from ' + $src + ': ' +$name)
+            $applyStep = { Remove-ItemProperty -Path $psPath -Name $name -Force -ErrorAction Stop; Write-Line ('OK: removed from ' + $src + ': ' +$name) }
         }
         elseif ($src -eq 'StartupTask') {
             # Отключение упакованной задачи: State=1 («отключено пользователем»),
@@ -377,8 +391,7 @@ switch ($Action.ToLowerInvariant()) {
             $val = $key.GetValue('State')
             if ($val -isnot [int]) { throw ('StartupTask State not found: ' + $name + '\' + $taskId) }
             $entry = [pscustomobject]@{ type = 'reg'; hive = 'HKCU'; subkey = $sub; name = 'State'; kind = $kind; value = $val; src = $src }
-            New-ItemProperty -Path $psPath -Name 'State' -Value 1 -PropertyType DWord -Force -ErrorAction Stop | Out-Null
-            Write-Line ('OK: startup task disabled: ' + $name + '\' + $taskId)
+            $applyStep = { New-ItemProperty -Path $psPath -Name 'State' -Value 1 -PropertyType DWord -Force -ErrorAction Stop | Out-Null; Write-Line ('OK: startup task disabled: ' + $name + '\' + $taskId) }
         }
         else {
             try {
@@ -396,13 +409,25 @@ switch ($Action.ToLowerInvariant()) {
             # Не включаем исходное имя файла в имя backup-файла: это исключает
             # ошибку Invalid path при передаче необычного имени внешнего файла.
             $stored = Join-Path $BackupDir ('file_' + ([guid]::NewGuid().ToString('N')) + '.bak')
-            Move-Item -LiteralPath $sourcePath -Destination $stored -Force -ErrorAction Stop
+            # Копия вместо Move: оригинал удаляется только после записи манифеста.
+            Copy-Item -LiteralPath $sourcePath -Destination $stored -Force -ErrorAction Stop
             $entry = [pscustomobject]@{ type = 'file'; original = $sourcePath; stored = $stored; name = $name; src = $src }
-            Write-Line ('OK: moved to backup: ' + $name)
+            $applyStep = { Remove-Item -LiteralPath $sourcePath -Force -ErrorAction Stop; Write-Line ('OK: moved to backup: ' + $name) }
         }
         $items = @($items) + @($entry)
         $out = [pscustomobject]@{ version = 1; items = @($items) }
-        ($out | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $mf -Encoding UTF8
+        try {
+            ($out | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $mf -Encoding UTF8
+        }
+        catch {
+            # Манифест не записан — мутацию не выполняем; копию бэкапа подчищаем,
+            # чтобы в каталоге не оставались сироты.
+            if ($entry.type -eq 'file' -and (Test-Path -LiteralPath $entry.stored)) {
+                Remove-Item -LiteralPath $entry.stored -Force -ErrorAction SilentlyContinue
+            }
+            throw
+        }
+        & $applyStep
         Finish-Action 0 'completed'
     }
 
@@ -512,7 +537,10 @@ switch ($Action.ToLowerInvariant()) {
             'News' = @('BingNews'); 'Teams' = @('MSTeams'); 'ToDo' = @('Todos');
             'Outlook' = @('OutlookForWindows'); 'Power' = @('PowerAutomateDesktop'); 'Quick' = @('QuickAssist');
             'Sol' = @('SolitaireCollection'); 'Sound' = @('WindowsSoundRecorder'); 'Sticky' = @('StickyNotes');
-            'Store' = @('WindowsStore', 'StorePurchaseApp');
+            # Store: тот же состав, что удаляет BloatService (WindowsStore,
+            # StorePurchaseApp, Services.Store.Engagement) — иначе удалённый
+            # пакет оставался бы невидимым для сканера.
+            'Store' = @('WindowsStore', 'StorePurchaseApp', 'Services.Store.Engagement');
             # Xbox: только съёмные компоненты (совпадает с AppxRemove Names). Общий шаблон
             # 'Xbox' ловил несъёмный системный XboxGameCallableUI — после удаления всех
             # компонентов скан вечно показывал «установлено».
@@ -581,9 +609,12 @@ switch ($Action.ToLowerInvariant()) {
         Finish-Action 1 'completed'
     }
 
+    # Компоненты ставятся приложением напрямую (RuntimeInstaller: скачивание,
+    # проверка подписи, тихий запуск), а не через этот скрипт. Раньше CLI-путь
+    # отчитывался «OK/INSTALL …» с кодом 0, ничего не делая, — теперь честная ошибка.
     'componentslist' {
-        Write-Line "OK: components listed"
-        Finish-Action 0 'completed'
+        Write-Line "ERR: componentslist is not available via CLI - use the SCU app"
+        Finish-Action 3 'completed'
     }
 
     'componentsinstall' {
@@ -591,8 +622,8 @@ switch ($Action.ToLowerInvariant()) {
             Write-Line "ERR: component id not specified"
             Finish-Action 2 'completed'
         }
-        Write-Line ("INSTALL: installing component $ComponentId")
-        Finish-Action 0 'completed'
+        Write-Line ("ERR: componentsinstall is not available via CLI - use the SCU app (component " + $ComponentId + ")")
+        Finish-Action 3 'completed'
     }
 
     default {

@@ -4,6 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:SCU.Views.Controls"
         xmlns:sections="clr-namespace:SCU.Views.Sections"
+        xmlns:ui="clr-namespace:SCU.Common"
         Title="SCU"
         Width="1280"
         Height="820"
@@ -16,7 +17,8 @@
         Foreground="{DynamicResource PrimaryTextBrush}"
         FontFamily="{DynamicResource AppFontFamily}"
         FontSize="14"
-        ResizeMode="CanResize">
+        ResizeMode="CanResize"
+        PreviewKeyDown="OnWindowPreviewKeyDown">
 
 
     <Grid x:Name="RootGrid">
@@ -58,55 +60,86 @@
                             </CollectionViewSource.GroupDescriptions>
                         </CollectionViewSource>
                     </Border.Resources>
-                    <ListBox x:Name="SidebarList"
-                             Margin="4,6,4,8"
-                             ItemsSource="{Binding Source={StaticResource GroupedSections}}"
-                             SelectedItem="{Binding CurrentSection, Mode=TwoWay}"
-                             ItemContainerStyle="{StaticResource NavListItem}"
-                             VirtualizingPanel.ScrollUnit="Pixel">
-                        <ListBox.GroupStyle>
-                            <GroupStyle>
-                                <GroupStyle.HeaderTemplate>
-                                    <DataTemplate>
-                                        <!-- Раздел без группы («Главная»): заголовок не рисуется -->
-                                        <TextBlock Text="{Binding Name}"
-                                                   Margin="20,12,0,4"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource TertiaryTextBrush}"
-                                                   FontWeight="SemiBold">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Name}" Value="">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                    </DataTemplate>
-                                </GroupStyle.HeaderTemplate>
-                            </GroupStyle>
-                        </ListBox.GroupStyle>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Title}"
-                                           FontSize="14"
-                                           TextTrimming="CharacterEllipsis" />
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <!-- Индикатор выбранного раздела «едет» между пунктами: общий
+                         Rectangle поверх списка, позицию ведёт MainWindow.UpdateNavPill.
+                         Пер-элементная пилюля из NavListItem убрана. -->
+                    <Grid x:Name="NavListHost">
+                        <ListBox x:Name="SidebarList"
+                                 Margin="4,6,4,8"
+                                 ItemsSource="{Binding Source={StaticResource GroupedSections}}"
+                                 SelectedItem="{Binding CurrentSection, Mode=TwoWay}"
+                                 ItemContainerStyle="{StaticResource NavListItem}"
+                                 VirtualizingPanel.ScrollUnit="Pixel">
+                            <ListBox.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <!-- Раздел без группы («Главная»): заголовок не рисуется -->
+                                            <TextBlock Text="{Binding Name}"
+                                                       Margin="20,12,0,4"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TertiaryTextBrush}"
+                                                       FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Name}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ListBox.GroupStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Title}"
+                                               FontSize="14"
+                                               TextTrimming="CharacterEllipsis" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <Rectangle x:Name="NavPill"
+                                   Width="3"
+                                   Height="18"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Top"
+                                   RadiusX="1.5"
+                                   RadiusY="1.5"
+                                   Fill="{DynamicResource AccentFillBrush}"
+                                   Opacity="0"
+                                   IsHitTestVisible="False">
+                            <Rectangle.RenderTransform>
+                                <TranslateTransform x:Name="NavPillTranslate" />
+                            </Rectangle.RenderTransform>
+                        </Rectangle>
+                    </Grid>
                 </Border>
             </Grid>
 
-            <!-- Перетаскивание меняет ширину сайдбара -->
+            <!-- Перетаскивание меняет ширину сайдбара (аудит UX: cursor + hover) -->
             <GridSplitter Grid.Column="1"
                           Width="8"
                           HorizontalAlignment="Stretch"
                           VerticalAlignment="Stretch"
                           Background="Transparent"
+                          Cursor="SizeWE"
                           ResizeBehavior="PreviousAndNext"
-                          ResizeDirection="Columns" />
+                          ResizeDirection="Columns">
+                <GridSplitter.Style>
+                    <Style TargetType="GridSplitter">
+                        <Setter Property="Background" Value="Transparent" />
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource SubtleFillSecondaryBrush}" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </GridSplitter.Style>
+            </GridSplitter>
 
             <!-- Контент раздела: заголовок, описание, InfoBar, разделы,
                  пользовательские скрипты -->
@@ -118,7 +151,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0" Margin="32,12,32,0">
+                <StackPanel Grid.Row="0" x:Name="SectionHeaderPanel" Margin="32,12,32,0">
                     <!-- Заголовок страницы: скрыт у «Главной» (заголовок раздела виден в сайдбаре) -->
                     <TextBlock Text="{Binding CurrentSection.Title}">
                         <TextBlock.Style>
@@ -270,13 +303,25 @@
             </Grid>
         </Grid>
 
-        <!-- Перетаскивание меняет высоту журнала -->
+        <!-- Перетаскивание меняет высоту журнала (аудит UX: cursor + hover) -->
         <GridSplitter x:Name="JournalSplitter" Grid.Row="1"
                       Height="8"
                       HorizontalAlignment="Stretch"
                       Background="Transparent"
+                      Cursor="SizeNS"
                       ResizeBehavior="PreviousAndNext"
-                      ResizeDirection="Rows" />
+                      ResizeDirection="Rows">
+            <GridSplitter.Style>
+                <Style TargetType="GridSplitter">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource SubtleFillSecondaryBrush}" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </GridSplitter.Style>
+        </GridSplitter>
 
         <!-- Журнал: панель с разделителем сверху, не карточка -->
         <Border Grid.Row="2"
@@ -287,17 +332,50 @@
         </Border>
 
         <!-- Глобальное затемнение при прогрузке/обновлении открытой вкладки:
-             SearchScrimBrush на всё окно, крупный акцентный спиннер по центру. Не блокирует ввод. -->
+             SearchScrimBrush на всё окно, крупный акцентный спиннер по центру. Не блокирует ввод.
+             Появление — плавное fade (исчезновение мгновенное: задержка на глазу хуже). -->
         <Grid Grid.Row="0" Grid.RowSpan="3"
               Panel.ZIndex="80"
               IsHitTestVisible="False">
             <Grid.Style>
                 <Style TargetType="Grid">
                     <Setter Property="Visibility" Value="Collapsed" />
+                    <Setter Property="Opacity" Value="0" />
+                    <Setter Property="ui:UiAnimations.TriggerAnimations" Value="{DynamicResource UiAnimationsOn}" />
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsCurrentSectionBusy}" Value="True">
-                            <Setter Property="Visibility" Value="Visible" />
-                        </DataTrigger>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding IsCurrentSectionBusy}" Value="True" />
+                                <Condition Binding="{Binding Path=(ui:UiAnimations.TriggerAnimations), RelativeSource={RelativeSource Self}}" Value="True" />
+                            </MultiDataTrigger.Conditions>
+                            <!-- Opacity=1 в сеттере: после завершения fade-анимации
+                                 свойство возвращается к базовому значению, и без
+                                 сеттера затемнение пропадало бы на глазу. -->
+                            <MultiDataTrigger.Setters>
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Setter Property="Opacity" Value="1" />
+                            </MultiDataTrigger.Setters>
+                            <MultiDataTrigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                         From="0" To="1"
+                                                         Duration="0:0:0.15" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </MultiDataTrigger.EnterActions>
+                        </MultiDataTrigger>
+                        <!-- Анимации выключены: затемнение появляется мгновенно. -->
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding IsCurrentSectionBusy}" Value="True" />
+                                <Condition Binding="{Binding Path=(ui:UiAnimations.TriggerAnimations), RelativeSource={RelativeSource Self}}" Value="False" />
+                            </MultiDataTrigger.Conditions>
+                            <MultiDataTrigger.Setters>
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Setter Property="Opacity" Value="1" />
+                            </MultiDataTrigger.Setters>
+                        </MultiDataTrigger>
                     </Style.Triggers>
                 </Style>
             </Grid.Style>

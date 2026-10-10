@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -282,10 +282,10 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
             StatusText = L.T("netsh: {0}={1}…", setting, value);
             var result = await _networkService.SetTcpGlobalAsync(setting, value, ct).ConfigureAwait(true);
             StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка (код {0}): {1}", result.Code, result.Message);
-            if (result.IsSuccess)
-            {
-                await RefreshTcpGlobalAsync(ct).ConfigureAwait(true);
-            }
+            // Read-back и при ошибке (аудит): UI-выбор не является подтверждением
+            // состояния ОС — иначе batch держит целевое значение, NeedsApply
+            // считает false, и повторное применение пропускается.
+            await RefreshTcpGlobalAsync(ct).ConfigureAwait(true);
         }).ConfigureAwait(true);
     }
 
@@ -637,36 +637,8 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
         _operationCts?.Cancel();
     }
 
-    private async Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action)
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        _operationCts?.Dispose();
-        _operationCts = new CancellationTokenSource();
-        IsBusy = true;
-        try
-        {
-            await action(_operationCts.Token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = L.T("Операция отменена.");
-            _logger.Warn("CANCEL | " + title);
-        }
-        catch (Exception exception)
-        {
-            StatusText = L.T("Ошибка: {0}", exception.Message);
-            _logger.Error("NET | " + title + " | " + exception);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
+    private Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action) =>
+        SectionOperations.RunExclusiveAsync(title, "NET", () => IsBusy, value => IsBusy = value, () => _operationCts, value => _operationCts = value, value => StatusText = value, _logger, action);
     public sealed record InterfaceRow(string Alias, int Mtu)
     {
         public string Display => $"{Alias} — MTU: {Mtu}";

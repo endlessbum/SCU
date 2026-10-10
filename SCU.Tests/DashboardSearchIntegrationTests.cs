@@ -1,6 +1,7 @@
 using SCU.Common;
 using SCU.Infrastructure.Logging;
 using SCU.Infrastructure.Windows;
+using SCU.Infrastructure.Windows.Maintenance;
 using SCU.Infrastructure.Windows.Tasks;
 using SCU.Interop;
 using SCU.ViewModels;
@@ -34,6 +35,7 @@ public sealed class DashboardSearchIntegrationTests
             history,
             new BatchStateStore(logger),
             new CleanupViewModel(logger, runner, new FileCleanupService(logger), new ServiceManager(), dialogs, history),
+            new AppCacheViewModel(logger, new AppCacheService(logger), dialogs, history),
             new PrivacyViewModel(logger, runner, dialogs),
             new ServicesViewModel(logger, runner, new ServiceManager(), history, dialogs),
             new TasksViewModel(logger, runner, new TaskManager(runner), dialogs, history),

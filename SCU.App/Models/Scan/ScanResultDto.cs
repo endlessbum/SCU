@@ -21,6 +21,11 @@ public sealed class DetectionDto
     [JsonPropertyName("path")]
     public string Path { get; set; } = string.Empty;
 
+    // Реальный файловый target persistence-записи (exe из автозапуска). Для
+    // file-детекций пуст — target совпадает с Path (документ п. 17).
+    [JsonPropertyName("targetPath")]
+    public string TargetPath { get; set; } = string.Empty;
+
     [JsonPropertyName("sha256")]
     public string Sha256 { get; set; } = string.Empty;
 
@@ -54,9 +59,18 @@ public sealed class DetectionDto
     [JsonPropertyName("source")]
     public string Source { get; set; } = "file";
 
-    // Реальный путь для карантина: контейнер архива или сам файл.
+    // Реальный путь для карантина: контейнер архива, файловый target
+    // persistence-записи или сам файл.
     [JsonIgnore]
-    public string QuarantineTarget => !string.IsNullOrEmpty(ContainerPath) ? ContainerPath : Path;
+    public string QuarantineTarget => !string.IsNullOrEmpty(ContainerPath) ? ContainerPath
+        : !string.IsNullOrEmpty(TargetPath) ? TargetPath
+        : Path;
+
+    // Есть ли файловый путь для «Просмотр»/«Карантин»: у persistence-записи
+    // Path — псевдопуть (HKCU\...\Run\X, startup-folder\X), файлом он не
+    // является; без file target обе кнопки для такой детекции скрываются.
+    [JsonIgnore]
+    public bool HasFileTarget => Source != "persistence" || !string.IsNullOrEmpty(TargetPath);
 
     [JsonPropertyName("signals")]
     public List<string> Signals { get; set; } = new();

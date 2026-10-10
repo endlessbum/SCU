@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
@@ -370,33 +370,5 @@ public partial class UpdateViewModel : ObservableObject, IDisposable, ISectionOp
         _operationCts?.Cancel();
     }
 
-    private async Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action)
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        _operationCts?.Dispose();
-        _operationCts = new CancellationTokenSource();
-        IsBusy = true;
-        try
-        {
-            await action(_operationCts.Token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = L.T("Операция отменена.");
-            _logger.Warn("CANCEL | " + title);
-        }
-        catch (Exception exception)
-        {
-            StatusText = L.T("Ошибка: {0}", exception.Message);
-            _logger.Error("WU | " + title + " | " + exception);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-}
+    private Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action) =>
+        SectionOperations.RunExclusiveAsync(title, "WU", () => IsBusy, value => IsBusy = value, () => _operationCts, value => _operationCts = value, value => StatusText = value, _logger, action);}

@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
 using System.Management;
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 using SCU.Common;
 using SCU.Models;
 
@@ -157,6 +158,43 @@ public sealed class SystemInfoService
             });
         });
 
+        // AdapterRAM — REG_DWORD: для карт с VRAM > 4 ГБ значение заворачивается
+        // (RTX 8 ГБ показывалась как ~4 ГБ). Достоверный объём —
+        // HardwareInformation.qwMemorySize (REG_QWORD) из ключей драйверов DISPLAY;
+        // WMI — fallback с пометкой «не менее».
+        var videoMemory = new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var displayClassRoot = Registry.LocalMachine.OpenSubKey(
+                @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}");
+            if (displayClassRoot is not null)
+            {
+                foreach (var subKeyName in displayClassRoot.GetSubKeyNames())
+                {
+                    try
+                    {
+                        using var driverKey = displayClassRoot.OpenSubKey(subKeyName);
+                        var description = driverKey?.GetValue("DriverDesc") as string;
+                        var memorySize = driverKey?.GetValue("qwMemorySize") is long qword && qword > 0
+                            ? (ulong)qword
+                            : 0;
+                        if (!string.IsNullOrWhiteSpace(description) && memorySize > 0)
+                        {
+                            videoMemory[description.Trim()] = memorySize;
+                        }
+                    }
+                    catch
+                    {
+                        // Чужой/нечитаемый подключ класса — не ошибка сводки.
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Раздел класса DISPLAY не читается — остаётся fallback ниже.
+        }
+
         ForEach("SELECT Name, AdapterRAM FROM Win32_VideoController", ct, gpu =>
         {
             var name = ReadString(gpu, "Name");
@@ -165,8 +203,27 @@ public sealed class SystemInfoService
                 return;
             }
 
-            var ram = ReadUInt64(gpu, "AdapterRAM");
-            video.Add(ram > 0 ? $"{name} ({FormatBytes(ram)})" : name);
+            ulong videoRam = 0;
+            foreach (var pair in videoMemory)
+            {
+                // Имя в реестре драйвера совпадает с именем WMI либо вложено в него.
+                if (name.Contains(pair.Key, StringComparison.OrdinalIgnoreCase)
+                    || pair.Key.Contains(name, StringComparison.OrdinalIgnoreCase))
+                {
+                    videoRam = pair.Value;
+                    break;
+                }
+            }
+
+            if (videoRam > 0)
+            {
+                video.Add($"{name} ({FormatBytes(videoRam)})");
+            }
+            else
+            {
+                var ram = ReadUInt64(gpu, "AdapterRAM");
+                video.Add(ram > 0 ? $"{name} (не менее {FormatBytes(ram)})" : name);
+            }
         });
 
         // IP-адрес: IPv4/IPv6 включённых адаптеров (пустые и loopback-адреса прочь).

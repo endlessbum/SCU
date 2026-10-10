@@ -24,7 +24,8 @@ public sealed class BaselineStore
     public static string DefaultPath() => Path.Combine(DashboardStatePaths.Directory, "baseline.json");
 
     // Сохраняет снимок как новый baseline (предыдущий вытесняется ёмкостью 1).
-    public Task SaveAsync(SystemSnapshot snapshot, CancellationToken ct = default) =>
+    // false — запись не попала на диск (аудит persistence).
+    public Task<bool> SaveAsync(SystemSnapshot snapshot, CancellationToken ct = default) =>
         _file.AppendAsync(snapshot, ct);
 
     public async Task<SystemSnapshot?> LoadAsync(CancellationToken ct = default)
@@ -35,5 +36,5 @@ public sealed class BaselineStore
             : all.OrderBy(snapshot => snapshot.Timestamp).Last();
     }
 
-    public Task ClearAsync(CancellationToken ct = default) => _file.ClearAsync(ct);
+    public Task<bool> ClearAsync(CancellationToken ct = default) => _file.ClearAsync(ct);
 }

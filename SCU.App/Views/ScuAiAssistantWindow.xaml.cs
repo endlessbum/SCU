@@ -16,6 +16,8 @@ public partial class ScuAiAssistantWindow : Window
     public ScuAiAssistantWindow()
     {
         InitializeComponent();
+        // Появление окна: fade + подъём корня (единый паттерн ConfirmDialog/OnboardingWindow).
+        Loaded += (_, _) => SCU.Common.UiAnimations.AppearWindow(this);
         DataContextChanged += OnDataContextChanged;
     }
 

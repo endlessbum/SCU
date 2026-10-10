@@ -21,6 +21,15 @@ public sealed class WindowsUpdateDriverService
     // Dictionary параллельно с повторным поиском — гонка и порча состояния.
     private volatile IReadOnlyDictionary<string, object>? _foundUpdates;
 
+    // Живой поисковый COM-вызов (M-01): таймаут НЕ отменяет COM Search — он
+    // продолжает выполняться фоном. Пока он не завершился, новый поиск не
+    // запускается: повторные попытки наслаивали бы COM-операции друг на друга.
+    internal volatile Task? _comSearchInFlight;
+
+    // Сериализация самих поисков: два одновременных SearchAsync не должны
+    // оба пройти проверку _comSearchInFlight до его заполнения.
+    private readonly SemaphoreSlim _searchGate = new(1, 1);
+
     private readonly Logger _logger;
 
     public WindowsUpdateDriverService(Logger logger)
@@ -32,14 +41,38 @@ public sealed class WindowsUpdateDriverService
         IProgress<string>? progress = null,
         CancellationToken ct = default)
     {
+        if (_comSearchInFlight is { IsCompleted: false })
+        {
+            _logger.Warn("DRV | WU search busy | previous COM search still running");
+            return Result<IReadOnlyList<DriverUpdateInfo>>.Failure(
+                L.T("Предыдущий поиск обновлений ещё выполняется — дождитесь его завершения."), -1);
+        }
+
+        if (!await _searchGate.WaitAsync(0, ct).ConfigureAwait(false))
+        {
+            _logger.Warn("DRV | WU search busy | concurrent search rejected");
+            return Result<IReadOnlyList<DriverUpdateInfo>>.Failure(
+                L.T("Поиск обновлений уже выполняется."), -1);
+        }
+
         try
         {
             progress?.Report(L.T("Подключение к службе обновлений…"));
-            var updates = await Task.Run(() => SearchCore(progress), ct).ConfigureAwait(false);
+            // Аудит отмены: COM-поиск не принимает пользовательскую отмену, поэтому
+            // задача выполняется без ct — до завершения или внутреннего таймаута
+            // SearchCore. Пользовательская отмена лишь отсоединяет вызывающего
+            // (WaitAsync(ct)); busy-состояние _comSearchInFlight держится до
+            // фактического завершения COM и защищает от параллельного поиска.
+            var updates = await Task.Run(() => SearchCore(progress), CancellationToken.None)
+                .WaitAsync(ct)
+                .ConfigureAwait(false);
             return Result<IReadOnlyList<DriverUpdateInfo>>.Success(updates);
         }
         catch (OperationCanceledException)
         {
+            // Отсоединение после отмены: Task.Run-обёртка продолжает выполняться,
+            // исключения внутри наблюдаются через OnlyOnFaulted в SearchCore.
+            _logger.Warn("DRV | WU search | caller cancelled, COM search continues in background");
             return Result<IReadOnlyList<DriverUpdateInfo>>.Failure("Отменено", -1);
         }
         catch (TimeoutException)
@@ -54,6 +87,10 @@ public sealed class WindowsUpdateDriverService
             return Result<IReadOnlyList<DriverUpdateInfo>>.Failure(
                 L.T("Не удалось выполнить поиск обновлений: {0}", DescribeWuError(exception)));
         }
+        finally
+        {
+            _searchGate.Release();
+        }
     }
 
     private IReadOnlyList<DriverUpdateInfo> SearchCore(IProgress<string>? progress)
@@ -65,6 +102,9 @@ public sealed class WindowsUpdateDriverService
 
         progress?.Report(L.T("Поиск обновлений драйверов на серверах Windows Update…"));
         var search = Task.Run(() => (object)searcher.Search("IsInstalled=0 and IsHidden=0 and Type='Driver'"));
+        // Gate (M-01): фиксируем живой COM-вызов — до его фактического завершения
+        // (в том числе после нашего таймаута) новые поиски не запускаются.
+        _comSearchInFlight = search;
         // Брошенная задача не должна остаться с ненаблюдаемым исключением (п. №3).
         search.ContinueWith(
             static faulted => _ = faulted.Exception,

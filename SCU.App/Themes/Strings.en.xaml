@@ -18,6 +18,8 @@
     <sys:String x:Key="S_Section02_Desc">DirectX, VC++ and .NET</sys:String>
     <sys:String x:Key="S_Section03_Title">System and Disk Cleanup</sys:String>
     <sys:String x:Key="S_Section03_Desc">Recycle Bin, temp, browsers and system cleanup</sys:String>
+    <sys:String x:Key="S_Section26_Title">App Cache</sys:String>
+    <sys:String x:Key="S_Section26_Desc">Temporary data of installed applications</sys:String>
     <sys:String x:Key="S_Section04_Title">Bloatware Removal</sys:String>
     <sys:String x:Key="S_Section04_Desc">AppX and other optional components</sys:String>
     <sys:String x:Key="S_Section05_Title">Privacy and Telemetry</sys:String>
@@ -69,7 +71,7 @@
     <sys:String x:Key="S_Section25_Desc">Key hardware inventory and driver updates through Windows Update</sys:String>
     <sys:String x:Key="S_DrvStateTitle">Driver status</sys:String>
     <sys:String x:Key="S_DrvStateDesc">Key hardware and its drivers; problem devices are marked with a warning icon.</sys:String>
-    <sys:String x:Key="S_DrvRescan">Check again</sys:String>
+    <sys:String x:Key="S_DrvRescan">Check</sys:String>
     <sys:String x:Key="S_DrvUpdatesTitle">Driver updates</sys:String>
     <sys:String x:Key="S_DrvUpdatesDesc">Search on the Windows Update servers — the same channel Windows itself uses: matched per device and signed by Microsoft.</sys:String>
     <sys:String x:Key="S_DrvSearch">Check for updates</sys:String>
@@ -169,6 +171,9 @@
     <sys:String x:Key="S_PowerFastBoot">Fast startup</sys:String>
     <sys:String x:Key="S_PowerFastBootDesc">Uses a reduced hibernation file to speed up the next boot after shutdown. Disabling may increase boot time but avoids hybrid shutdown. On modern SSDs it is usually left enabled unless you need a full cold boot or are troubleshooting drivers.</sys:String>
     <sys:String x:Key="S_PowerFastBootTip">Registry HiberbootEnabled plus availability checks via powercfg. A reboot may be required for the change to fully apply.</sys:String>
+    <sys:String x:Key="S_PowerDiskIdleTitle">Disk spin-down</sys:String>
+    <sys:String x:Key="S_PowerDiskIdleDesc">Prevents the disk from turning off during idle.</sys:String>
+    <sys:String x:Key="S_PowerDiskIdleTip">On — disk idle timeout 0 (the disk is never powered down while idle). Off — standard 20 minutes. Applied via powercfg for the active scheme (AC and DC).</sys:String>
     <sys:String x:Key="S_PowerStateBadgeTip">Badges: ? — unknown; * — reboot required; ≠ — mixed or partial; — — unavailable.</sys:String>
     <sys:String x:Key="S_PowerMemTitle">Memory and file system</sys:String>
     <sys:String x:Key="S_PowerMemCompression">Memory compression</sys:String>
@@ -211,6 +216,13 @@
     <sys:String x:Key="S_NetNetBiosDisable">Disable (mode 2)</sys:String>
     <sys:String x:Key="S_NetNetBiosDhcp">Via DHCP (mode 0)</sys:String>
     <sys:String x:Key="S_NetNetBiosFlush">Flush cache (nbtstat -R / -RR)</sys:String>
+    <!-- "Flush DNS" entry title in the Dashboard batch cleanup list -->
+    <sys:String x:Key="S_BatchDnsFlush">Flush DNS cache</sys:String>
+    <!-- "Downloads cleanup path" card in Settings -->
+    <sys:String x:Key="S_SettingsDownloadsPath">Downloads cleanup path</sys:String>
+    <sys:String x:Key="S_SettingsDownloadsPathDesc">Path to another folder that is cleaned together with Downloads.</sys:String>
+    <sys:String x:Key="S_SettingsDownloadsPathAdd">Add</sys:String>
+    <sys:String x:Key="S_SettingsDownloadsPathClear">Remove cleanup path</sys:String>
     <sys:String x:Key="S_NetAutoTuningLabel">Auto-Tuning:</sys:String>
     <sys:String x:Key="S_NetEcnLabel">ECN:</sys:String>
     <sys:String x:Key="S_NetNetBiosTitle">NetBIOS over TCP/IP</sys:String>
@@ -257,10 +269,14 @@
     <sys:String x:Key="S_CleanupDesc">Only caches and temporary files are cleaned. Busy files are skipped; the state of update services is saved and restored automatically during the update cache cleanup.</sys:String>
     <sys:String x:Key="S_CleanupQuick">Quick cleanup</sys:String>
     <sys:String x:Key="S_CleanupRecycleBin">Recycle bin</sys:String>
+    <sys:String x:Key="S_CleanupDownloads">Downloads</sys:String>
     <sys:String x:Key="S_CleanupTemp">Temp folders</sys:String>
     <sys:String x:Key="S_CleanupBrowsers">Browser caches</sys:String>
     <sys:String x:Key="S_CleanupServiceCaches">Service caches</sys:String>
     <sys:String x:Key="S_CleanupUpdateCache">Windows Update download cache</sys:String>
+    <sys:String x:Key="S_AppCacheCardTitle">App cache cleanup</sys:String>
+    <sys:String x:Key="S_AppCacheCardDesc">Measuring disk space taken by applications' temporary data</sys:String>
+    <sys:String x:Key="I_AppCacheScanScope">Cache is only read from data located on the system drive.</sys:String>
     <sys:String x:Key="S_Cancel">Cancel</sys:String>
     <sys:String x:Key="S_Clean">Clean up</sys:String>
     <sys:String x:Key="S_ColIndex">#</sys:String>
@@ -293,6 +309,10 @@
     <sys:String x:Key="S_SettingsLogDesc">Show or hide the journal block below the window. Applied immediately.</sys:String>
     <sys:String x:Key="S_SettingsUac">UAC</sys:String>
     <sys:String x:Key="S_SettingsUacDesc">Risky action confirmation window</sys:String>
+    <!-- Trailing-space format: concatenated with the interface name in a Run -->
+    <sys:String x:Key="S_NetworkSelectedInterface" xml:space="preserve">Selected: </sys:String>
+    <sys:String x:Key="S_SettingsAnimations">Interface animations</sys:String>
+    <sys:String x:Key="S_SettingsAnimationsDesc">Smooth transitions between sections, tabs and windows. Applied immediately.</sys:String>
     <sys:String x:Key="S_SettingsUpdates">SCU updates</sys:String>
     <sys:String x:Key="S_SettingsUpdatesDesc">Check for updates</sys:String>
     <sys:String x:Key="S_SettingsUpdatesButton">Check</sys:String>
@@ -476,6 +496,7 @@
     <sys:String x:Key="I_MaintDumpsWer">Deletes memory dumps and the Windows Error Reporting queue. Diagnostic information from a crash (BSOD) will no longer be recoverable.</sys:String>
 
     <sys:String x:Key="I_CleanupRecycleBin">Permanently empties the Recycle Bin on all drives.</sys:String>
+    <sys:String x:Key="I_CleanupDownloads">Files and folders in the user's Downloads folder. Caution: these are user files, not temporary data — deletion is irreversible.</sys:String>
     <sys:String x:Key="I_CleanupTemp">Deletes temporary files from the user and Windows TEMP folders, Prefetch, Recent and INetCache. Busy files are skipped.</sys:String>
     <sys:String x:Key="I_CleanupBrowsers">Deletes the cache of Chrome, Edge, Yandex Browser, Brave, Vivaldi, Firefox and Opera. Bookmarks, passwords and history are not affected; close the browsers first.</sys:String>
     <sys:String x:Key="I_CleanupUpdateCache">Stops the update services (saving their state), cleans SoftwareDistribution\Download and the Delivery Optimization cache, then restores the services. Can free several GB.</sys:String>

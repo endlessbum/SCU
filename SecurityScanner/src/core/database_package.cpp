@@ -33,6 +33,11 @@ constexpr const char* kDatabasePublicKeyXYHex =
 // 64 МБ вмещают ~700k хешей с запасом; in-memory map лимита не имеет.
 constexpr size_t kMaxPackageBytes = 64ull * 1024 * 1024;
 constexpr size_t kMaxHashesBytes = 64ull * 1024 * 1024;
+// Малые члены пакета: подпись и метаданные измеряются сотнями байт.
+constexpr size_t kMaxSignatureBytes = 4ull * 1024;
+constexpr size_t kMaxVersionJsonBytes = 4ull * 1024;
+// ZIP-bombing (аудит пакета базы): ограничиваем и число членов архива.
+constexpr size_t kMaxZipMembers = 32;
 // Строгая схема hashes.txt (п. 7 аудита): одна строка =
 // 64 hex-символа TAB verdict TAB name LF. Любая malformed-строка отклоняет
 // ВСЮ базу — частично применённая база хуже отсутствующей.
@@ -282,12 +287,44 @@ bool VerifyEcdsa(const std::vector<unsigned char>& xy,
     return ok;
 }
 
+// ASCII-имя члена архива в широкую строку для сообщений об ошибках.
+std::wstring AsciiToWide(const char* text)
+{
+    const int wideLength = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
+    std::wstring wide(static_cast<size_t>(wideLength > 0 ? wideLength - 1 : 0), L'\0');
+    if (!wide.empty()) {
+        MultiByteToWideChar(CP_UTF8, 0, text, -1, wide.data(), wideLength);
+    }
+    return wide;
+}
+
 // Извлечение члена пакета по имени из уже загруженного ZIP-буфера.
-std::vector<unsigned char> ReadZipMember(const mz_zip_archive& zip, const char* name, bool& found)
+// Bounded extraction (аудит пакета базы): размер члена читается из заголовка
+// архива ДО выделения памяти — сжатый пакет может быть маленьким, а
+// распакованный член огромным, поэтому проверка после extract_to_heap
+// запаздывала на весь объём аллокации. error — причина неудачи для
+// различения «член отсутствует» и «член превышает лимит».
+std::vector<unsigned char> ReadZipMember(const mz_zip_archive& zip, const char* name, bool& found,
+                                         size_t maxUncompressedBytes, std::wstring* error = nullptr)
 {
     found = false;
     const int index = mz_zip_reader_locate_file(const_cast<mz_zip_archive*>(&zip), name, nullptr, 0);
     if (index < 0) {
+        return {};
+    }
+    mz_zip_archive_file_stat stat{};
+    if (!mz_zip_reader_file_stat(const_cast<mz_zip_archive*>(&zip), static_cast<mz_uint>(index), &stat)) {
+        if (error != nullptr) {
+            *error = L"package entry unreadable: " + AsciiToWide(name);
+        }
+        return {};
+    }
+    if (stat.m_uncomp_size > maxUncompressedBytes) {
+        if (error != nullptr) {
+            *error = AsciiToWide(name) + L" too large (uncompressed "
+                     + std::to_wstring(stat.m_uncomp_size) + L" > "
+                     + std::to_wstring(maxUncompressedBytes) + L")";
+        }
         return {};
     }
     size_t size = 0;
@@ -426,33 +463,36 @@ void DatabasePackage::Apply(const std::wstring& packageZip,
         return;
     }
 
-    bool found = false;
-    const std::vector<unsigned char> hashes = ReadZipMember(zip, "hashes.txt", found);
-    if (!found) {
+    // ZIP-bombing: лимит на число членов до любого извлечения.
+    if (mz_zip_reader_get_num_files(&zip) > kMaxZipMembers) {
         mz_zip_reader_end(&zip);
-        result.error = L"package is missing hashes.txt";
-        return;
-    }
-    if (hashes.size() > kMaxHashesBytes) {
-        mz_zip_reader_end(&zip);
-        result.error = L"hashes.txt too large";
+        result.error = L"package has too many entries";
         return;
     }
 
-    const std::vector<unsigned char> signature = ReadZipMember(zip, "hashes.txt.sig", found);
+    std::wstring memberError;
+    bool found = false;
+    const std::vector<unsigned char> hashes = ReadZipMember(zip, "hashes.txt", found, kMaxHashesBytes, &memberError);
     if (!found) {
         mz_zip_reader_end(&zip);
-        result.error = L"package is missing hashes.txt.sig";
+        result.error = memberError.empty() ? L"package is missing hashes.txt" : memberError;
+        return;
+    }
+
+    const std::vector<unsigned char> signature = ReadZipMember(zip, "hashes.txt.sig", found, kMaxSignatureBytes, &memberError);
+    if (!found) {
+        mz_zip_reader_end(&zip);
+        result.error = memberError.empty() ? L"package is missing hashes.txt.sig" : memberError;
         return;
     }
 
     // db-version.json — обязательный член подписанного payload (аудит п. 11):
     // метаданные версии верифицируются тем же дайджестом, а не копируются
     // best-effort после проверки базы.
-    const std::vector<unsigned char> version = ReadZipMember(zip, "db-version.json", found);
+    const std::vector<unsigned char> version = ReadZipMember(zip, "db-version.json", found, kMaxVersionJsonBytes, &memberError);
     mz_zip_reader_end(&zip);
     if (!found) {
-        result.error = L"package is missing db-version.json";
+        result.error = memberError.empty() ? L"package is missing db-version.json" : memberError;
         return;
     }
 
@@ -490,6 +530,14 @@ void DatabasePackage::Apply(const std::wstring& packageZip,
     long long declaredEntries = -1;
     if (!ExtractJsonLong(versionJson, "entries", declaredEntries) || declaredEntries < 0) {
         result.error = L"db-version.json rejected: invalid entries";
+        return;
+    }
+    // Самопроверка metadata (аудит пакета базы): расхождение объявленного
+    // числа записей с фактически распарсенным делает metadata недостоверной.
+    if (declaredEntries != static_cast<long long>(entries)) {
+        result.error = L"db-version.json rejected: entries mismatch (declared "
+                       + std::to_wstring(declaredEntries) + L", actual "
+                       + std::to_wstring(entries) + L")";
         return;
     }
 

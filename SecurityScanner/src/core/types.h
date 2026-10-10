@@ -17,6 +17,10 @@ enum class Verdict {
 
 struct Detection {
     std::wstring path;       // real path, virtual path для члена архива или location\name для persistence
+    // Реальный файловый target persistence-записи (exe из автозапуска) — для
+    // «Просмотр»/«Карантин» в GUI: сам path записи — псевдопуть (HKCU\..., и т.п.).
+    // Для file-детекций пуст: target == path.
+    std::wstring targetPath;
     std::string sha256;      // hex, lowercase
     Verdict verdict = Verdict::Clean;
     std::wstring ruleId;     // e.g. "HASH-DB", "PE-HEURISTIC", "SCRIPT-HEURISTIC", "PERSISTENCE"

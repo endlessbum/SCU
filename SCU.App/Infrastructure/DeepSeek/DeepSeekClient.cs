@@ -64,14 +64,16 @@ public interface IScuAiAgentStepClient
 // показывает статус, приложение живёт.
 public sealed partial class DeepSeekClient : IScuAiAgentStepClient
 {
-    // Приоритет моделей чата по провайдерам: у DeepSeek — свежая flash-модель →
-    // предыдущие; у OpenRouter — бесплатные варианты deepseek («:free»).
+    // Приоритет моделей чата по провайдерам: у DeepSeek — актуальная flash-модель
+    // (канонический ID после переименования V4.1 Flash) → предыдущие; у OpenRouter —
+    // бесплатные варианты deepseek («:free»). Legacy-идентификаторы
+    // deepseek-chat/deepseek-reasoner/deepseek-v4.1-flash не включены: DeepSeek
+    // отключил их в API (после 24.07.2026 запросы возвращают ошибку; v4.1-flash
+    // переименован в deepseek-flash).
     private static readonly string[] DeepSeekPreferredModels =
     [
         "deepseek-flash",
-        "deepseek-v4.1-flash",
         "deepseek-v4-flash",
-        "deepseek-chat",
     ];
 
     private static readonly string[] OpenRouterPreferredModels =
@@ -97,6 +99,50 @@ public sealed partial class DeepSeekClient : IScuAiAgentStepClient
         "@cf/deepseek-ai/deepseek-v4-flash-0731",
         "@cf/deepseek-ai/deepseek-v4-pro-0813",
     ];
+
+    // ===================== Совместимость и capabilities =====================
+
+    // Миграция legacy-моделей (аудит совместимости): DeepSeek отключил
+    // deepseek-chat/deepseek-reasoner после 24.07.2026 — запросы к ним
+    // возвращают ошибку; канонический ID V4.1 Flash после переименования —
+    // deepseek-flash. Сохранённые у пользователей модели переезжают на
+    // актуальные идентификаторы (нечего мигрировать → возвращается как есть).
+    // Обратная совместимость: deepseek-v4-flash принимается API как есть.
+    public static readonly Dictionary<string, string> DeprecatedModelRemap = new(StringComparer.Ordinal)
+    {
+        ["deepseek-chat"] = "deepseek-v4-flash",
+        ["deepseek-reasoner"] = "deepseek-v4-pro",
+        ["deepseek-v4.1-flash"] = "deepseek-flash",
+    };
+
+    public static string MigrateDeprecatedModel(string? model) =>
+        model is not null && DeprecatedModelRemap.TryGetValue(model, out var replacement)
+            ? replacement
+            : model ?? string.Empty;
+
+    // Модели Cloudflare с заявленной поддержкой function calling: V4 Flash/Pro —
+    // да; r-дистилляты — нет (игнорируют схему / отвечают 400). У DeepSeek и
+    // OpenRouter function calling есть у всех chat/reasoning-моделей.
+    private static readonly HashSet<string> CloudflareToolCallingModels = new(StringComparer.Ordinal)
+    {
+        "@cf/deepseek-ai/deepseek-v4-flash-0731",
+        "@cf/deepseek-ai/deepseek-v4-pro-0813",
+    };
+
+    // Capability — по паре провайдер+модель (аудит AI): определение только по
+    // провайдеру навсегда отключало agent tools у Cloudflare, хотя его V4-модели
+    // tool calling поддерживают.
+    public static bool SupportsToolCalling(DeepSeekProviderConfig provider, string? model)
+    {
+        if (provider.Id is "deepseek" or "openrouter")
+        {
+            return true;
+        }
+
+        return provider.Id == DeepSeekProviderConfig.CloudflareId
+               && model is not null
+               && CloudflareToolCallingModels.Contains(model);
+    }
 
     // Формат ключей: DeepSeek — sk- + 32 hex; OpenRouter — sk-or-v1- + 64 hex;
     // Cloudflare — API-токен: нового формата с префиксом cfut_ либо 40 символов
@@ -221,16 +267,45 @@ public sealed partial class DeepSeekClient : IScuAiAgentStepClient
         try
         {
             using var document = JsonDocument.Parse(json);
+            // Fail-closed: поле status обязательно и обязано равняться «active».
+            // Ответ без status (или с нестроковым) раньше трактовался как
+            // «токен активен» — проверка противоречила собственному комментарию.
             return document.RootElement.TryGetProperty("success", out var success)
                 && success.ValueKind == JsonValueKind.True
                 && document.RootElement.TryGetProperty("result", out var result)
-                && (!result.TryGetProperty("status", out var status)
-                    || string.Equals(status.GetString(), "active", StringComparison.OrdinalIgnoreCase));
+                && result.TryGetProperty("status", out var status)
+                && status.ValueKind == JsonValueKind.String
+                && string.Equals(status.GetString(), "active", StringComparison.OrdinalIgnoreCase);
         }
         catch (JsonException)
         {
             return false;
         }
+    }
+
+    // ===================== Типобезопасные читатели JSON =====================
+
+    // Читатели полей без сюрпризов (аудит AI): GetString()/GetInt64()/
+    // EnumerateArray() на поле неожиданного типа бросают InvalidOperationException/
+    // FormatException, которых нет в catch-списках — malformed 200-ответ
+    // превращался в необработанное исключение вместо Fail. Любое несовпадение
+    // схемы трактуется как отсутствие значения.
+    private static string SafeGetString(in JsonElement element, string property)
+    {
+        return element.ValueKind == JsonValueKind.Object
+               && element.TryGetProperty(property, out var value)
+               && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+    }
+
+    private static long SafeGetInt64(in JsonElement element, string property)
+    {
+        return element.ValueKind == JsonValueKind.Object
+               && element.TryGetProperty(property, out var value)
+               && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt64()
+            : 0;
     }
 
     // Ответ чата: Content — текст ассистента, Error — русский шаблон с ErrorArgs.
@@ -248,13 +323,7 @@ public sealed partial class DeepSeekClient : IScuAiAgentStepClient
     // ===================== Agent / tool calling =====================
 
     // Capability layer (п. 26 ТЗ): провайдер ≠ модель ≠ capability.
-    // Эндпоинты DeepSeek и OpenRouter реализуют OpenAI-compatible function
-    // calling и для chat-, и для reasoning-моделей. Cloudflare Workers AI
-    // (compat-API) tools не поддерживает: r1-дистилляты либо игнорируют схему,
-    // либо отвечают 400 — для него AI работает в Help/ReadOnly text mode,
-    // мутации недоступны (п. 26: «не маскировать отсутствие tool support»).
-    public static bool ProviderSupportsToolCalling(DeepSeekProviderConfig provider) =>
-        provider.Id is "deepseek" or "openrouter";
+    // Поддержка определяется по паре провайдер+модель — см. SupportsToolCalling.
 
     // Ответ одного шага агентного цикла (п. 12 ТЗ): либо текст, либо tool_calls,
     // либо то и другое. Дальше решает вызывающий код (ScuAiAssistant): валидация
@@ -327,8 +396,12 @@ public sealed partial class DeepSeekClient : IScuAiAgentStepClient
 
             return completion;
         }
+        // InvalidOperationException/FormatException — страховка на случай
+        // непокрытой хелперами схемы (аудит AI): сбойный 200-ответ → Fail,
+        // а не необработанное исключение.
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException
-                                              or OperationCanceledException or IOException or JsonException)
+                                              or OperationCanceledException or IOException or JsonException
+                                              or InvalidOperationException or FormatException)
         {
             if (cancellationToken.IsCancellationRequested)
             {
@@ -338,7 +411,9 @@ public sealed partial class DeepSeekClient : IScuAiAgentStepClient
             _logger.Error("SCU_AI | agent step failed | " + exception.Message);
             return AssistantCompletion.Fail(exception is TaskCanceledException or OperationCanceledException
                 ? "Время ожидания ответа истекло."
-                : "Нет соединения с провайдером — проверьте интернет.");
+                : exception is HttpRequestException or IOException
+                    ? "Нет соединения с провайдером — проверьте интернет."
+                    : "Некорректный ответ провайдера — повторите запрос.");
         }
     }
 
@@ -355,28 +430,61 @@ public sealed partial class DeepSeekClient : IScuAiAgentStepClient
     private static (AssistantCompletion Completion, long UsageTokens) ParseAgentCompletion(
         JsonElement root, string model)
     {
-        var choice = root.GetProperty("choices").EnumerateArray().FirstOrDefault();
+        // Robustness (аудит AI): сбойный 200-ответ (шлюз, обёртка, пустой choices)
+        // возвращает Fail, а не KeyNotFoundException поверх catch-списка — тот же
+        // класс, что исправлен в ParseModelIds.
+        if (!root.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array)
+        {
+            return (AssistantCompletion.Fail("Некорректный ответ провайдера: нет массива choices."), 0);
+        }
+
+        var choice = choices.EnumerateArray().FirstOrDefault();
+        if (choice.ValueKind != JsonValueKind.Object)
+        {
+            return (AssistantCompletion.Fail("Некорректный ответ провайдера: пустой choices."), 0);
+        }
+
         var message = choice.TryGetProperty("message", out var messageElement) ? messageElement : default;
-        var content = message.TryGetProperty("content", out var text)
-            ? text.GetString() ?? string.Empty
-            : string.Empty;
+        if (message.ValueKind != JsonValueKind.Object)
+        {
+            return (AssistantCompletion.Fail("Некорректный ответ провайдера: нет message в choices."), 0);
+        }
+
+        // Схема нарушена явно (content/tool_calls не того типа) → Fail, а не
+        // «успех с пустым значением»: пустой финальный ответ в цикле считался
+        // бы ошибкой, а потерянные tool_calls привели бы к невалидной истории.
+        string content;
+        if (message.ValueKind == JsonValueKind.Object
+            && message.TryGetProperty("content", out var contentElement)
+            && contentElement.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+        {
+            return (AssistantCompletion.Fail("Некорректный ответ провайдера: поле content неожиданного типа."), 0);
+        }
+
+        content = SafeGetString(message, "content");
 
         // Reasoning-модели: служебный блок размышлений не идёт ни в чат, ни в
         // историю agent-цикла (иначе следующий шаг получил бы свой же мусор).
         content = StripThinking(content);
         content = string.IsNullOrWhiteSpace(content) ? string.Empty : StripMarkup(content);
 
-        var finishReason = choice.TryGetProperty("finish_reason", out var reason)
-            ? reason.GetString() ?? string.Empty
-            : string.Empty;
+        var finishReason = SafeGetString(choice, "finish_reason");
 
-        var toolCalls = message.TryGetProperty("tool_calls", out var callsElement)
-            ? callsElement.EnumerateArray().Select(ParseToolCall).ToArray()
-            : [];
+        IReadOnlyList<ScuAiToolCall> toolCalls = [];
+        if (message.ValueKind == JsonValueKind.Object
+            && message.TryGetProperty("tool_calls", out var callsElement)
+            && callsElement.ValueKind != JsonValueKind.Undefined)
+        {
+            if (callsElement.ValueKind != JsonValueKind.Array)
+            {
+                return (AssistantCompletion.Fail("Некорректный ответ провайдера: поле tool_calls неожиданного типа."), 0);
+            }
 
-        var usageTokens = root.TryGetProperty("usage", out var usageElement)
-            ? usageElement.TryGetProperty("total_tokens", out var tokens) ? tokens.GetInt64() : 0
-            : 0;
+            toolCalls = callsElement.EnumerateArray().Select(ParseToolCall).ToArray();
+        }
+
+        var usageTokens = SafeGetInt64(
+            root.TryGetProperty("usage", out var usageElement) ? usageElement : default, "total_tokens");
 
         return (new AssistantCompletion(true, content, finishReason, toolCalls, usageTokens, string.Empty, [], model),
             usageTokens);
@@ -386,14 +494,24 @@ public sealed partial class DeepSeekClient : IScuAiAgentStepClient
     // вызову; аргументы остаются сырым JSON — валидируются приложением.
     private static ScuAiToolCall ParseToolCall(JsonElement element)
     {
-        var id = element.TryGetProperty("id", out var idElement) ? idElement.GetString() ?? string.Empty : string.Empty;
-        var function = element.TryGetProperty("function", out var functionElement) ? functionElement : default;
-        var name = function.TryGetProperty("name", out var nameElement) ? nameElement.GetString() ?? string.Empty : string.Empty;
-        var arguments = function.TryGetProperty("arguments", out var argsElement)
-            ? argsElement.ValueKind == JsonValueKind.String
-                ? argsElement.GetString() ?? "{}"
-                : argsElement.GetRawText()
-            : "{}";
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return new ScuAiToolCall(string.Empty, string.Empty, "{}");
+        }
+
+        var id = SafeGetString(element, "id");
+        var name = string.Empty;
+        var arguments = "{}";
+        if (element.TryGetProperty("function", out var functionElement)
+            && functionElement.ValueKind == JsonValueKind.Object)
+        {
+            name = SafeGetString(functionElement, "name");
+            arguments = functionElement.TryGetProperty("arguments", out var argsElement)
+                ? argsElement.ValueKind == JsonValueKind.String
+                    ? argsElement.GetString() ?? "{}"
+                    : argsElement.GetRawText()
+                : "{}";
+        }
 
         return new ScuAiToolCall(id, name, arguments);
     }
@@ -631,14 +749,32 @@ public sealed partial class DeepSeekClient : IScuAiAgentStepClient
             }
 
             using var document = JsonDocument.Parse(body);
-            var content = document.RootElement
-                .GetProperty("choices")
-                .EnumerateArray()
-                .FirstOrDefault()
-                .TryGetProperty("message", out var message)
-                && message.TryGetProperty("content", out var text)
-                    ? text.GetString() ?? string.Empty
-                    : string.Empty;
+            // Robustness (аудит AI): сбойный 200-ответ без choices (ошибка-в-теле,
+            // пустой JSON, обёртка шлюза) — честный Fail, а не KeyNotFoundException
+            // поверх catch-списка и молча пропавший ход пользователя.
+            if (!document.RootElement.TryGetProperty("choices", out var choices)
+                || choices.ValueKind != JsonValueKind.Array)
+            {
+                _logger.Warn("DEEPSEEK | chat failed | no choices in 200 response | " + Trim(body));
+                return ChatReply.Fail("Некорректный ответ провайдера: нет блока choices.");
+            }
+
+            var choice = choices.EnumerateArray().FirstOrDefault();
+            if (choice.ValueKind != JsonValueKind.Object)
+            {
+                _logger.Warn("DEEPSEEK | chat failed | empty choices in 200 response | " + Trim(body));
+                return ChatReply.Fail("Некорректный ответ провайдера: пустой блок choices.");
+            }
+
+            // M-08: типы вложенных полей проверяются явно — GetString()/GetInt64()
+            // на значении не того типа бросают InvalidOperationException, который
+            // раньше не ловился и ронял ход вместо честного ChatReply.Fail.
+            var content = choice.TryGetProperty("message", out var message)
+                          && message.ValueKind == JsonValueKind.Object
+                          && message.TryGetProperty("content", out var text)
+                          && text.ValueKind == JsonValueKind.String
+                ? text.GetString() ?? string.Empty
+                : string.Empty;
 
             // Reasoning-модели (deepseek-r1) предваряют ответ служебным
             // блоком размышлений — в чате остаётся только сам ответ.
@@ -655,11 +791,33 @@ public sealed partial class DeepSeekClient : IScuAiAgentStepClient
             // системную подсказку: LaTeX-скобки, жирный шрифт, заголовки, $$.
             content = StripMarkup(content);
 
-            var usage = document.RootElement.TryGetProperty("usage", out var usageElement)
-                ? usageElement.TryGetProperty("total_tokens", out var tokens) ? tokens.GetInt64() : 0
-                : 0;
+            // L-01: ответ мог состоять только из разметки — после очистки он
+            // пуст, и возвращать «успех» с пустым текстом нельзя.
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                _logger.Warn("DEEPSEEK | chat failed | empty completion after markup strip | " + Trim(body));
+                return ChatReply.Fail(
+                    "Ответ модели состоял только из разметки — попробуйте повторить вопрос.");
+            }
+
+            long usage = 0;
+            if (document.RootElement.TryGetProperty("usage", out var usageElement)
+                && usageElement.ValueKind == JsonValueKind.Object
+                && usageElement.TryGetProperty("total_tokens", out var tokens)
+                && tokens.ValueKind == JsonValueKind.Number
+                && tokens.TryGetInt64(out var parsedTokens))
+            {
+                usage = parsedTokens;
+            }
             _logger.Info($"DEEPSEEK | chat ok | tokens={usage}");
             return new ChatReply(true, content, string.Empty, [], model);
+        }
+        catch (InvalidOperationException exception)
+        {
+            // M-08: структурно некорректный (но валидный JSON) ответ провайдера —
+            // честный Fail, а не необработанное исключение поверх catch-списка.
+            _logger.Error("DEEPSEEK | chat parse failed | " + exception.Message);
+            return ChatReply.Fail("Некорректный ответ провайдера: неожиданная структура JSON.");
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException
                                               or OperationCanceledException or IOException or JsonException)
@@ -725,21 +883,32 @@ public sealed partial class DeepSeekClient : IScuAiAgentStepClient
         && !id.EndsWith(":batch", StringComparison.OrdinalIgnoreCase)
         && !id.StartsWith("~", StringComparison.Ordinal);
 
-    private static IReadOnlyList<string> ParseModelIds(string json, Func<string, bool> filter)
+    // Устойчивость к нестандартному ответу (аудит robustness): отсутствие «data»,
+    // не-массив и не-объекты не бросают исключений — GetProperty бросает
+    // KeyNotFoundException (не JsonException), EnumerateArray на не-массиве —
+    // InvalidOperationException, оба раньше улетали мимо catch.
+    internal static IReadOnlyList<string> ParseModelIds(string json, Func<string, bool> filter)
     {
         try
         {
             using var document = JsonDocument.Parse(json);
-            return document.RootElement
-                .GetProperty("data")
-                .EnumerateArray()
-                .Select(item => item.TryGetProperty("id", out var id) ? id.GetString() : null)
+            if (!document.RootElement.TryGetProperty("data", out var data)
+                || data.ValueKind != JsonValueKind.Array)
+            {
+                return [];
+            }
+
+            return data.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.Object)
+                .Select(item => item.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String
+                    ? id.GetString()
+                    : null)
                 .Where(id => !string.IsNullOrEmpty(id))
                 .Cast<string>()
                 .Where(filter)
                 .ToList();
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException)
         {
             return [];
         }

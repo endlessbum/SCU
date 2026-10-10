@@ -25,7 +25,10 @@ public sealed class MenuCustomization
     public List<string> DeletedUtils { get; set; } = [];
     public List<CustomSectionData> CustomSections { get; set; } = [];
 
-    public static MenuCustomization Empty { get; } = new();
+    // Одиночный mutable-экземпляр удалён (аудит shared state): Load() раньше
+    // раздавал один и тот же объект, и изменения коллекций одного потребителя
+    // протекали в другой. Каждый вызов получает собственный экземпляр;
+    // MenuCustomization полностью изменяем — Clone() остаётся для копий.
 
     public MenuCustomization Clone() => new()
     {
@@ -67,16 +70,16 @@ public sealed class MenuCustomizationStore
         {
             if (!File.Exists(_path))
             {
-                return MenuCustomization.Empty;
+                return new MenuCustomization();
             }
 
-            return JsonSerializer.Deserialize<MenuCustomization>(File.ReadAllText(_path)) ?? MenuCustomization.Empty;
+            return JsonSerializer.Deserialize<MenuCustomization>(File.ReadAllText(_path)) ?? new MenuCustomization();
         }
         catch (Exception exception)
         {
             try { File.Delete(_path + ".tmp"); } catch { } // п. №15 аудита
             _logger.Warn("MENU | load failed | " + exception.Message);
-            return MenuCustomization.Empty;
+            return new MenuCustomization();
         }
     }
 

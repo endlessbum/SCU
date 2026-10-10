@@ -1,9 +1,14 @@
 ﻿<Application x:Class="SCU.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
              ShutdownMode="OnMainWindowClose">
     <Application.Resources>
         <ResourceDictionary>
+            <!-- Тумблер «Анимации интерфейса»: XAML-триггерные анимации (стиль
+                 NavListItem) читают этот ресурс; ThemeManager.SetAnimations
+                 подменяет значение при переключении. -->
+            <sys:Boolean x:Key="UiAnimationsOn">True</sys:Boolean>
             <ResourceDictionary.MergedDictionaries>
                 <!-- Стартовый словарь; ThemeManager подменяет его на Colors.Dark/Light по настройке -->
                 <ResourceDictionary Source="Themes/Colors.Light.xaml" />

@@ -147,6 +147,31 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Отключение диска: тумблер вкл = DISKIDLE 0 (диск не выключается
+                     в простое), выкл = стандартные 20 минут (powercfg SCHEME_CURRENT). -->
+                <Border Style="{StaticResource SectionCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <TextBlock Style="{StaticResource BodyStrongText}"
+                                       Text="{DynamicResource S_PowerDiskIdleTitle}" />
+                            <TextBlock Style="{StaticResource RowActionText}"
+                                       Text="{DynamicResource S_PowerDiskIdleDesc}" />
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1"
+                                      VerticalAlignment="Center"
+                                      Style="{StaticResource SystemToggleSwitch}"
+                                      AutomationProperties.Name="{DynamicResource S_PowerDiskIdleTitle}"
+                                      IsChecked="{Binding DiskIdleDisabled, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsInteractive}"
+                                      Command="{Binding ToggleDiskIdleCommand}"
+                                      ToolTip="{DynamicResource S_PowerDiskIdleTip}" />
+                    </Grid>
+                </Border>
+
                 <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
                         <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_PowerMemTitle}" />

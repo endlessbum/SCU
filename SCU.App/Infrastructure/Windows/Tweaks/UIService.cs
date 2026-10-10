@@ -7,13 +7,15 @@ namespace SCU.Infrastructure.Windows.Tweaks;
 // Один переключатель раздела UI: тумблер «вкл/выкл».
 // OnTweaks/OffTweaks — значения реестра для обоих состояний; для особых случаев
 // (удаление policy-значений, ключ CLSID классического меню) задаются ReadState/ApplyState.
+// ReadState: null — состояние не прочитано (сбой чтения реестра): тумблер
+// показывает «неизвестно», а не выдаёт сбой за конкретное вкл/выкл.
 public sealed record UiSwitchOption(
     string Id,
     string Title,
     string Description,
     IReadOnlyList<RegistryTweak> OnTweaks,
     IReadOnlyList<RegistryTweak> OffTweaks,
-    Func<bool>? ReadState = null,
+    Func<bool?>? ReadState = null,
     Func<bool, Result>? ApplyState = null);
 
 // Раздел 10 «Интерфейс и проводник» — аналог :UIMenu из Utilities.bat.
@@ -37,6 +39,8 @@ public sealed class UIService
     private const string PoliciesExplorer = @"SOFTWARE\Policies\Microsoft\Windows\Explorer";
     private const string PolicyManagerStart = @"SOFTWARE\Microsoft\PolicyManager\current\device\Start";
     private const string PolicyManagerEducation = @"SOFTWARE\Microsoft\PolicyManager\current\device\Education";
+    // Ключ подмены системных значков: значение «29» подменяет иконку ярлыка.
+    private const string ShellIcons = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons";
 
     private const string PinValue = "System.IsPinnedToNameSpaceTree";
 
@@ -70,7 +74,7 @@ public sealed class UIService
                 "Иначе открывается «Главная» (быстрый доступ). Обычно удобно включать, если вы чаще работаете с дисками и папками, а не с недавними файлами.",
                 [T(RegistryHive.CurrentUser, Adv, "LaunchTo", 1)],
                 [T(RegistryHive.CurrentUser, Adv, "LaunchTo", 2)],
-                () => ReadDword(RegistryHive.CurrentUser, Adv, "LaunchTo", 2) == 1),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, Adv, "LaunchTo", 2), 1)),
 
             new UiSwitchOption(
                 "home-button",
@@ -78,7 +82,7 @@ public sealed class UIService
                 "Показывает или скрывает «Главную» в дереве проводника. Обычно оставляют включённой; отключайте, если хотите более компактную навигацию.",
                 [Pin(ClsidHome, 1)],
                 [Pin(ClsidHome, 0)],
-                () => ReadDword(RegistryHive.CurrentUser, ClsidHome, PinValue, 0) == 1),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, ClsidHome, PinValue, 0), 1)),
 
             new UiSwitchOption(
                 "gallery-button",
@@ -86,7 +90,7 @@ public sealed class UIService
                 "Коллекция фото в дереве проводника. Обычно оставляют включённой только тем, кто пользуется Галереей; иначе можно отключить.",
                 [Pin(ClsidGallery, 1)],
                 [Pin(ClsidGallery, 0)],
-                () => ReadDword(RegistryHive.CurrentUser, ClsidGallery, PinValue, 0) == 1),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, ClsidGallery, PinValue, 0), 1)),
 
             new UiSwitchOption(
                 "network-button",
@@ -94,7 +98,7 @@ public sealed class UIService
                 "Соседние компьютеры и сетевые устройства. Включайте, если регулярно используете сетевые ресурсы; иначе можно скрыть пункт.",
                 [Pin(ClsidNetwork, 1)],
                 [Pin(ClsidNetwork, 0)],
-                () => ReadDword(RegistryHive.CurrentUser, ClsidNetwork, PinValue, 0) == 1),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, ClsidNetwork, PinValue, 0), 1)),
 
             new UiSwitchOption(
                 "recycle-nav",
@@ -102,7 +106,7 @@ public sealed class UIService
                 "Показывает Корзину в левой панели Проводника. Обычно оставляют включённой для быстрого доступа.",
                 [Pin(ClsidRecycle, 1)],
                 [Pin(ClsidRecycle, 0)],
-                () => ReadDword(RegistryHive.CurrentUser, ClsidRecycle, PinValue, 0) == 1),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, ClsidRecycle, PinValue, 0), 1)),
 
             new UiSwitchOption(
                 "recycle-desktop",
@@ -110,7 +114,7 @@ public sealed class UIService
                 "Показывает Корзину на рабочем столе. Обычно оставляют включённой; отключайте только для минималистичного рабочего стола.",
                 [T(RegistryHive.CurrentUser, DeskIcons, "{645FF040-5081-101B-9F08-00AA002F954E}", 0)],
                 [T(RegistryHive.CurrentUser, DeskIcons, "{645FF040-5081-101B-9F08-00AA002F954E}", 1)],
-                () => ReadDword(RegistryHive.CurrentUser, DeskIcons, "{645FF040-5081-101B-9F08-00AA002F954E}", 0) == 0),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, DeskIcons, "{645FF040-5081-101B-9F08-00AA002F954E}", 0), 0)),
 
             new UiSwitchOption(
                 "compact-view",
@@ -135,7 +139,7 @@ public sealed class UIService
                     T(RegistryHive.CurrentUser, Exp, "ShowCloudFilesInQuickAccess", 0),
                     T(RegistryHive.CurrentUser, Adv, "Start_TrackDocs", 0)
                 ],
-                () => ReadDword(RegistryHive.CurrentUser, Exp, "ShowRecent", 1) == 1),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, Exp, "ShowRecent", 1), 1)),
 
             new UiSwitchOption(
                 "classic-context-menu",
@@ -152,7 +156,16 @@ public sealed class UIService
                 "Показывать расширения известных типов файлов. Обычно рекомендуют оставить включённым, чтобы сразу видеть настоящий тип файла.",
                 [T(RegistryHive.CurrentUser, Adv, "HideFileExt", 0)],
                 [T(RegistryHive.CurrentUser, Adv, "HideFileExt", 1)],
-                () => ReadDword(RegistryHive.CurrentUser, Adv, "HideFileExt", 1) == 0),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, Adv, "HideFileExt", 1), 0)),
+
+            new UiSwitchOption(
+                "shortcut-arrow",
+                "Показ стрелки у ярлыка",
+                "Стрелка в углу значков ярлыков. Положение «вкл.» — стандартное поведение Windows; «выкл.» убирает стрелку через системный ключ подмены значков (Shell Icons). Эффект виден после перезапуска Проводника.",
+                [],
+                [],
+                ShortcutArrowShown,
+                ApplyShortcutArrow),
 
             new UiSwitchOption(
                 "show-hidden-files",
@@ -166,7 +179,7 @@ public sealed class UIService
                     T(RegistryHive.CurrentUser, Adv, "Hidden", 2),
                     T(RegistryHive.CurrentUser, Adv, "ShowSuperHidden", 0)
                 ],
-                () => ReadDword(RegistryHive.CurrentUser, Adv, "Hidden", 2) == 1),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, Adv, "Hidden", 2), 1)),
 
             new UiSwitchOption(
                 "full-path",
@@ -188,7 +201,7 @@ public sealed class UIService
                 "Значок OneDrive в дереве Проводника. Включайте при использовании OneDrive; иначе можно скрыть лишний пункт.",
                 [Pin(ClsidOneDrive, 1)],
                 [Pin(ClsidOneDrive, 0)],
-                () => ReadDword(RegistryHive.CurrentUser, ClsidOneDrive, PinValue, 0) == 1)
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, ClsidOneDrive, PinValue, 0), 1))
         ];
     }
 
@@ -212,7 +225,7 @@ public sealed class UIService
                     T(RegistryHive.CurrentUser, Adv, "TaskbarAnimations", 0),
                     T(RegistryHive.CurrentUser, VisualEffects, "VisualFXSetting", 3)
                 ],
-                () => ReadString(RegistryHive.CurrentUser, Desktop, "MinAnimate", "1") == "1"),
+                () => EqualsText(ReadString(RegistryHive.CurrentUser, Desktop, "MinAnimate", "1"), "1")),
 
             new UiSwitchOption(
                 "transparency",
@@ -220,7 +233,7 @@ public sealed class UIService
                 "Эффекты прозрачности интерфейса Windows. Обычно оставляют включёнными; отключение может уменьшить визуальные эффекты и немного снизить нагрузку на слабой графике.",
                 [T(RegistryHive.CurrentUser, Personalize, "EnableTransparency", 1)],
                 [T(RegistryHive.CurrentUser, Personalize, "EnableTransparency", 0)],
-                () => ReadDword(RegistryHive.CurrentUser, Personalize, "EnableTransparency", 1) == 1),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, Personalize, "EnableTransparency", 1), 1)),
 
             new UiSwitchOption(
                 "thumbnails",
@@ -234,7 +247,7 @@ public sealed class UIService
                     T(RegistryHive.CurrentUser, Adv, "IconsOnly", 1),
                     T(RegistryHive.CurrentUser, @"Software\Microsoft\Windows\DWM", "EnableAeroPeek", 0)
                 ],
-                () => ReadDword(RegistryHive.CurrentUser, Adv, "IconsOnly", 0) == 0),
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, Adv, "IconsOnly", 0), 0)),
 
             new UiSwitchOption(
                 "shadows",
@@ -248,7 +261,7 @@ public sealed class UIService
                     T(RegistryHive.CurrentUser, Adv, "ListviewShadow", 0),
                     T(RegistryHive.CurrentUser, Adv, "ListviewAlphaSelect", 0)
                 ],
-                () => ReadDword(RegistryHive.CurrentUser, Adv, "ListviewShadow", 1) == 1)
+                () => EqualsOn(ReadDword(RegistryHive.CurrentUser, Adv, "ListviewShadow", 1), 1))
         ];
     }
 
@@ -264,7 +277,7 @@ public sealed class UIService
                 T(RegistryHive.LocalMachine, PolicyManagerStart, "HideRecommendedSection", 1),
                 T(RegistryHive.LocalMachine, PolicyManagerEducation, "IsEducationEnvironment", 1)
             ],
-            () => ReadDword(RegistryHive.LocalMachine, PoliciesExplorer, "HideRecommendedSection", 0) != 1,
+            () => NotEqualsOn(ReadDword(RegistryHive.LocalMachine, PoliciesExplorer, "HideRecommendedSection", 0), 1),
             ApplyRecommended);
     }
 
@@ -306,13 +319,15 @@ public sealed class UIService
         }
 
         var actual = IsSwitchOn(option);
-        return actual == on
+        return actual is { } confirmed && confirmed == on
             ? Result.Success(option.Title + (on ? ": включено. " : ": выключено. ") + result.Message)
-            : Result.Failure($"{option.Title}: состояние не подтвердилось чтением (фактически {(actual ? "вкл" : "выкл")}).");
+            : Result.Failure(actual is null
+                ? $"{option.Title}: состояние не подтвердилось чтением (реестр нечитаем)."
+                : $"{option.Title}: состояние не подтвердилось чтением (фактически {(actual.Value ? "вкл" : "выкл")}).");
     }
 
-    public bool IsSwitchOn(UiSwitchOption option) =>
-        option.ReadState?.Invoke() ?? _registry.IsApplied(option.OnTweaks);
+    public bool? IsSwitchOn(UiSwitchOption option) =>
+        option.ReadState is not null ? option.ReadState() : _registry.IsApplied(option.OnTweaks);
 
     // Классическое меню: on — ключ CLSID с пустым InprocServer32, off — ключ удаляется целиком (как в BAT).
     private Result ApplyClassicContextMenu(bool enableClassic)
@@ -340,6 +355,108 @@ public sealed class UIService
             ? "Классическое контекстное меню включено. Перезапустите проводник."
             : "Современное контекстное меню восстановлено. Перезапустите проводник.");
     }
+
+    // Стрелки ярлыков: «выкл.» — классический приём из скриптов твиков, значение
+    // «29» в ключе Shell Icons (HKLM) указывает на пустую прозрачную иконку,
+    // вшитую байтами (пишется в %ProgramData%\SCU\blank.ico); «вкл.» — значение
+    // удаляется, иконка подчищается. Прочие значения Shell Icons не трогаются.
+    // Эффект применения виден после перезапуска Проводника (кнопка в шапке раздела).
+    private Result ApplyShortcutArrow(bool show)
+    {
+        try
+        {
+            if (show)
+            {
+                DeleteValue(RegistryHive.LocalMachine, ShellIcons, "29");
+                try { File.Delete(BlankIconPath()); } catch { /* файла могло не быть */ }
+                _logger.Info("UI | shortcut arrow | shown");
+                return Result.Success("Стрелки ярлыков показаны. Перезапустите Проводник.");
+            }
+
+            var iconPath = WriteBlankIcon();
+            using (var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Default))
+            using (var key = baseKey.CreateSubKey(ShellIcons, writable: true))
+            {
+                key?.SetValue("29", iconPath + ",0", RegistryValueKind.String);
+            }
+
+            _logger.Info("UI | shortcut arrow | hidden | " + iconPath);
+            return Result.Success("Стрелки ярлыков скрыты. Изменение видно после перезапуска Проводника.");
+        }
+        catch (Exception exception)
+        {
+            return Result.Failure("Стрелки ярлыков: " + exception.Message);
+        }
+    }
+
+    // Текущее состояние: стрелка показана, если подмены значения «29» нет.
+    private static bool? ShortcutArrowShown()
+    {
+        try
+        {
+            using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Default);
+            using var key = baseKey.OpenSubKey(ShellIcons);
+            return key is null || key.GetValue("29") is null;
+        }
+        catch
+        {
+            // Ключ не читается (не admin) — «неизвестно», а не выдуманный дефолт.
+            return null;
+        }
+    }
+
+    private static string BlankIconPath() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "SCU", "blank.ico");
+
+    // Пишет вшитую пустую иконку 1×1 (32 bpp, полностью прозрачная) и
+    // возвращает её путь. Повторная запись — только если файла нет или
+    // содержимое не совпадает.
+    private static string WriteBlankIcon()
+    {
+        var path = BlankIconPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        if (!File.Exists(path) || new FileInfo(path).Length != BlankIcon.Length)
+        {
+            File.WriteAllBytes(path, BlankIcon);
+        }
+
+        return path;
+    }
+
+    // Валидный ICO: ICONDIR (1 образ) + ICONDIRENTRY (1×1, 32 bpp, 48 байт)
+    // + BITMAPINFOHEADER + один прозрачный пиксель BGRA 00,00,00,00 + AND-маска.
+    private static readonly byte[] BlankIcon =
+    [
+        0x00, 0x00, // reserved
+        0x01, 0x00, // type: icon
+        0x01, 0x00, // count: 1
+        // ICONDIRENTRY
+        0x01,       // width 1
+        0x01,       // height 1
+        0x00,       // palette
+        0x00,       // reserved
+        0x01, 0x00, // planes
+        0x20, 0x00, // 32 bpp
+        0x30, 0x00, 0x00, 0x00, // 48 bytes of image data
+        0x16, 0x00, 0x00, 0x00, // offset 22
+        // BITMAPINFOHEADER
+        0x28, 0x00, 0x00, 0x00, // biSize = 40
+        0x01, 0x00, 0x00, 0x00, // width = 1
+        0x02, 0x00, 0x00, 0x00, // height = 2 (XOR + AND)
+        0x01, 0x00,             // planes
+        0x20, 0x00,             // 32 bpp
+        0x00, 0x00, 0x00, 0x00, // BI_RGB
+        0x08, 0x00, 0x00, 0x00, // biSizeImage = 8
+        0x00, 0x00, 0x00, 0x00, // biXPelsPerMeter
+        0x00, 0x00, 0x00, 0x00, // biYPelsPerMeter
+        0x00, 0x00, 0x00, 0x00, // biClrUsed
+        0x00, 0x00, 0x00, 0x00, // biClrImportant
+        // XOR: один прозрачный пиксель (BGRA, альфа 0)
+        0x00, 0x00, 0x00, 0x00,
+        // AND-маска: строка 1 px, дополненная до 32 бит
+        0x00, 0x00, 0x00, 0x00,
+    ];
 
     // «Рекомендуем»: скрытие — policy-значения с бэкапом; показ — их удаление (как в BAT).
     private Result ApplyRecommended(bool show)
@@ -441,15 +558,16 @@ public sealed class UIService
         try
         {
             var backupPath = BackupPath("taskbar-cleanup.json");
-            if (!File.Exists(backupPath))
-            {
-                var snapshot = new Dictionary<string, object>();
-                SnapshotKey(Registry.CurrentUser, taskband, snapshot);
-                SnapshotKey(Registry.CurrentUser, streamsDesktop, snapshot);
-                Directory.CreateDirectory(_backupDirectory);
-                File.WriteAllText(backupPath, System.Text.Json.JsonSerializer.Serialize(snapshot));
-                _logger.Info("UI | taskbar backup | " + snapshot.Count + " значений -> " + backupPath);
-            }
+            // Снимок перезаписывается при каждой очистке: он должен описывать
+            // состояние непосредственно ПЕРЕД этой очисткой. Условие «только если
+            // файла нет» заставляло повторный цикл «очистка → восстановление»
+            // откатываться к снимку самого первого запуска.
+            var snapshot = new Dictionary<string, object>();
+            SnapshotKey(Registry.CurrentUser, taskband, snapshot);
+            SnapshotKey(Registry.CurrentUser, streamsDesktop, snapshot);
+            Directory.CreateDirectory(_backupDirectory);
+            File.WriteAllText(backupPath, System.Text.Json.JsonSerializer.Serialize(snapshot));
+            _logger.Info("UI | taskbar backup | " + snapshot.Count + " значений -> " + backupPath);
 
         Registry.CurrentUser.DeleteSubKeyTree(taskband, throwOnMissingSubKey: false);
         Registry.CurrentUser.DeleteSubKeyTree(streamsDesktop, throwOnMissingSubKey: false);
@@ -571,6 +689,23 @@ public sealed class UIService
         if (errors.Count > 0)
         {
             message += $", ошибок: {errors.Count}";
+            // Частичное восстановление: снимок сохраняется для повторной попытки,
+            // но следующий ClearTaskbar обязан взять свежий снимок, а не этот.
+        }
+        else
+        {
+            // Снимок одноразовый: он описывал состояние ДО очистки. Оставленный
+            // файл превращал бы повторный цикл «очистка → восстановление» в
+            // откат к самому первому снимку, затирая изменения пользователя.
+            try
+            {
+                File.Delete(backupPath);
+            }
+            catch (Exception exception)
+            {
+                _logger.Warn("UI | taskbar backup delete failed | " + exception.Message);
+                message += "; бэкап не удалён (" + exception.Message + ")";
+            }
         }
 
         return Result.Success(message + ").");
@@ -625,7 +760,7 @@ public sealed class UIService
     private static RegistryTweak SZ(RegistryHive hive, string subKey, string name, string value) =>
         new(hive, subKey, name, RegistryValueKind.String, value, null);
 
-    private static int ReadDword(RegistryHive hive, string subKey, string name, int fallback)
+    private static int? ReadDword(RegistryHive hive, string subKey, string name, int fallback)
     {
         try
         {
@@ -636,11 +771,20 @@ public sealed class UIService
         }
         catch
         {
-            return fallback;
+            // Сбой чтения (отказ в доступе, неожиданный тип значения) — null:
+            // тумблер покажет «неизвестно», а не выдаст сбой за состояние.
+            return null;
         }
     }
 
-    private static string ReadString(RegistryHive hive, string subKey, string name, string fallback)
+    // null-безопасные композиции чтения (контракт ReadState: null = «неизвестно»).
+    private static bool? EqualsOn(int? actual, int onValue) => actual is { } value ? value == onValue : null;
+
+    private static bool? NotEqualsOn(int? actual, int offValue) => actual is { } value ? value != offValue : null;
+
+    private static bool? EqualsText(string? actual, string onValue) => actual is { } value ? value == onValue : null;
+
+    private static string? ReadString(RegistryHive hive, string subKey, string name, string fallback)
     {
         try
         {
@@ -650,11 +794,11 @@ public sealed class UIService
         }
         catch
         {
-            return fallback;
+            return null;
         }
     }
 
-    private static bool KeyExists(RegistryHive hive, string subKey)
+    private static bool? KeyExists(RegistryHive hive, string subKey)
     {
         try
         {
@@ -664,7 +808,7 @@ public sealed class UIService
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 

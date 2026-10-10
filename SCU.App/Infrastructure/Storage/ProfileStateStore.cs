@@ -25,7 +25,8 @@ public sealed class ProfileStateStore
     public static string DefaultPath() => Path.Combine(DashboardStatePaths.Directory, "profile.json");
 
     // Сохраняет состояние (активный профиль + словарь custom-профиля).
-    public Task SaveAsync(CustomProfileState state, CancellationToken ct = default) =>
+    // false — запись не попала на диск (аудит persistence).
+    public Task<bool> SaveAsync(CustomProfileState state, CancellationToken ct = default) =>
         _file.AppendAsync(state, ct);
 
     // Повреждённый/отсутствующий файл — не ошибка: возвращается состояние по умолчанию

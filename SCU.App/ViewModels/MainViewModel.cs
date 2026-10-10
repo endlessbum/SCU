@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.AppCore.AI;
@@ -42,6 +43,9 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             new SectionItem(20, "S_Section20_Title", "S_Section20_Desc", "\uE9D2", "S_Group_Overview"),
             new SectionItem(1, "S_Section01_Title", "S_Section01_Desc", "\uE946", "S_Group_Overview"),
             new SectionItem(3, "S_Section03_Title", "S_Section03_Desc", "\uE74D", "S_Group_Cleanup"),
+            // Раздел 26 «Кэш приложений»: замер и очистка временных данных
+            // установленных приложений (26 — следующий свободный номер).
+            new SectionItem(26, "S_Section26_Title", "S_Section26_Desc", "\uE90F", "S_Group_Cleanup"),
             new SectionItem(4, "S_Section04_Title", "S_Section04_Desc", "\uE711", "S_Group_Cleanup"),
             new SectionItem(12, "S_Section12_Title", "S_Section12_Desc", "\uE721", "S_Group_Cleanup"),
             new SectionItem(2, "S_Section02_Title", "S_Section02_Desc", "\uE719", "S_Group_Cleanup"),
@@ -92,15 +96,18 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         ThemeManager.IconAccent = iconAccentMode;
         // Смена темы меняет оттенок пресетов — обновляем квадраты выбора цвета.
         ThemeManager.ThemeApplied += _ => RefreshAccentChoices();
+        // Глобальные горячие клавиши читаются ДО SetTransparency (аудит HIGH):
+        // SetTransparency вызывает SaveSettings, сериализующий статический
+        // ThemeManager.GlobalHotkeysEnabled — без ранней загрузки дефолтное true
+        // затирало сохранённое false ещё до чтения настройки.
+        globalHotkeysEnabled = ThemeManager.LoadGlobalHotkeys();
+        ThemeManager.GlobalHotkeysEnabled = globalHotkeysEnabled;
         transparencyMode = ThemeManager.LoadTransparency();
         ThemeManager.SetTransparency(transparencyMode);
 
         // Тумблер «UAC» в настройках: глобальная политика подтверждений читается
         // до создания разделов — первые операции уже подчиняются ей.
         SecurityPrompts.Enabled = ThemeManager.LoadUacConfirmations();
-        // Глобальные горячие клавиши (Ctrl+Alt+S): состояние для карточки настроек.
-        globalHotkeysEnabled = ThemeManager.LoadGlobalHotkeys();
-        ThemeManager.GlobalHotkeysEnabled = globalHotkeysEnabled;
         L.LanguageChanged += RefreshHotkeyTexts;
         // Кастомизация меню: загрузка до создания окна (Sections уже построены,
         // применение — после создания всех VM в ApplyMenu).
@@ -123,6 +130,8 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             new ServiceManager(),
             dialogs,
             history);
+        // Раздел 26 «Кэш приложений»: скан профиля при старте, очистка по строкам.
+        AppCache = new AppCacheViewModel(_logger, new AppCacheService(_logger), dialogs, history);
         Startup = new StartupViewModel(_logger, scuRunner, dialogs, history);
         Tasks = new TasksViewModel(_logger, scuRunner, new TaskManager(scuRunner, _logger), dialogs, history);
         Services = new ServicesViewModel(_logger, scuRunner, new ServiceManager(), history, dialogs);
@@ -148,6 +157,8 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
 
         // Раздел 22 «Браузер»: полностью ленивый — ни WebView2, ни окружение не
         // создаются ни на старте SCU, ни при открытии раздела; только «Запустить».
+        // Scanner передаётся для авто-скана загрузок: тот же общий gate, что у
+        // ручного скана — ScannerCore не должен запускаться параллельно сам с собой.
         Browser = new BrowserViewModel(
             _logger,
             dialogs,
@@ -155,7 +166,8 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             new BrowserSettingsService(_logger),
             new BrowserHistoryService(_logger),
             new BrowserBookmarkService(_logger),
-            new BrowserDownloadsService(_logger));
+            new BrowserDownloadsService(_logger),
+            Scanner);
 
         // Раздел 0 «Состояние ПК»: большой выключатель пакетного применения.
         // Ссылки на VM разделов передаются после их создания — реестр утилит
@@ -166,6 +178,7 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             history,
             new BatchStateStore(_logger),
             Cleanup,
+            AppCache,
             Privacy,
             Services,
             Tasks,
@@ -315,6 +328,9 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
     partial void OnGlobalHotkeysEnabledChanged(bool value)
     {
         ThemeManager.GlobalHotkeysEnabled = value;
+        // Persist при изменении пользователем (аудит HIGH): раньше preference
+        // записывался только попутно с другими настройками.
+        ThemeManager.SaveSettings(ThemeMode, AccentMode, Language, ShowLog, UacConfirmations);
     }
 
     private void RefreshStatusTexts()
@@ -340,6 +356,17 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         _sectionInits ??= BuildSectionInits();
         foreach (var pair in _sectionInits)
         {
+            // Драйверы (25) и кэш приложений (26) старту не нужны (аудит
+            // производительности): тяжёлый WMI-запрос Win32_PnPSignedDriver и
+            // обход каталогов установленных программ держали заставку по 2-10+
+            // секунд. Инициализируются лениво при первом открытии вкладки
+            // (EnsureSectionInitialized), объёмы «Кэша приложений» — при каждом
+            // открытии (см. OnCurrentSectionChanged).
+            if (pair.Key is 25 or 26)
+            {
+                continue;
+            }
+
             steps.Add(("section-" + pair.Key, pair.Key, pair.Value));
         }
 
@@ -348,6 +375,15 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         var tasks = new List<Task<bool>>(total);
         foreach (var step in steps)
         {
+            // In-flight помечается сразу при постановке задачи: ленивый вызов
+            // EnsureSectionInitialized во время стартовой инициализации (раннее
+            // открытие вкладки, закреплённая карточка) иначе начинал ВТОРУЮ
+            // параллельную инициализацию раздела — двойные WMI/refresh.
+            if (step.Number is { } inFlightNumber)
+            {
+                _initializedSections.Add(inFlightNumber);
+            }
+
             tasks.Add(RunSectionInitAsync(step.Name, step.Run));
 
             // Автозагрузка (7): автозапуск бэнчмарка дожидается её, иначе
@@ -362,13 +398,19 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         {
             var ok = await tasks[i].ConfigureAwait(true);
 
-            // Успех — раздел помечается загруженным: открытие вкладки не
-            // перечитывает данные. Сбой — отметка не ставится, ленивый init
+            // Успех — отметка in-flight остаётся как «загружен»: открытие вкладки
+            // не перечитывает данные. Сбой — отметка снимается, ленивый init
             // при первом открытии повторит попытку.
-            if (ok && steps[i].Number is { } number)
+            if (steps[i].Number is { } number)
             {
-                _initializedSections.Add(number);
-                Dashboard.RecomputePending();
+                if (ok)
+                {
+                    Dashboard.RecomputePending();
+                }
+                else
+                {
+                    _initializedSections.Remove(number);
+                }
             }
 
             completed++;
@@ -457,8 +499,12 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             await ExecuteRefreshAsync(Tasks.RefreshCommand).ConfigureAwait(true);
         },
         [16] = () => ExecuteRefreshAsync(Update.RefreshCommand),
+        // 25 (Драйверы) и 26 (Кэш приложений): инициализация ленивая — при первом
+        // открытии вкладки (аудит старта: тяжёлый WMI и обход каталогов не держат
+        // заставку). Объёмы кэша при каждом открытии — OnCurrentSectionChanged.
         [25] = () => ExecuteRefreshAsync(Drivers.RefreshCommand),
         [19] = () => ExecuteRefreshAsync(Apps.RefreshCommand),
+        [26] = () => ExecuteRefreshAsync(AppCache.RefreshCommand),
     };
 
     // Хвост ленивой инициализации. Успех — пересчёт «К применению» на «Главной»:
@@ -516,6 +562,8 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
     public ComponentsViewModel Components { get; }
 
     public CleanupViewModel Cleanup { get; }
+
+    public AppCacheViewModel AppCache { get; }
 
     public StartupViewModel Startup { get; }
 
@@ -696,11 +744,28 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         [1] = Info, [2] = Components, [4] = Bloat, [5] = Privacy, [6] = Services,
         [7] = Startup, [8] = Power, [9] = Network, [10] = Ui, [11] = Input,
         [12] = Maintenance, [13] = Security, [15] = Tasks, [16] = Update, [19] = Apps,
-        [23] = Troubleshooting, [25] = Drivers,
+        [23] = Troubleshooting, [25] = Drivers, [26] = AppCache,
     };
 
-    private static bool GetIsBusy(ObservableObject viewModel) =>
-        viewModel.GetType().GetProperty("IsBusy")?.GetValue(viewModel) is true;
+    // Делегаты чтения IsBusy кэшируются один раз на тип (аудит производительности):
+    // раньше рефлексия GetProperty("IsBusy") выполнялась на каждый PropertyChanged
+    // всех отслеживаемых VM.
+    private static readonly Dictionary<Type, Func<ObservableObject, bool>> IsBusyAccessors = new();
+
+    private static bool GetIsBusy(ObservableObject viewModel)
+    {
+        var type = viewModel.GetType();
+        if (!IsBusyAccessors.TryGetValue(type, out var accessor))
+        {
+            var property = type.GetProperty("IsBusy");
+            accessor = property is null
+                ? static _ => false
+                : viewModel => property.GetValue(viewModel) is true;
+            IsBusyAccessors[type] = accessor;
+        }
+
+        return accessor(viewModel);
+    }
 
     private void UpdateCurrentSectionBusy()
     {
@@ -752,6 +817,33 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             _logger.Warn("SETTINGS | UAC confirmations disabled — risky actions run without confirmation");
         }
     }
+
+    // Тумблер «Анимации интерфейса» в настройках: при выключении все переходы
+    // (разделы, вкладки, окна) становятся мгновенными. ThemeManager сохраняет
+    // выбор и обновляет ресурс UiAnimationsOn для XAML-триггеров.
+    [ObservableProperty]
+    private bool animationsEnabled = ThemeManager.LoadAnimations();
+
+    partial void OnAnimationsEnabledChanged(bool value)
+    {
+        ThemeManager.SetAnimations(value);
+        _logger.Info("SETTINGS | animations " + (value ? "enabled" : "disabled"));
+    }
+
+    // Дополнительная папка очистки загрузок (карточка «Путь очистки загрузок»):
+    // пустая строка — не задана. Запись — через ThemeManager (settings.json).
+    [ObservableProperty]
+    private string downloadsCleanupPath = ThemeManager.LoadDownloadsCleanupPath();
+
+    public void SetDownloadsCleanupPath(string path)
+    {
+        ThemeManager.SetDownloadsCleanupPath(path);
+        DownloadsCleanupPath = ThemeManager.DownloadsCleanupPath;
+        _logger.Info("SETTINGS | downloads cleanup path | " + (string.IsNullOrEmpty(DownloadsCleanupPath) ? "(cleared)" : DownloadsCleanupPath));
+    }
+
+    [RelayCommand]
+    private void ClearDownloadsCleanupPath() => SetDownloadsCleanupPath(string.Empty);
 
     public bool IsDashboardSection => CurrentSection?.Number == 0;
 
@@ -955,6 +1047,14 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         {
             Scanner.RefreshQuarantineList();
         }
+
+        // Раздел «Кэш приложений»: объёмы пересчитываются при каждом открытии —
+        // как заявлено в самом разделе (аудит: раньше замер шёл только при старте,
+        // кэшированные объёмы при возврате на вкладку вводили в заблуждение).
+        if (value?.Number == 26)
+        {
+            TaskRunner.RunAndForget(AppCache.ActivateAsync(), _logger, "appcache activate");
+        }
     }
 
     [RelayCommand]
@@ -976,6 +1076,14 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
 
     private const int MaxLogLines = 5000;
 
+    // Батч-флаш журнала (аудит производительности): раньше каждая строка DISM/SFC
+    // давала BeginInvoke + ObservableCollection.RemoveAt(0) (O(n) сдвиг) — шторм
+    // делегатов и GC-давление на UI-потоке. Строки копятся в буфере и вносятся
+    // пачкой таймером.
+    private readonly object _logBufferLock = new();
+    private readonly List<string> _logBuffer = [];
+    private DispatcherTimer? _logFlushTimer;
+
     private void OnLogLineWritten(string line)
     {
         // Браузер работает в отдельном окне: его рабочие события (INFO) не
@@ -993,25 +1101,47 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             return;
         }
 
-        void Append()
+        // Буфер и создание таймера — под одним локом: OnLogLineWritten приходит
+        // с любых фоновых потоков, и без синхронизации два потока могли создать
+        // по DispatcherTimer (обработчики дублировались бы навсегда).
+        lock (_logBufferLock)
         {
-            LogLines.Add(line);
-            // Длинные операции (DISM/SFC) дают тысячи строк — ограничиваем память журнала.
-            while (LogLines.Count > MaxLogLines)
+            _logBuffer.Add(line);
+
+            if (_logFlushTimer is null)
             {
-                LogLines.RemoveAt(0);
+                _logFlushTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background,
+                    (_, _) => FlushLogBuffer(), dispatcher);
+                _logFlushTimer.Start();
             }
         }
+    }
 
-        if (dispatcher.CheckAccess())
+    private void FlushLogBuffer()
+    {
+        string[] batch;
+        lock (_logBufferLock)
         {
-            Append();
-            return;
+            if (_logBuffer.Count == 0)
+            {
+                return;
+            }
+
+            batch = [.. _logBuffer];
+            _logBuffer.Clear();
         }
 
-        // BeginInvoke: Invoke блокировал бы поток чтения stdout процесса на каждый вывод
-        // и фризил UI на потоке строк DISM/SFC.
-        dispatcher.BeginInvoke(Append);
+        foreach (var line in batch)
+        {
+            LogLines.Add(line);
+        }
+
+        // Длинные операции (DISM/SFC) дают тысячи строк — ограничиваем память журнала.
+        // Сдвиг одной пачкой: RemoveAt(0) — O(n), раньше он был на каждую строку.
+        while (LogLines.Count > MaxLogLines)
+        {
+            LogLines.RemoveAt(0);
+        }
     }
 
     public void LogInitializationError(Exception exception)
@@ -1022,9 +1152,20 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
     public void Dispose()
     {
         _logger.LineWritten -= OnLogLineWritten;
+        // Таймер журнала останавливается: без этого после закрытия окна
+        // FlushLogBuffer продолжал бы писать в LogLines по тикам.
+        Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            if (_logFlushTimer is { } timer)
+            {
+                timer.Stop();
+                _logFlushTimer = null;
+            }
+        });
         Info.Dispose();
         Components.Dispose();
         Cleanup.Dispose();
+        AppCache.Dispose();
         Privacy.Dispose();
         Power.Dispose();
         Network.Dispose();

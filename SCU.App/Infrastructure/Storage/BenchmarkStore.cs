@@ -25,12 +25,13 @@ public sealed class BenchmarkStore
 
     public static string DefaultPath() => Path.Combine(DashboardStatePaths.Directory, "benchmark.json");
 
-    // Добавляет запуск (старые вытесняются ёмкостью).
-    public Task AppendAsync(BenchmarkRun run, CancellationToken ct = default) =>
+    // Добавляет запуск (старые вытесняются ёмкостью). bool — результат записи;
+    // журнал бэнчмарка best-effort, вызывающий код может проигнорировать сбой.
+    public Task<bool> AppendAsync(BenchmarkRun run, CancellationToken ct = default) =>
         _file.AppendAsync(run, ct);
 
     public async Task<IReadOnlyList<BenchmarkRun>> LoadAllAsync(CancellationToken ct = default) =>
         await _file.LoadAllAsync(ct).ConfigureAwait(false);
 
-    public Task ClearAsync(CancellationToken ct = default) => _file.ClearAsync(ct);
+    public Task<bool> ClearAsync(CancellationToken ct = default) => _file.ClearAsync(ct);
 }

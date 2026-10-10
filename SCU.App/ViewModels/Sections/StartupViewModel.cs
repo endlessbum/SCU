@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -140,6 +140,9 @@ public partial class StartupViewModel : ObservableObject, IDisposable, ISectionO
 
             if (result.IsSuccess)
             {
+                // Отключённый элемент исчезает из списка сразу (не дожидаясь
+                // перечитывания): активная автозагрузка = содержимое списка.
+                Rows.Remove(row);
                 StatusText = L.T("Элемент отключён. {0}", result.Message);
                 _logger.Info("STARTUP | disable ok");
             }
@@ -284,36 +287,8 @@ public partial class StartupViewModel : ObservableObject, IDisposable, ISectionO
         return true;
     }
 
-    private async Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action)
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        _operationCts?.Dispose();
-        _operationCts = new CancellationTokenSource();
-        IsBusy = true;
-        try
-        {
-            await action(_operationCts.Token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = L.T("Операция отменена.");
-            _logger.Warn("CANCEL | " + title);
-        }
-        catch (Exception exception)
-        {
-            StatusText = L.T("Ошибка: {0}", exception.Message);
-            _logger.Error("STARTUP | " + title + " | " + exception);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
+    private Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action) =>
+        SectionOperations.RunExclusiveAsync(title, "STARTUP", () => IsBusy, value => IsBusy = value, () => _operationCts, value => _operationCts = value, value => StatusText = value, _logger, action);
     internal static IReadOnlyList<StartupItem> ParseList(string path)
     {
         if (!File.Exists(path))

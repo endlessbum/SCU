@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using SCU.Common;
 
 namespace SCU.Infrastructure.Windows.Maintenance;
@@ -160,6 +161,79 @@ public sealed class FileCleanupService
         }
 
         return targets;
+    }
+
+    // «Загрузки»: .NET не имеет SpecialFolder для этой папки — путь берётся
+    // из shell API (пользователь мог переместить её на другой диск), fallback —
+    // профиль\Downloads.
+    private static readonly Guid DownloadsFolderId = new("374DE290-123F-4565-9164-39C4925E467B");
+
+    [DllImport("shell32.dll")]
+    private static extern int SHGetKnownFolderPath(in Guid folderId, uint flags, IntPtr token, out IntPtr path);
+
+    internal static string GetDownloadsDirectory()
+    {
+        try
+        {
+            if (SHGetKnownFolderPath(DownloadsFolderId, 0, IntPtr.Zero, out var path) == 0
+                && path != IntPtr.Zero)
+            {
+                var downloads = Marshal.PtrToStringUni(path);
+                Marshal.FreeCoTaskMem(path);
+                if (!string.IsNullOrWhiteSpace(downloads))
+                {
+                    return downloads;
+                }
+            }
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
+        {
+            // Нестандартное окружение без shell32 — уходим в fallback ниже.
+        }
+
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+    }
+
+    // ВНИМАНИЕ: это пользовательские файлы, а не временные данные. Вызывается
+    // только из команды с явным подтверждением (CleanupViewModel.CleanDownloads).
+    // Очищаются стандартные «Загрузки» И дополнительная папка пользователя
+    // (карточка «Путь очистки загрузок» в «Настройках») — случай, когда загрузки
+    // ведутся на другом диске. Совпадающий/вложенный путь не добавляется:
+    // один и тот же файл не должен попадать в очистку дважды.
+    public static IReadOnlyList<CleanupTarget> GetDownloadsTargets()
+    {
+        var targets = new List<CleanupTarget>
+        {
+            new("Загрузки", GetDownloadsDirectory()),
+        };
+
+        var standardPath = GetDownloadsDirectory();
+        var custom = ThemeManager.DownloadsCleanupPath;
+        if (string.IsNullOrWhiteSpace(custom) || !Directory.Exists(custom))
+        {
+            return targets;
+        }
+
+        // Совпадающий/вложенный путь не добавляется: один и тот же каталог
+        // не должен попадать в очистку дважды.
+        if (!IsDownloadsPathDuplicate(standardPath, custom))
+        {
+            targets.Add(new CleanupTarget("Загрузки (доп. папка)", Path.GetFullPath(custom)));
+        }
+
+        return targets;
+    }
+
+    // Дополнительный путь не добавляется в очистку, только если он совпадает со
+    // стандартными «Загрузками» или вложен в них — эти файлы и так удаляются
+    // первой целью. Если же «Загрузки» вложены в пользовательскую папку, папка
+    // чистится ДОПОЛНИТЕЛЬНО: пользователь просил чистить её целиком.
+    internal static bool IsDownloadsPathDuplicate(string standardPath, string customPath)
+    {
+        var standardFull = Path.GetFullPath(standardPath).TrimEnd('\\');
+        var customFull = Path.GetFullPath(customPath).TrimEnd('\\');
+        return customFull.Equals(standardFull, StringComparison.OrdinalIgnoreCase)
+               || customFull.StartsWith(standardFull + "\\", StringComparison.OrdinalIgnoreCase);
     }
 
     public static IReadOnlyList<CleanupTarget> GetUpdateCacheTargets() =>
@@ -329,6 +403,13 @@ public sealed class FileCleanupService
                     // Занятый каталог — пропускаем, как rd /s /q в BAT.
                 }
             }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Аудит: отмена обязана выйти наружу — иначе CleanAsync сообщает
+            // обычное завершение, а под-каталоги текущей цели продолжают
+            // удаляться после нажатия «Отмена».
+            throw;
         }
         catch (Exception exception)
         {

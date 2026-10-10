@@ -23,7 +23,9 @@ public sealed class SnapshotStore
 
     public static string DefaultPath() => Path.Combine(DashboardStatePaths.Directory, "snapshots.json");
 
-    public Task SaveAsync(SystemSnapshot snapshot, CancellationToken ct = default) =>
+    // false — запись не попала на диск (аудит persistence): вызывающий код
+    // обязан сообщить пользователю, снимок потерян.
+    public Task<bool> SaveAsync(SystemSnapshot snapshot, CancellationToken ct = default) =>
         _file.AppendAsync(snapshot, ct);
 
     public Task<IReadOnlyList<SystemSnapshot>> LoadAllAsync(CancellationToken ct = default) =>

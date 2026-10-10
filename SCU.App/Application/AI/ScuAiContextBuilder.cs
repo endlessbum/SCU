@@ -34,7 +34,7 @@ public sealed class ScuAiContextBuilder : IScuAiContextBuilder
             CurrentUtilityTitle: _environment.CurrentUtilityTitle,
             ProviderId: provider.Id,
             Model: _deepSeek.Chat.ActiveModel,
-            SupportsToolCalling: DeepSeekClient.ProviderSupportsToolCalling(provider));
+            SupportsToolCalling: DeepSeekClient.SupportsToolCalling(provider, _deepSeek.Chat.ActiveModel));
     }
 
     // Версия сборки берётся из самой SCU.dll (AssemblyInformationalVersion),

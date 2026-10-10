@@ -11,7 +11,25 @@ public sealed class SCURunner
     public SCURunner(Logger logger)
     {
         _logger = logger;
-        _scriptPath = Path.Combine(AppContext.BaseDirectory, "Assets", "SCU.ps1");
+        _scriptPath = FindScript();
+    }
+
+    // Аудит portable-развёртывания (лог 2026-10-05: E:\SCU без Assets\SCU.ps1 →
+    // startup/tasks зоны сканера отваливались). Раньше путь жёстко был
+    // BaseDirectory\Assets\SCU.ps1; теперь проверяем несколько стандартных
+    // раскладок, включая «скрипт рядом с exe».
+    public static string FindScript()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var candidates = new[]
+        {
+            Path.Combine(baseDir, "Assets", "SCU.ps1"),
+            Path.Combine(baseDir, "SCU.ps1"),
+            Path.Combine(Environment.CurrentDirectory, "Assets", "SCU.ps1"),
+            Path.Combine(Environment.CurrentDirectory, "SCU.ps1"),
+        };
+
+        return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
     }
 
     public bool IsAvailable => File.Exists(_scriptPath);

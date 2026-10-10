@@ -16,12 +16,28 @@ public sealed class AppImportanceTests
     [InlineData("Microsoft Edge", "Microsoft Corporation")]
     [InlineData("Microsoft Edge WebView2 Runtime", "Microsoft Corporation")]
     [InlineData("Visual C++ Redistributable 2019", "Microsoft Corporation")]
-    [InlineData("Обновление для Windows (KB5034123)", null)]
+    // Обновления Windows — компоненты только при издателе Microsoft: записи ARP
+    // обновлений подписаны «Microsoft Corporation», поэтому L-02-фикс (защита от
+    // стороннего «Update for …») их не задевает.
+    [InlineData("Обновление для Windows (KB5034123)", "Microsoft Corporation")]
+    [InlineData("Security Update for Windows (KB5034123)", "Microsoft Corporation")]
     public void Classify_CriticalSystemComponents(string name, string? publisher)
     {
         var entry = App(name, publisher);
 
         Assert.Equal(AppImportance.Critical, InstalledAppsService.Classify(entry, systemComponent: false, noRemove: false, isPerUser: false));
+    }
+
+    [Theory]
+    // L-02: широкий шаблон обновлений не должен делать неудаляемым стороннее ПО.
+    [InlineData("Update for MyTool Pro", "MyTool Software")]
+    [InlineData("Обновление MyTool Pro", "MyTool Software")]
+    [InlineData("Security Update for MyTool Pro", null)]
+    public void Classify_ThirdPartyUpdateLike_IsUser(string name, string? publisher)
+    {
+        var entry = App(name, publisher);
+
+        Assert.Equal(AppImportance.User, InstalledAppsService.Classify(entry, systemComponent: false, noRemove: false, isPerUser: false));
     }
 
     [Theory]

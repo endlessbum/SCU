@@ -360,34 +360,25 @@ public partial class TroubleshootingViewModel : ObservableObject, IDisposable, I
 
     public void Dispose() => _operationCts?.Cancel();
 
-    private async Task RunExclusiveAsync(Func<CancellationToken, Task> action)
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        _operationCts?.Dispose();
-        _operationCts = new CancellationTokenSource();
-        IsBusy = true;
-        try
-        {
-            await action(_operationCts.Token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = L.T("Операция отменена.");
-            _logger.Warn("CANCEL | troubleshooting operation");
-        }
-        catch (Exception exception)
-        {
-            StatusText = L.T("Ошибка: {0}", exception.Message);
-            _logger.Error("TROUBLESHOOT | " + exception);
-        }
-        finally
-        {
-            IsBusy = false;
-            UpdateSummary();
-        }
-    }
+    private Task RunExclusiveAsync(Func<CancellationToken, Task> action) =>
+        SectionOperations.RunExclusiveAsync(
+            "troubleshooting operation",
+            "TROUBLESHOOT",
+            () => IsBusy,
+            value => IsBusy = value,
+            () => _operationCts,
+            value => _operationCts = value,
+            value => StatusText = value,
+            _logger,
+            async ct =>
+            {
+                try
+                {
+                    await action(ct).ConfigureAwait(true);
+                }
+                finally
+                {
+                    UpdateSummary();
+                }
+            });
 }

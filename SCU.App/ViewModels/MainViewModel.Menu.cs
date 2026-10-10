@@ -93,6 +93,11 @@ public partial class MainViewModel
         UserScriptsChanged?.Invoke();
     }
 
+    // Перечитать scripts.json после внешних изменений хранилища (редактор
+    // обновил эталонный SHA-256 — карточки в памяти обязаны увидеть новый хэш,
+    // иначе следующий запуск отменяется по целостности).
+    public void RefreshUserScripts() => ReloadUserScripts();
+
     // Строки скриптов для поиска «Главной»: подсказки находят скрипт по названию
     // и комментарию, переход открывает раздел-владелец (подсветка — SectionHighlight).
     // В реестр утилит (UtilitiesById/меню-редактор/список выключателя) скрипты
@@ -119,6 +124,24 @@ public partial class MainViewModel
         {
             var id = "us_" + Guid.NewGuid().ToString("N")[..12];
             var data = _userScriptStore.Import(sourcePath, sectionNumber, title, comment, tooltip, id);
+
+            // Импорт копирует файл, но не пишет scripts.json — без Save здесь
+            // ReloadUserScripts() ниже отбросил бы новую карточку, оставив
+            // файл-сироту в %AppData%\SCU\scripts.
+            var scripts = _userScriptStore.Load();
+            scripts.Add(data);
+            if (!_userScriptStore.Save(scripts))
+            {
+                // Метаданные не сохранились: откатываем копию, чтобы не оставлять сироту.
+                _userScriptStore.Delete(data);
+                AppNotificationCenter.Instance.Push(
+                    L.T("Скрипт не добавлен"),
+                    L.T("Не удалось сохранить список скриптов — попробуйте ещё раз."),
+                    AppNotificationKind.Danger);
+                _logger.Error("USCRIPT | add failed (metadata save) | " + data.Id);
+                return false;
+            }
+
             ReloadUserScripts();
             var sectionTitle = Sections.FirstOrDefault(section => section.Number == sectionNumber)?.Title ?? "";
             AppNotificationCenter.Instance.Push(
@@ -162,7 +185,19 @@ public partial class MainViewModel
             return false;
         }
 
-        _userScriptStore.Save(scripts.Where(script => script.Id != id).ToList());
+        // Файл уже удалён: если scripts.json не сохранится, запись останется
+        // указывать на несуществующий файл — об этом нужно сказать, а не
+        // отчитываться успехом.
+        if (!_userScriptStore.Save(scripts.Where(script => script.Id != id).ToList()))
+        {
+            AppNotificationCenter.Instance.Push(
+                L.T("Скрипт удалён не полностью"),
+                L.T("Файл удалён, но список скриптов сохранить не удалось — повторите удаление."),
+                AppNotificationKind.Danger);
+            _logger.Error("USCRIPT | remove incomplete (metadata save) | " + id);
+            return false;
+        }
+
         // Скрепка удалённого скрипта не должна оставаться в pinned-cards.json.
         PinState.Instance.Set("uscript." + id, false);
         ReloadUserScripts();
@@ -176,6 +211,14 @@ public partial class MainViewModel
 
     public async Task<string?> RunUserScriptAsync(UserScriptCard card)
     {
+        // Повторный клик по кнопке (или запуск из полосы, пока идёт запуск из
+        // карточки) не должен плодить параллельные процессы с правами SCU.
+        if (card.IsRunning)
+        {
+            _logger.Warn("USCRIPT | run skipped (already running) | " + card.Id);
+            return null;
+        }
+
         // Весь путь под try, включая диалог подтверждения: метод вызывается из
         // async void (полоса скриптов), исключение из Ask не должно ронять приложение.
         try
@@ -203,7 +246,11 @@ public partial class MainViewModel
 
             // Проверка целостности могла зафиксировать эталонный хэш legacy-карточки
             // (TOFU) — состояние скриптов сохраняется, чтобы проверка работала дальше.
-            _userScriptStore.Save(UserScripts.Select(script => script.Data).ToList());
+            // Сбой сохранения не отменяет уже выполненный запуск, но терять его молча нельзя.
+            if (!_userScriptStore.Save(UserScripts.Select(script => script.Data).ToList()))
+            {
+                _logger.Warn("USCRIPT | save after run failed | " + card.Id);
+            }
             return card.ResultText;
         }
         catch (Exception exception)
@@ -221,7 +268,9 @@ public partial class MainViewModel
     // ===================== Редактирование меню =====================
 
     private readonly MenuCustomizationStore _menuStore;
-    private MenuCustomization _menu = MenuCustomization.Empty;
+    // Собственный экземпляр, не shared-синглтон: коллекции MenuCustomization
+    // изменяемы, общий объект протекал бы между потребителями (аудит).
+    private MenuCustomization _menu = new();
 
     public MenuCustomization Menu => _menu;
 
@@ -419,12 +468,22 @@ public partial class MainViewModel
 
         if (homelessCount > 0)
         {
-            _userScriptStore.Save(allScripts);
-            ReloadUserScripts();
-            AppNotificationCenter.Instance.Push(
-                L.T("Вкладка удалена"),
-                L.T("Скрипты удалённой вкладки ({0} шт.) перенесены в раздел «Настройки».", homelessCount),
-                AppNotificationKind.Info);
+            if (_userScriptStore.Save(allScripts))
+            {
+                ReloadUserScripts();
+                AppNotificationCenter.Instance.Push(
+                    L.T("Вкладка удалена"),
+                    L.T("Скрипты удалённой вкладки ({0} шт.) перенесены в раздел «Настройки».", homelessCount),
+                    AppNotificationKind.Info);
+            }
+            else
+            {
+                AppNotificationCenter.Instance.Push(
+                    L.T("Вкладка удалена"),
+                    L.T("Не удалось перенести скрипты удалённой вкладки в «Настройки» — перезапустите приложение и проверьте раздел."),
+                    AppNotificationKind.Danger);
+                _logger.Error("USCRIPT | section migration save failed | section=" + number);
+            }
         }
 
         _menu.CustomSections.Remove(custom);

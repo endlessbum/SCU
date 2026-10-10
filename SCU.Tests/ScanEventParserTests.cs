@@ -80,6 +80,46 @@ public class ScanEventParserTests
         Assert.Equal("persistence", detection.Source);
     }
 
+    // targetPath: реальный файловый target persistence-записи (аудит: путь
+    // записи — псевдопуть HKCU\...\Run\X, изолировать нужно файл цели).
+    [Fact]
+    public void Parse_Detection_ReadsTargetPath()
+    {
+        var scanEvent = ScanEventParser.Parse(
+            """{"event":"detection","path":"HKCU\\...\\Run\\evil","targetPath":"C:\\x\\evil.exe","sha256":"aa","verdict":"malware","ruleId":"PERSISTENCE","description":"d","signedFile":false,"publisher":"","score":5,"containerPath":"","isVirtual":false,"source":"persistence","signals":[]}""");
+
+        var detection = scanEvent.Detection;
+        Assert.NotNull(detection);
+        Assert.Equal(@"C:\x\evil.exe", detection!.TargetPath);
+        Assert.True(detection.HasFileTarget);
+        Assert.Equal(@"C:\x\evil.exe", detection.QuarantineTarget);
+    }
+
+    // persistence без targetPath (цель не существовала на момент скана):
+    // файловых действий нет — кнопки «Просмотр»/«Карантин» скрываются.
+    [Fact]
+    public void Parse_Detection_PersistenceWithoutTarget_HasNoFileTarget()
+    {
+        var scanEvent = ScanEventParser.Parse(
+            """{"event":"detection","path":"HKCU\\...\\Run\\x","targetPath":"","sha256":"","verdict":"suspicious","ruleId":"PERSISTENCE","description":"d","signedFile":false,"publisher":"","score":2,"containerPath":"","isVirtual":false,"source":"persistence","signals":[]}""");
+
+        var detection = scanEvent.Detection;
+        Assert.NotNull(detection);
+        Assert.False(detection!.HasFileTarget);
+    }
+
+    // У file-детекции file target есть всегда, даже при пустом targetPath.
+    [Fact]
+    public void Parse_Detection_FileSource_AlwaysHasFileTarget()
+    {
+        var scanEvent = ScanEventParser.Parse(
+            """{"event":"detection","path":"C:\\x\\e.exe","targetPath":"","sha256":"aa","verdict":"malware","ruleId":"HASH-DB","description":"d","signedFile":false,"publisher":"","score":0,"containerPath":"","isVirtual":false,"source":"file","signals":[]}""");
+
+        var detection = scanEvent.Detection;
+        Assert.NotNull(detection);
+        Assert.True(detection!.HasFileTarget);
+    }
+
     [Fact]
     public void Parse_Finished_BuildsResultWithSummary()
     {
@@ -101,6 +141,41 @@ public class ScanEventParserTests
         // Вперед-совместимость: новые события новых версий ScannerCore не роняют GUI.
         var scanEvent = ScanEventParser.Parse("""{"event":"quarantined","path":"C:\\x"}""");
         Assert.Equal(ScanEventKind.Unknown, scanEvent.Kind);
+    }
+
+    // ===================== Валидация summary (аудит 3, п. 8) =====================
+
+    // {"summary":{}} без числовых полей — malformed, а не «чистый скан»:
+    // все нули раньше классифицировались как Clean.
+    [Fact]
+    public void Parse_FinishedWithEmptySummaryObject_ResultIsNull()
+    {
+        var scanEvent = ScanEventParser.Parse("""{"event":"finished","cancelled":false,"summary":{},"detections":[]}""");
+
+        Assert.Equal(ScanEventKind.Finished, scanEvent.Kind);
+        Assert.Null(scanEvent.Result);
+    }
+
+    // {"summary":null} — раньше давал Summary == null и NRE в маппере.
+    [Fact]
+    public void Parse_FinishedWithNullSummary_ResultIsNull()
+    {
+        var scanEvent = ScanEventParser.Parse("""{"event":"finished","cancelled":false,"summary":null,"detections":[]}""");
+
+        Assert.Equal(ScanEventKind.Finished, scanEvent.Kind);
+        Assert.Null(scanEvent.Result);
+    }
+
+    // Частичный payload (не все поля) — тоже malformed.
+    [Theory]
+    [InlineData("""{"event":"finished","cancelled":false,"summary":{"filesScanned":5},"detections":[]}""")]
+    [InlineData("""{"event":"finished","cancelled":false,"summary":{"filesScanned":5,"filesSkipped":0,"errors":"x","detections":0},"detections":[]}""")]
+    public void Parse_FinishedWithMalformedSummary_ResultIsNull(string line)
+    {
+        var scanEvent = ScanEventParser.Parse(line);
+
+        Assert.Equal(ScanEventKind.Finished, scanEvent.Kind);
+        Assert.Null(scanEvent.Result);
     }
 
     private static ScanVerdict ParseVerdict(string verdict) => verdict switch

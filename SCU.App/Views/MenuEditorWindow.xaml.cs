@@ -17,6 +17,8 @@ public partial class MenuEditorWindow : Window
     public MenuEditorWindow(MainViewModel main, SCU.Infrastructure.Logging.Logger logger)
     {
         InitializeComponent();
+        // Появление окна: fade + подъём корня (единый паттерн ConfirmDialog/OnboardingWindow).
+        Loaded += (_, _) => SCU.Common.UiAnimations.AppearWindow(this);
         Owner = Application.Current?.MainWindow;
         DataContext = new MenuEditorViewModel(main, logger);
         ThemeManager.ThemeApplied += OnThemeApplied;
@@ -26,6 +28,10 @@ public partial class MenuEditorWindow : Window
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
+        // Единое правило заголовка (п. 8): разворачивание строго в рабочую область —
+        // DWM-строка заголовка одной и той же высоты в обычном и максимизированном виде.
+        WorkAreaMaximize.Attach(this);
+
         var isDark = ThemeManager.IsDarkTheme(ThemeManager.LoadThemeMode());
         _micaApplied = WindowEffects.TryApplyMica(this, isDark);
         if (!_micaApplied)

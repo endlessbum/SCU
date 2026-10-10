@@ -102,9 +102,7 @@ public sealed class InputService
                     T(RegistryHive.LocalMachine, EdgePolicies, "StartupBoostEnabled", 0),
                     T(RegistryHive.LocalMachine, EdgePolicies, "BackgroundModeEnabled", 0)
                 ],
-                () => AnyNonZero(
-                    ReadDword(RegistryHive.LocalMachine, EdgePolicies, "StartupBoostEnabled", 0),
-                    ReadDword(RegistryHive.LocalMachine, EdgePolicies, "BackgroundModeEnabled", 0)),
+                () => IsEdgeBoostOn(),
                 on => ApplyEdgeBoost(on)),
 
             new InputSwitchOption(
@@ -123,7 +121,11 @@ public sealed class InputService
                     T(RegistryHive.CurrentUser, GameBar, "UseNexusForGameBarEnabled", 0),
                     T(RegistryHive.LocalMachine, GameDvrPolicies, "AllowGameDVR", 0)
                 ],
-                () => ReadDword(RegistryHive.CurrentUser, GameConfigStore, "GameDVR_Enabled", 1) is 1),
+                // null — сбой чтения: тумблер обязан показать «неизвестно»,
+                // а не «выключено» (паттерн mouse-acceleration/sticky-keys).
+                () => ReadDword(RegistryHive.CurrentUser, GameConfigStore, "GameDVR_Enabled", 1) is { } gameDvr
+                    ? gameDvr == 1
+                    : (bool?)null),
 
             new InputSwitchOption(
                 "game-dvr",
@@ -143,7 +145,9 @@ public sealed class InputService
                     T(RegistryHive.CurrentUser, GameConfigStore, "GameDVR_HonorUserFSEBehaviorMode", 1),
                     T(RegistryHive.CurrentUser, GameConfigStore, "GameDVR_DXGIHonorFSEWindowsCompatible", 1)
                 ],
-                () => ReadDword(RegistryHive.CurrentUser, GameDvr, "AppCaptureEnabled", 1) is 1),
+                () => ReadDword(RegistryHive.CurrentUser, GameDvr, "AppCaptureEnabled", 1) is { } appCapture
+                    ? appCapture == 1
+                    : (bool?)null),
 
             new InputSwitchOption(
                 "game-mode",
@@ -157,7 +161,9 @@ public sealed class InputService
                     T(RegistryHive.CurrentUser, GameBar, "AutoGameModeEnabled", 0),
                     T(RegistryHive.CurrentUser, GameBar, "AllowAutoGameMode", 0)
                 ],
-                () => ReadDword(RegistryHive.CurrentUser, GameBar, "AutoGameModeEnabled", 1) is 1)
+                () => ReadDword(RegistryHive.CurrentUser, GameBar, "AutoGameModeEnabled", 1) is { } gameMode
+                    ? gameMode == 1
+                    : (bool?)null)
         ];
     }
 
@@ -254,6 +260,22 @@ public sealed class InputService
         return Result.Success("Ускорение запуска Edge возвращено к поведению по умолчанию.");
     }
 
+    // Ускорение Edge: «вкл» = policy-значения отсутствуют (дефолт Edge — Startup
+    // Boost и фоновая работа активны) или явно ненулевые; «выкл» = обе политики
+    // явно записаны нулями (то, что пишет ApplyEdgeBoost(false)). Отсюда нельзя
+    // читать через ReadDword с fallback 0: отсутствие значения неотличимо от
+    // записанного нуля, и тумблер всегда показывал бы «выключено».
+    private bool? IsEdgeBoostOn()
+    {
+        var startup = ReadDwordRaw(RegistryHive.LocalMachine, EdgePolicies, "StartupBoostEnabled");
+        var background = ReadDwordRaw(RegistryHive.LocalMachine, EdgePolicies, "BackgroundModeEnabled");
+        return startup is null || background is null
+            ? null
+            : AllowsBoost(startup.Value) || AllowsBoost(background.Value);
+
+        static bool AllowsBoost((bool Exists, int Value) policy) => !policy.Exists || policy.Value != 0;
+    }
+
     private static RegistryTweak T(RegistryHive hive, string subKey, string name, object value) =>
         new(hive, subKey, name, RegistryValueKind.DWord, value, null);
 
@@ -264,20 +286,26 @@ public sealed class InputService
     // (для policy-ключей это «твик не применён»), поэтому возвращается fallback.
     // null — чтение не удалось (отказ в доступе и т.п.): сбой не должен
     // выглядеть как конкретное состояние.
-    private static int? ReadDword(RegistryHive hive, string subKey, string name, int fallback)
+    // Значение DWORD без fallback: (Exists=false, 0) — параметра или раздела нет
+    // (легальный дефолт: для policy-ключей это «твик не применён»), null — чтение
+    // не удалось (отказ в доступе и т.п.): сбой не должен выглядеть как состояние.
+    private static (bool Exists, int Value)? ReadDwordRaw(RegistryHive hive, string subKey, string name)
     {
         try
         {
             using var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
             using var key = baseKey.OpenSubKey(subKey);
             var raw = key?.GetValue(name);
-            return raw is null ? fallback : Convert.ToInt32(raw);
+            return raw is null ? (false, 0) : (true, Convert.ToInt32(raw));
         }
         catch
         {
             return null;
         }
     }
+
+    private static int? ReadDword(RegistryHive hive, string subKey, string name, int fallback) =>
+        ReadDwordRaw(hive, subKey, name) is { } state ? (state.Exists ? state.Value : fallback) : null;
 
     private static string? ReadString(RegistryHive hive, string subKey, string name, string fallback)
     {
@@ -296,9 +324,6 @@ public sealed class InputService
     // null-безопасные композиции значений чтения: любой нечитаемый компонент
     // делает нечитаемым всё состояние.
     private static bool? NotEqual(string? actual, string value) => actual is null ? null : actual != value;
-
-    private static bool? AnyNonZero(params int?[] values) =>
-        values.Any(v => v is null) ? null : values.Any(v => v != 0);
 
     private string BackupPath(string fileName) => Path.Combine(_backupDirectory, fileName);
 }

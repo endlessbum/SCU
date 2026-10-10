@@ -14,11 +14,23 @@ public partial class ScriptEditorWindow : Window
 
     public bool IsReadOnly { get; init; }
 
-    public string StatusText { get; set; } = string.Empty;
+    // DependencyProperty, а не CLR-свойство (H-04): биндинг XAML получает
+    // уведомления только от свойств с механизмом изменений — обычное CLR-свойство
+    // окна обновляло значение, но UI оставался со старым текстом статуса.
+    public static readonly DependencyProperty StatusTextProperty = DependencyProperty.Register(
+        nameof(StatusText), typeof(string), typeof(ScriptEditorWindow), new PropertyMetadata(string.Empty));
+
+    public string StatusText
+    {
+        get => (string)GetValue(StatusTextProperty);
+        set => SetValue(StatusTextProperty, value);
+    }
 
     public ScriptEditorWindow(UserScriptStore store, UserScriptData data, bool isReadOnly)
     {
         InitializeComponent();
+        // Появление окна: fade + подъём корня (единый паттерн ConfirmDialog/OnboardingWindow).
+        Loaded += (_, _) => SCU.Common.UiAnimations.AppearWindow(this);
         _store = store;
         _data = data;
         IsReadOnly = isReadOnly;
@@ -30,13 +42,12 @@ public partial class ScriptEditorWindow : Window
 
     private async void OnSaveApply(object sender, RoutedEventArgs e)
     {
-        try
+        // UpdateContent пишет файл, пересчитывает эталонный SHA-256 и сохраняет
+        // scripts.json: без пересчёта следующий запуск отменялся бы по
+        // целостности (файл = новый хэш, метаданные = старый).
+        if (!_store.UpdateContent(_data, ScriptBox.Text))
         {
-            File.WriteAllText(_store.ScriptPath(_data), ScriptBox.Text);
-        }
-        catch (Exception exception)
-        {
-            StatusText = L.T("Не удалось сохранить: {0}", exception.Message);
+            StatusText = L.T("Не удалось сохранить: список скриптов не записан, попробуйте ещё раз.");
             return;
         }
 

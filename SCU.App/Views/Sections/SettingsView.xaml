@@ -98,7 +98,7 @@
                         <Popup x:Name="AccentPopup"
                                PlacementTarget="{Binding ElementName=AccentSwatch}"
                                Placement="Custom"
-                               CustomPopupPlacementCallback="CenterPalettePopup"
+                               CustomPopupPlacementCallback="PlaceAccentPalettePopup"
                                StaysOpen="False"
                                AllowsTransparency="True">
                             <Border Style="{StaticResource SectionCard}" Margin="8" Padding="12">
@@ -176,7 +176,7 @@
                         <Popup x:Name="IconPopup"
                                PlacementTarget="{Binding ElementName=IconSwatch}"
                                Placement="Custom"
-                               CustomPopupPlacementCallback="CenterPalettePopup"
+                               CustomPopupPlacementCallback="PlaceIconPalettePopup"
                                StaysOpen="False"
                                AllowsTransparency="True">
                             <Border Style="{StaticResource SectionCard}" Margin="8" Padding="12">
@@ -271,6 +271,87 @@
                                   Style="{StaticResource SystemToggleSwitch}"
                                   AutomationProperties.Name="{DynamicResource S_SettingsUac}"
                                   IsChecked="{Binding UacConfirmations, Mode=TwoWay}" />
+                </Grid>
+            </Border>
+
+            <!-- Анимации интерфейса: при выключении все переходы мгновенные -->
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}" Text="{DynamicResource S_SettingsAnimations}" ToolTip="{DynamicResource S_SettingsAnimationsDesc}" ToolTipService.InitialShowDelay="250" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_SettingsAnimationsDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="1"
+                                  VerticalAlignment="Center"
+                                  Style="{StaticResource SystemToggleSwitch}"
+                                  AutomationProperties.Name="{DynamicResource S_SettingsAnimations}"
+                                  IsChecked="{Binding AnimationsEnabled, Mode=TwoWay}" />
+                </Grid>
+            </Border>
+
+            <!-- Путь очистки загрузок: дополнительная папка, очищаемая вместе
+                 со стандартными «Загрузками» (случай загрузок на другом диске) -->
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}" Text="{DynamicResource S_SettingsDownloadsPath}" ToolTip="{DynamicResource S_SettingsDownloadsPathDesc}" ToolTipService.InitialShowDelay="250" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_SettingsDownloadsPathDesc}" />
+                    </StackPanel>
+                    <!-- Путь слева от кнопки: пусто, пока папка не выбрана; повторный
+                         выбор «Добавить» заменяет путь на новый. Крестик снимает
+                         настройку (путь перестаёт очищаться). -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock MaxWidth="330"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding DownloadsCleanupPath}"
+                                   ToolTipService.InitialShowDelay="250"
+                                   Text="{Binding DownloadsCleanupPath, Mode=OneWay}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DownloadsCleanupPath}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <Button Margin="8,0,0,0"
+                                VerticalAlignment="Center"
+                                Content="&#xE711;"
+                                FontFamily="{DynamicResource IconFontFamily}"
+                                ToolTip="{DynamicResource S_SettingsDownloadsPathClear}"
+                                ToolTipService.InitialShowDelay="250"
+                                AutomationProperties.Name="{DynamicResource S_SettingsDownloadsPathClear}"
+                                Command="{Binding ClearDownloadsCleanupPathCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource SmallButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DownloadsCleanupPath}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Margin="8,0,0,0"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource SmallButton}"
+                                Content="{DynamicResource S_SettingsDownloadsPathAdd}"
+                                Click="OnPickDownloadsCleanupFolderClick" />
+                    </StackPanel>
                 </Grid>
             </Border>
 

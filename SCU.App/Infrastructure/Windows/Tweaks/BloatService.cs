@@ -200,14 +200,15 @@ public sealed class BloatService
 
         await RemoveViaWingetAsync("Microsoft Edge", "Edge", ct).ConfigureAwait(false);
 
+        // Проверка удаления — по файлам (msedge.exe в Program Files). AppX-проверки
+        // здесь нет и быть не должно: Edge распространяется не через AppX, а шаблон
+        // 'MicrosoftEdge' задел бы несъёмный легаси-пакет EdgeHTML, который вечно
+        // выглядел бы «остатком» и валил бы результат на пустом месте.
         var edgeLeft = EdgeFilesLeft();
-        var scan = await ScanAsync(ct).ConfigureAwait(false);
-        var appxLeft = scan.IsSuccess && scan.Value is not null && scan.Value.Values
-            .Any(kv => kv.Key != "scan" && kv.Value == "1" && kv.Key.StartsWith("Edge", StringComparison.OrdinalIgnoreCase));
 
-        return edgeLeft == 0 && !appxLeft
-            ? Result.Success("Edge: удаление подтверждено проверкой файлов и AppX.")
-            : Result.Failure("Edge: после удаления остались файлы или пакеты; см. лог.");
+        return edgeLeft == 0
+            ? Result.Success("Edge: удаление подтверждено проверкой файлов.")
+            : Result.Failure("Edge: после удаления остались файлы; см. лог.");
     }
 
     // Массовое удаление (BloatAll): всё перечисленное, включая Store и Edge, с финальной сверкой скана.

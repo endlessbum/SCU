@@ -102,6 +102,7 @@ public sealed class ServiceManager
             return await Task.Run(() =>
             {
                 ct.ThrowIfCancellationRequested();
+                var usedRegistryFallback = false;
                 try
                 {
                     SetStartMode(serviceName, ServiceStartMode.Automatic);
@@ -112,20 +113,33 @@ public sealed class ServiceManager
                     // ForceAutomaticDelayed только если простой fallback не сработал.
                     if (ForceStartValue(serviceName, 2))
                     {
-                        return Result.Success($"{serviceName}: автозапуск восстановлен через реестр (без отложенного старта).");
+                        usedRegistryFallback = true;
                     }
 
-                    if (!ForceAutomaticDelayed(serviceName))
+                    if (!usedRegistryFallback && ForceAutomaticDelayed(serviceName))
+                    {
+                        usedRegistryFallback = true;
+                    }
+
+                    if (!usedRegistryFallback)
                     {
                         return Result.Failure($"Служба {serviceName}: не удалось задать автозапуск.");
                     }
-
-                    return Result.Success(
-                        $"{serviceName}: автозапуск восстановлен через реестр как Automatic (Delayed). "
-                        + "Исходный тип без Delayed восстановить не удалось.");
                 }
+
+                // Аудит: после registry-fallback раньше возвращался Success без
+                // запуска и проверки — служба оставалась Stopped при «восстановлен
+                // автозапуск». Путь запуска и verify теперь общий для обоих веток.
                 using var controller = OpenController(serviceName);
-                if (controller is not null && controller.Status != ServiceControllerStatus.Running)
+                if (controller is null)
+                {
+                    // Служба не найдена или её состояние нечитаемо (отказ в доступе):
+                    // заявлять «автозапуск восстановлен» без проверки состояния нельзя.
+                    return Result.Failure(
+                        $"Служба {serviceName}: не удалось проверить состояние после установки автозапуска (служба не найдена или доступ запрещён).");
+                }
+
+                if (controller.Status != ServiceControllerStatus.Running)
                 {
                     try
                     {
@@ -136,11 +150,17 @@ public sealed class ServiceManager
                         or System.ComponentModel.Win32Exception
                         or System.TimeoutException)
                     {
-                        return Result.Success($"{serviceName}: тип запуска восстановлен, но служба не запущена ({exception.Message}).");
+                        // Тип запуска изменён, но служба не работает — это неполное
+                        // восстановление, а не успех: вызывающий код должен показать
+                        // честное состояние и предложить повторить операцию.
+                        var fallbackNote = usedRegistryFallback ? " (start mode — через реестр)" : string.Empty;
+                        return Result.Failure(
+                            $"{serviceName}: тип запуска восстановлен{fallbackNote}, но служба не запустилась ({exception.Message}).");
                     }
                 }
 
-                return Result.Success($"{serviceName}: автозапуск восстановлен.");
+                return Result.Success(
+                    $"{serviceName}: автозапуск восстановлен." + (usedRegistryFallback ? " (start mode — через реестр)" : string.Empty));
             }, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)

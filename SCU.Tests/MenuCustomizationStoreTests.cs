@@ -86,5 +86,36 @@ public sealed class MenuCustomizationStoreTests : IDisposable
         Assert.Empty(menu.CustomSections);
     }
 
+    // Аудит shared state: Load() выдаёт независимые экземпляры — изменение
+    // коллекций одного потребителя не протекает в другой (раньше все пути
+    // возвращали общий mutable-синглтон MenuCustomization.Empty).
+    [Fact]
+    public void Load_MissingFile_ReturnsIndependentInstances()
+    {
+        var path = Path.Combine(_directory, "menu.json");
+        var first = new MenuCustomizationStore(NullLogger, path).Load();
+        var second = new MenuCustomizationStore(NullLogger, path).Load();
+
+        Assert.NotSame(first, second);
+
+        first.Hidden.Add(5);
+        Assert.Empty(second.Hidden);
+    }
+
+    [Fact]
+    public void Load_SameFile_ReturnsIndependentInstances()
+    {
+        var path = Path.Combine(_directory, "menu.json");
+        var store = new MenuCustomizationStore(NullLogger, path);
+        store.Save(new MenuCustomization { Titles = { ["5"] = "Тест" } });
+
+        var first = store.Load();
+        var second = store.Load();
+
+        Assert.NotSame(first, second);
+        first.Titles["5"] = "Изменено";
+        Assert.Equal("Тест", second.Titles["5"]);
+    }
+
     private static Logger NullLogger => Logger.CreateForCurrentRun();
 }

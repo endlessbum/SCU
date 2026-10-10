@@ -15,6 +15,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -43,6 +44,24 @@ BOOL WINAPI OnConsoleCtrl(DWORD /*ctrlType*/)
     return FALSE;
 }
 
+// Строгий парсинг числовых опций CLI (аудит hardening): полное число без
+// хвостового текста, без переполнения (errno), в заданном диапазоне.
+bool ParseUnsignedOption(const wchar_t* text, unsigned long long minValue,
+                         unsigned long long maxValue, unsigned long long& out)
+{
+    if (text == nullptr || *text == L'\0') {
+        return false;
+    }
+    errno = 0;
+    wchar_t* end = nullptr;
+    const unsigned long long value = wcstoull(text, &end, 10);
+    if (errno == ERANGE || end == text || *end != L'\0' || value < minValue || value > maxValue) {
+        return false;
+    }
+    out = value;
+    return true;
+}
+
 scan::ScanOptions ParseArgs(int argc, wchar_t** argv, int& exitCode)
 {
     scan::ScanOptions options;
@@ -61,9 +80,21 @@ scan::ScanOptions ParseArgs(int argc, wchar_t** argv, int& exitCode)
             options.path = argv[++i];
             havePath = !options.path.empty();
         } else if (arg == L"--max-size" && i + 1 < argc) {
-            options.maxFileSize = wcstoull(argv[++i], nullptr, 10);
+            // Диапазон: минимум — несколько КБ (иначе скан бессмыслен), максимум —
+            // существующий защитный лимит движка; ошибка → usage + bad args.
+            unsigned long long value = 0;
+            if (!ParseUnsignedOption(argv[++i], 64 * 1024ull, 1024ull * 1024 * 1024 * 1024, value)) {
+                exitCode = kExitBadArgs;
+            } else {
+                options.maxFileSize = value;
+            }
         } else if (arg == L"--threads" && i + 1 < argc) {
-            options.workerThreads = static_cast<uint32_t>(wcstoul(argv[++i], nullptr, 10));
+            unsigned long long value = 0;
+            if (!ParseUnsignedOption(argv[++i], 1, 64, value)) {
+                exitCode = kExitBadArgs;
+            } else {
+                options.workerThreads = static_cast<uint32_t>(value);
+            }
         } else if (arg == L"--no-disk-cache") {
             options.useDiskCache = false;
         } else if (arg == L"--dev-unsigned-ok") {

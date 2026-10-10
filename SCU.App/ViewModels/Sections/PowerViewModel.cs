@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
@@ -29,6 +29,7 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
     [NotifyCanExecuteChangedFor(nameof(SetPlanBitsumCommand))]
     [NotifyCanExecuteChangedFor(nameof(ToggleHibernationCommand))]
     [NotifyCanExecuteChangedFor(nameof(ToggleFastBootCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ToggleDiskIdleCommand))]
     [NotifyCanExecuteChangedFor(nameof(SetPageFileCommand))]
     [NotifyCanExecuteChangedFor(nameof(SetSystemManagedPageFileCommand))]
     [NotifyCanExecuteChangedFor(nameof(ClearCpuLimitsCommand))]
@@ -279,6 +280,20 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
         }
     }
 
+    // «Отключение диска»: true — таймаут DISKIDLE = 0 (диск не выключается в простое),
+    // false — стандартные 20 минут. true после записи подтверждается чтением powercfg.
+    private bool _diskIdleDisabled;
+
+    public bool DiskIdleDisabled
+    {
+        get => _diskIdleDisabled;
+        set
+        {
+            _diskIdleDisabled = value;
+            OnPropertyChanged(nameof(DiskIdleDisabled));
+        }
+    }
+
     // ===================== Подписи тумблеров (п.28) =====================
     // Постоянное описание функции — НЕ зависит от ON/OFF и НЕ содержит
     // «Включить:» / «Отключить:». Текст из словаря строк XAML.
@@ -297,6 +312,8 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
     public string ShortNamesActionText => PermanentDesc("S_Power8dot3Desc");
 
     public string LastAccessActionText => PermanentDesc("S_PowerLastAccessDesc");
+
+    public string DiskIdleActionText => PermanentDesc("S_PowerDiskIdleDesc");
 
     public string PrefetcherActionText => PermanentDesc("S_PowerPrefetcherDesc");
 
@@ -423,6 +440,18 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
             if (states.sysMain is bool sm)
                 SysMainEnabled = sm;
 
+            // Таймаут отключения диска: AC-значение DISKIDLE активной схемы.
+            var diskIdle = await _powerService.GetDiskIdleTimeoutAsync(ct).ConfigureAwait(true);
+            if (diskIdle.IsSuccess && diskIdle.Value >= 0)
+            {
+                DiskIdleDisabled = diskIdle.Value == PowerService.DiskIdleDisabledSeconds;
+            }
+            else
+            {
+                StatusText = L.T("Отключение диска: {0}", diskIdle.Message);
+                statusIsReading = false;
+            }
+
             var compression = await _powerService.GetMemoryCompressionAsync(ct).ConfigureAwait(true);
             if (compression.IsSuccess)
             {
@@ -497,6 +526,19 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
         }
     }
 
+    // Перегрузка для асинхронного чтения (powercfg-состояния).
+    private async Task ResyncOnCancelAsync(Func<Task<bool>> read, Action<bool> apply)
+    {
+        try
+        {
+            apply(await read().ConfigureAwait(true));
+        }
+        catch
+        {
+            // Лучший эффект: не перечиталось — оставляем тумблер как есть.
+        }
+    }
+
     // Тумблеры: цель — новое значение свойства (связка TwoWay обновляет его до команды).
     [RelayCommand(CanExecute = nameof(CanModify))]
     private async Task ToggleHibernationAsync()
@@ -518,6 +560,44 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
             {
                 // Тумблер ресинхронизируется с фактическим состоянием, иначе он расходится с системой.
                 await ResyncOnCancelAsync(PowerService.IsHibernationEnabled, value => HibernationEnabled = value).ConfigureAwait(true);
+                throw;
+            }
+        }).ConfigureAwait(true);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanModify))]
+    private async Task ToggleDiskIdleAsync()
+    {
+        var disable = DiskIdleDisabled;
+        await RunExclusiveAsync("отключение диска в простое", async ct =>
+        {
+            StatusText = disable
+                ? L.T("Запрет отключения диска в простое…")
+                : L.T("Возврат стандартного таймаута диска…");
+            try
+            {
+                var result = await _powerService.SetDiskIdleDisabledAsync(disable, ct).ConfigureAwait(true);
+                // Тумблер обязан показать фактическое состояние даже при отказе.
+                var readback = await _powerService.GetDiskIdleTimeoutAsync(ct).ConfigureAwait(true);
+                if (readback.IsSuccess && readback.Value >= 0)
+                {
+                    DiskIdleDisabled = readback.Value == PowerService.DiskIdleDisabledSeconds;
+                }
+                StatusText = result.IsSuccess
+                    ? L.S(result.Message)
+                    : L.T("Ошибка (код {0}): {1}", result.Code, result.Message);
+            }
+            catch (OperationCanceledException)
+            {
+                await ResyncOnCancelAsync(
+                    async () =>
+                    {
+                        var state = await _powerService.GetDiskIdleTimeoutAsync(CancellationToken.None).ConfigureAwait(true);
+                        return state.IsSuccess && state.Value >= 0
+                            ? state.Value == PowerService.DiskIdleDisabledSeconds
+                            : DiskIdleDisabled;
+                    },
+                    value => DiskIdleDisabled = value).ConfigureAwait(true);
                 throw;
             }
         }).ConfigureAwait(true);
@@ -915,33 +995,5 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
         _operationCts?.Cancel();
     }
 
-    private async Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action)
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        _operationCts?.Dispose();
-        _operationCts = new CancellationTokenSource();
-        IsBusy = true;
-        try
-        {
-            await action(_operationCts.Token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = L.T("Операция отменена.");
-            _logger.Warn("CANCEL | " + title);
-        }
-        catch (Exception exception)
-        {
-            StatusText = L.T("Ошибка: {0}", exception.Message);
-            _logger.Error("POWER | " + title + " | " + exception);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-}
+    private Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action) =>
+        SectionOperations.RunExclusiveAsync(title, "POWER", () => IsBusy, value => IsBusy = value, () => _operationCts, value => _operationCts = value, value => StatusText = value, _logger, action);}

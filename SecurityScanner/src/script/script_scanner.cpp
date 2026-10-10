@@ -4,6 +4,7 @@
 
 #include <cctype>
 #include <cstring>
+#include <algorithm>
 #include <vector>
 
 namespace scan {
@@ -14,22 +15,32 @@ constexpr size_t kMaxScriptBytes = 2ull * 1024 * 1024; // большие скр�
 constexpr size_t kMinBase64Run = 200;                  // минимальный base64-блоб для декодирования
 constexpr size_t kMaxDecodedBytes = 1024 * 1024;
 
-// Копия файла как ASCII-текст В ИСХОДНОМ РЕГИСТРЕ (п. SCAN-05 аудита:
-// base64-прогон декодируется только из оригинального регистра, декодер
-// различает 'A-Z' и 'a-z'; lowercase делается позже, отдельно для матчинга).
-bool ReadText(const std::wstring& path, std::string& text)
+// Копия файла как текст В ИСХОДНОМ РЕГИСТРЕ (п. SCAN-05 аудита: base64-прогон
+// декодируется только из оригинального регистра, декодер различает 'A-Z' и
+// 'a-z'; lowercase делается позже, отдельно для матчинга). Неудача чтения —
+// не пустой «чистый» анализ, а статус для честного учёта пропуска (аудит).
+ScriptReadStatus ReadText(const std::wstring& path, std::string& text)
 {
     HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
                               FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                               nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
-        return false;
+        return ScriptReadStatus::IoError;
     }
     LARGE_INTEGER size{};
-    if (!GetFileSizeEx(file, &size) || size.QuadPart <= 0
-        || static_cast<unsigned long long>(size.QuadPart) > kMaxScriptBytes) {
+    if (!GetFileSizeEx(file, &size)) {
         CloseHandle(file);
-        return false;
+        return ScriptReadStatus::IoError;
+    }
+    if (size.QuadPart <= 0) {
+        // Пустой скрипт — легитимный случай: анализировать нечего, это не сбой.
+        CloseHandle(file);
+        text.clear();
+        return ScriptReadStatus::Ok;
+    }
+    if (static_cast<unsigned long long>(size.QuadPart) > kMaxScriptBytes) {
+        CloseHandle(file);
+        return ScriptReadStatus::TooLarge;
     }
 
     std::vector<char> buffer(static_cast<size_t>(size.QuadPart));
@@ -38,11 +49,11 @@ bool ReadText(const std::wstring& path, std::string& text)
                     && read == buffer.size();
     CloseHandle(file);
     if (!ok) {
-        return false;
+        return ScriptReadStatus::IoError;
     }
 
     text.assign(buffer.data(), buffer.size());
-    return true;
+    return ScriptReadStatus::Ok;
 }
 
 std::string ToLowerAscii(const std::string& text)
@@ -65,10 +76,33 @@ int DecodeBase64Char(char c)
     return -1;
 }
 
+// Контекстные якоря base64-декодирования (аудит): голый alnum-прогон ≥200
+// символов без подозрительного окружения — чаще всего легитимный блоб
+// (хэш, ключ,Encoded-Resource). Декодируем только если рядом есть признак
+// исполнения/декодирования.
+bool HasSuspiciousAnchor(const std::string& lowerText, size_t runStart, size_t runEnd)
+{
+    const size_t windowStart = runStart > 256 ? runStart - 256 : 0;
+    const size_t windowEnd = std::min(lowerText.size(), runEnd + 64);
+    const std::string window = lowerText.substr(windowStart, windowEnd - windowStart);
+    static const char* anchors[] = {
+        "-encodedcommand", "-enc ", "frombase64string", "invoke-expression",
+        "downloadstring", "certutil", "iex", "scriptblock",
+        "reflection.assembly", "rundll32", "load(", "eval(",
+    };
+    for (const char* anchor : anchors) {
+        if (window.find(anchor) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Декодирование base64-прогонов из текста В ОРИГИНАЛЬНОМ РЕГИСТРЕ (обфускация
-// -EncodedCommand / FromBase64String). Результат — lowercase: он идёт только
-// в общий поток паттерн-матчинга.
-void AppendDecodedBase64(const std::string& text, std::string& decodedText)
+// -EncodedCommand / FromBase64String). lowerText — lowercase-копия того же
+// текста для поиска якорей. Результат — lowercase: он идёт только в общий
+// поток паттерн-матчинга.
+void AppendDecodedBase64(const std::string& text, const std::string& lowerText, std::string& decodedText)
 {
     size_t runStart = std::string::npos;
     for (size_t i = 0; i <= text.size(); ++i) {
@@ -84,9 +118,12 @@ void AppendDecodedBase64(const std::string& text, std::string& decodedText)
             // Валидные длины base64-прогона без учёта '='-пэддинга: %4 == 0
             // (без пэддинга), 2 (один '='), 3 (два '='). Прежний допуск только
             // %4 == 0 отбрасывал все payload'ы с пэддингом (п. SCAN-05).
+            // Декодируем только при подозрительном контексте (аудит): меньше
+            // false positives на легитимных длинных блобах.
             if (runLength >= kMinBase64Run
                 && decodedText.size() < kMaxDecodedBytes
-                && runLength % 4 != 1) {
+                && runLength % 4 != 1
+                && HasSuspiciousAnchor(lowerText, runStart, i)) {
                 int accumulator = 0;
                 int bits = 0;
                 for (size_t j = runStart; j < i; ++j) {
@@ -134,10 +171,10 @@ void AddSignal(ScriptAnalysis& analysis, int weight, const wchar_t* signal)
 void AnalyzePowerShell(const std::string& text, ScriptAnalysis& analysis)
 {
     // Download cradle: IEX + скачивание (п. 19: download+execute).
+    // Аудит: дублированная пара invoke-expression/downloadstring удалена.
     if (ContainsBoth(text, "iex", "downloadstring")
         || ContainsBoth(text, "invoke-expression", "downloadstring")
         || ContainsBoth(text, "iex", "net.webclient")
-        || ContainsBoth(text, "invoke-expression", "downloadstring")
         || ContainsBoth(text, "invoke-expression", "invoke-webrequest")
         || ContainsBoth(text, "invoke-expression", "invoke-restmethod")
         || ContainsBoth(text, "iex", "xmlhttp")
@@ -232,26 +269,28 @@ void AnalyzeScriptHost(const std::string& text, ScriptAnalysis& analysis)
 
 } // namespace
 
-ScriptAnalysis ScriptScanner::Analyze(const std::wstring& path)
+ScriptReadStatus ScriptScanner::Analyze(const std::wstring& path, ScriptAnalysis& analysis)
 {
-    ScriptAnalysis analysis;
     // ReadText отдаёт оригинальный регистр: base64 декодируем из него,
     // а lowercase-копию строим только для паттерн-матчинга (п. SCAN-05).
     std::string text;
-    if (!ReadText(path, text)) {
-        return analysis;
+    const ScriptReadStatus status = ReadText(path, text);
+    if (status != ScriptReadStatus::Ok) {
+        return status; // analysis остаётся пустым — неудача чтения не «чистый» ответ
     }
 
+    const std::string lower = ToLowerAscii(text);
     std::string decoded;
-    AppendDecodedBase64(text, decoded);
+    AppendDecodedBase64(text, lower, decoded);
 
-    std::string combined = ToLowerAscii(text);
+    std::string combined = lower;
     if (!decoded.empty()) {
         combined += '\n';
         combined += decoded; // уже lowercase (см. AppendDecodedBase64)
     }
 
-    return AnalyzeText(combined);
+    analysis = AnalyzeText(combined);
+    return ScriptReadStatus::Ok;
 }
 
 ScriptAnalysis ScriptScanner::AnalyzeText(const std::string& combined)

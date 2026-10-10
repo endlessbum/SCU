@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
@@ -86,7 +86,16 @@ public partial class UIViewModel : ObservableObject, IDisposable, ISectionOperat
         {
             if (states.states.TryGetValue(row.Id, out var state))
             {
-                row.ForceState(state);
+                // null — сбой чтения реестра: строка честно помечается «неизвестно».
+                if (state is { } isOn)
+                {
+                    row.ForceState(isOn);
+                    row.StateUnknown = false;
+                }
+                else
+                {
+                    row.StateUnknown = true;
+                }
             }
         }
 
@@ -131,16 +140,32 @@ public partial class UIViewModel : ObservableObject, IDisposable, ISectionOperat
             {
                 var result = await TaskRunner.RunBlocking(() => _uiService.SetSwitch(option, on), ct).ConfigureAwait(true);
                 var actual = await TaskRunner.RunBlocking(() => _uiService.IsSwitchOn(option), ct).ConfigureAwait(true);
-                row.ForceState(actual);
+                if (actual is { } isOn)
+                {
+                    row.ForceState(isOn);
+                    row.StateUnknown = false;
+                }
+                else
+                {
+                    row.StateUnknown = true;
+                }
                 StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
-                _logger.Info($"UI | {option.Id} | {(actual ? "on" : "off")} | rc={result.Code}");
+                _logger.Info($"UI | {option.Id} | {(actual is { } confirmed ? (confirmed ? "on" : "off") : "unknown")} | rc={result.Code}");
             }
             catch (OperationCanceledException)
             {
                 // Ресинк затронутой строки на пути отмены: чтение без токена, best-effort.
                 try
                 {
-                    row.ForceState(await TaskRunner.RunBlocking(() => _uiService.IsSwitchOn(option), CancellationToken.None).ConfigureAwait(true));
+                    if (await TaskRunner.RunBlocking(() => _uiService.IsSwitchOn(option), CancellationToken.None).ConfigureAwait(true) is { } resynced)
+                    {
+                        row.ForceState(resynced);
+                        row.StateUnknown = false;
+                    }
+                    else
+                    {
+                        row.StateUnknown = true;
+                    }
                 }
                 catch
                 {
@@ -164,16 +189,32 @@ public partial class UIViewModel : ObservableObject, IDisposable, ISectionOperat
             {
                 var result = await TaskRunner.RunBlocking(() => _uiService.SetSwitch(option, on), ct).ConfigureAwait(true);
                 var actual = await TaskRunner.RunBlocking(() => _uiService.IsSwitchOn(option), ct).ConfigureAwait(true);
-                RecommendedRow.ForceState(actual);
+                if (actual is { } recommendedOn)
+                {
+                    RecommendedRow.ForceState(recommendedOn);
+                    RecommendedRow.StateUnknown = false;
+                }
+                else
+                {
+                    RecommendedRow.StateUnknown = true;
+                }
                 StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
-                _logger.Info($"UI | recommended | {(actual ? "on" : "off")} | rc={result.Code}");
+                _logger.Info($"UI | recommended | {(actual is { } confirmedRecommended ? (confirmedRecommended ? "on" : "off") : "unknown")} | rc={result.Code}");
             }
             catch (OperationCanceledException)
             {
                 // Ресинк на пути отмены: чтение без токена, best-effort.
                 try
                 {
-                    RecommendedRow.ForceState(await TaskRunner.RunBlocking(() => _uiService.IsSwitchOn(option), CancellationToken.None).ConfigureAwait(true));
+                    if (await TaskRunner.RunBlocking(() => _uiService.IsSwitchOn(option), CancellationToken.None).ConfigureAwait(true) is { } recommendedResynced)
+                    {
+                        RecommendedRow.ForceState(recommendedResynced);
+                        RecommendedRow.StateUnknown = false;
+                    }
+                    else
+                    {
+                        RecommendedRow.StateUnknown = true;
+                    }
                 }
                 catch
                 {
@@ -278,7 +319,15 @@ public partial class UIViewModel : ObservableObject, IDisposable, ISectionOperat
                 }
 
                 var state = await TaskRunner.RunBlocking(() => _uiService.IsSwitchOn(option), ct).ConfigureAwait(true);
-                row.ForceState(state);
+                if (state is { } refreshedOn)
+                {
+                    row.ForceState(refreshedOn);
+                    row.StateUnknown = false;
+                }
+                else
+                {
+                    row.StateUnknown = true;
+                }
             }
 
             MenuDelayText = await TaskRunner.RunBlocking(_uiService.GetMenuShowDelay, ct).ConfigureAwait(true);
@@ -310,33 +359,5 @@ public partial class UIViewModel : ObservableObject, IDisposable, ISectionOperat
         _operationCts?.Cancel();
     }
 
-    private async Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action)
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        _operationCts?.Dispose();
-        _operationCts = new CancellationTokenSource();
-        IsBusy = true;
-        try
-        {
-            await action(_operationCts.Token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = L.T("Операция отменена.");
-            _logger.Warn("CANCEL | " + title);
-        }
-        catch (Exception exception)
-        {
-            StatusText = L.T("Ошибка: {0}", exception.Message);
-            _logger.Error("UI | " + title + " | " + exception);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-}
+    private Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action) =>
+        SectionOperations.RunExclusiveAsync(title, "UI", () => IsBusy, value => IsBusy = value, () => _operationCts, value => _operationCts = value, value => StatusText = value, _logger, action);}

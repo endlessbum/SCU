@@ -72,6 +72,7 @@ foreach ($adapter in $adapters) {
 
     $changed = $false
     $verifyKeys = New-Object System.Collections.Generic.List[string]
+    $rateKeyword = $null
 
     foreach ($setting in $settings) {
         $candidates = @($setting.Key)
@@ -119,6 +120,10 @@ foreach ($adapter in $adapters) {
                     Set-NetAdapterAdvancedProperty -Name $name -DisplayName $rateProperty.DisplayName -DisplayValue 'Adaptive' -NoRestart -ErrorAction Stop | Out-Null
                 }
                 $changed = $true
+                # M-02: IMR участвует в последующей проверке наравне с остальными
+                # свойствами — раньше SET не проверялся вообще.
+                $rateKeyword = [string]$rateProperty.RegistryKeyword
+                $verifyKeys.Add($rateKeyword) | Out-Null
                 Write-Output ("SETTING|Interrupt Moderation|{0}|SET" -f $(if ([string]::IsNullOrWhiteSpace([string]$rateProperty.DisplayName)) { $rateProperty.RegistryKeyword } else { $rateProperty.DisplayName }))
             }
             catch {
@@ -145,6 +150,17 @@ foreach ($adapter in $adapters) {
         $verifyProps = @(Get-NetAdapterAdvancedProperty -Name $name -AllProperties -ErrorAction SilentlyContinue)
         foreach ($key in $verifyKeys) {
             $current = $verifyProps | Where-Object { $_.RegistryKeyword -eq $key } | Select-Object -First 1
+            # IMR задаётся через DisplayValue ('Adaptive') и проверяется по нему:
+            # сырой RegistryValue у vendor-свойства — число, в лоб не сверяется.
+            if ($key -eq $rateKeyword) {
+                if ($null -ne $current -and [string]$current.DisplayValue -ieq 'Adaptive') {
+                    Write-Output ("VERIFY|{0}|OK" -f $key)
+                }
+                else {
+                    Write-Output ("VERIFY|{0}|FAIL" -f $key)
+                }
+                continue
+            }
             $expected = $settings | Where-Object { $_.Key -eq $key } | Select-Object -First 1
             if ($null -eq $expected -and $key -eq '*IPChecksumOffloadIPv4') { $expected = [pscustomobject]@{ Value = '3' } }
             if ($null -eq $expected -and $key -eq '*TCPChecksumOffloadIPv4') { $expected = [pscustomobject]@{ Value = '3' } }
@@ -237,10 +253,27 @@ foreach ($adapter in $adapters) {
                 return Result.Success("Физические сетевые адаптеры не найдены.");
             }
 
-            if (failed > 0 || verifyFailed > 0 || adapterFailures > 0 || restartsFailed > 0)
+            if (failed > 0 || verifyFailed > 0)
+            {
+                // M-03: часть значений применилась, часть — нет. Успешный бэкап
+                // снимался ДО первой правки, поэтому автоматический откат
+                // возвращает все адаптеры к исходному состоянию; Failure больше
+                // не оставляет смесь новых и старых значений. Ошибка перезапуска
+                // (restartsFailed) откат не требует: значения применены и
+                // проверены, несогласованного состояния нет.
+                var rollback = await RestoreAdapterProfileAsync(ct).ConfigureAwait(false);
+                var rollbackNote = rollback.IsSuccess
+                    ? "изменённые значения откатаны к исходным"
+                    : "АВТООТКАТ НЕ УДАЛСЯ (" + rollback.Message + "); откатите профиль кнопкой «Откатить»";
+                _logger.Warn($"NET | adapter profile partial apply | changed={changed} failed={failed} verifyFailed={verifyFailed} | {rollbackNote}");
+                return Result.Failure(
+                    $"Обработано адаптеров: {adapters}; изменено: {changed}; пропущено: {skipped}; ошибок настройки: {failed}; ошибок проверки: {verifyFailed}; ошибок чтения: {adapterFailures}; ошибок перезапуска: {restartsFailed}. {rollbackNote}.");
+            }
+
+            if (adapterFailures > 0 || restartsFailed > 0)
             {
                 return Result.Failure(
-                    $"Обработано адаптеров: {adapters}; изменено: {changed}; пропущено: {skipped}; ошибок настройки: {failed}; ошибок проверки: {verifyFailed}; ошибок чтения: {adapterFailures}; ошибок перезапуска: {restartsFailed}.");
+                    $"Обработано адаптеров: {adapters}; изменено: {changed}; пропущено: {skipped}; ошибок чтения: {adapterFailures}; ошибок перезапуска: {restartsFailed}.");
             }
 
             return Result.Success(

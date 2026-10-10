@@ -1,9 +1,11 @@
+using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Wpf;
 using SCU.Common;
 using SCU.Interop;
@@ -72,11 +74,13 @@ public partial class BrowserWindow : Window, IBrowserHostBridge
         if (e.OldValue is BrowserViewModel oldVm)
         {
             oldVm.ShowWindowRequested -= OnShowWindowRequested;
+            oldVm.Tabs.CollectionChanged -= OnTabsCollectionChanged;
         }
 
         if (e.NewValue is BrowserViewModel newVm)
         {
             newVm.ShowWindowRequested += OnShowWindowRequested;
+            newVm.Tabs.CollectionChanged += OnTabsCollectionChanged;
         }
     }
 
@@ -87,6 +91,7 @@ public partial class BrowserWindow : Window, IBrowserHostBridge
         {
             WindowState = WindowState.Maximized;
             Show();
+            UiAnimations.AppearWindow(this);
         }
         else
         {
@@ -99,6 +104,57 @@ public partial class BrowserWindow : Window, IBrowserHostBridge
         }
     }
 
+    // ===================== Анимации вкладок =====================
+
+    // Новая шапка вкладки «вырастает» из левого края. Контейнер реализуется
+    // лениво — анимация после первого layout-прохода (priority Loaded).
+    private void OnTabsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action != NotifyCollectionChangedAction.Add || e.NewItems is null)
+        {
+            return;
+        }
+
+        foreach (BrowserTabModel tab in e.NewItems)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => AnimateTabHeaderIn(tab));
+        }
+    }
+
+    private void AnimateTabHeaderIn(BrowserTabModel tab)
+    {
+        if (!IsVisible || TabStrip.ItemContainerGenerator.ContainerFromItem(tab) is not FrameworkElement container)
+        {
+            return;
+        }
+
+        UiAnimations.ScaleFadeIn(container);
+    }
+
+    // Мост перед фактическим закрытием: шапка плавно гаснет, VM удаляет вкладку
+    // после завершения анимации (таймаут — страховка от «вечной» вкладки,
+    // если окно ушло с экрана посреди анимации).
+    public async Task<bool> AnimateTabCloseAsync(BrowserTabModel tab)
+    {
+        if (!IsVisible || !UiAnimations.Enabled
+            || TabStrip.ItemContainerGenerator.ContainerFromItem(tab) is not FrameworkElement container)
+        {
+            return true;
+        }
+
+        var finished = new TaskCompletionSource();
+        UiAnimations.FadeOutThen(container, UiAnimations.TabMs, () => finished.TrySetResult());
+        try
+        {
+            await finished.Task.WaitAsync(TimeSpan.FromMilliseconds(UiAnimations.TabMs + 400)).ConfigureAwait(true);
+        }
+        catch (TimeoutException)
+        {
+        }
+
+        return true;
+    }
+
     private void OnAccentChanged() => RefreshIcon();
 
     private void RefreshIcon() =>
@@ -106,14 +162,68 @@ public partial class BrowserWindow : Window, IBrowserHostBridge
 
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        // Закрытие окна = завершение браузерной сессии: раздел 22 возвращается
-        // в состояние карточки запуска, повторный «Запустить» возможен.
+        if (_closeConfirmed)
+        {
+            // Второй проход после асинхронной очистки: сессия уже закрыта.
+            DetachFromViewModel();
+            return;
+        }
+
+        if (_closeInProgress)
+        {
+            // Закрытие уже идёт (очистка данных сайтов) — только гасим повторный X.
+            e.Cancel = true;
+            return;
+        }
+
+        if (DataContext is not BrowserViewModel vm)
+        {
+            return;
+        }
+
+        if (vm.NeedsExitCleanup)
+        {
+            // Двухфазное закрытие (аудит lifecycle): очистка данных сайтов
+            // выполняется через await — без блокировки диспетчера. Окно
+            // закрывается повторно по завершении очистки.
+            e.Cancel = true;
+            _closeInProgress = true;
+            _ = CompleteCloseAsync(vm);
+            return;
+        }
+
+        vm.CloseBrowser();
+        _closeConfirmed = true;
+        DetachFromViewModel();
+    }
+
+    private bool _closeConfirmed;
+    private bool _closeInProgress;
+
+    private async Task CompleteCloseAsync(BrowserViewModel vm)
+    {
+        try
+        {
+            await vm.CloseBrowserAsync();
+        }
+        finally
+        {
+            _closeInProgress = false;
+            _closeConfirmed = true;
+            Close();
+        }
+    }
+
+    private void DetachFromViewModel()
+    {
         ThemeManager.AccentChanged -= OnAccentChanged;
         ThemeManager.ThemeApplied -= OnThemeApplied;
         if (DataContext is BrowserViewModel vm)
         {
             vm.ShowWindowRequested -= OnShowWindowRequested;
-            vm.CloseBrowser();
+            vm.Tabs.CollectionChanged -= OnTabsCollectionChanged;
+            // vm.CloseBrowser() не вызывается: сессия уже закрыта
+            // (синхронно в одноразовом пути либо в CloseBrowserAsync).
         }
     }
 
@@ -135,6 +245,10 @@ public partial class BrowserWindow : Window, IBrowserHostBridge
     {
         var vm = ViewModel
             ?? throw new InvalidOperationException("Browser data context is not set.");
+
+        // Поколение сессии на входе: закрытие окна во время создания вкладки
+        // не должно оставлять живой WebView2 вне сессии (H-03).
+        var session = vm.SessionGeneration;
 
         var host = new BrowserTabHost(tab, vm.Service, vm, vm.Settings, vm.Log);
         var view = host.CreateView();
@@ -160,6 +274,15 @@ public partial class BrowserWindow : Window, IBrowserHostBridge
         // Вкладку могли закрыть, пока шло создание — хост не регистрируем.
         if (!_tabViews.TryGetValue(tab.Id, out var registered) || !ReferenceEquals(registered, view))
         {
+            host.Dispose();
+            return;
+        }
+
+        // Окно закрыли во время создания — хост не регистрируем и освобождаем.
+        if (vm.SessionGeneration != session)
+        {
+            WebViewPanel.Children.Remove(view);
+            _tabViews.Remove(tab.Id);
             host.Dispose();
             return;
         }
@@ -251,7 +374,31 @@ public partial class BrowserWindow : Window, IBrowserHostBridge
         {
             // Состояние ДО закрытия popup'а по mousedown вне его.
             _popupWasOpen[name] = FindPopup(name)?.IsOpen == true;
+            _popupMouseDownSeen = true;
         }
+    }
+
+    // PreviewMouseDown предшествует только мышиному клику: клавиатурная
+    // активация (Space/Enter) даёт Click без него (аудит a11y).
+    private bool _popupMouseDownSeen;
+
+    // Клавиатурная активация шапки вкладки (аудит a11y): Enter/Space = клик.
+    private void OnTabHeaderKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space) || sender is not FrameworkElement { DataContext: BrowserTabModel tab })
+        {
+            return;
+        }
+
+        ViewModel?.ActivateTabCommand.Execute(tab);
+        e.Handled = true;
+    }
+
+    private void OnWindowMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        // Отпускание кнопки вне тумблера (Click не сработал): сбрасываем флаг,
+        // чтобы последующая клавиатурная активация не взяла устаревшее значение.
+        _popupMouseDownSeen = false;
     }
 
     private void OnPopupToggleClick(object sender, RoutedEventArgs e)
@@ -261,8 +408,20 @@ public partial class BrowserWindow : Window, IBrowserHostBridge
             return;
         }
 
-        var wasOpen = _popupWasOpen.TryGetValue(name, out var open) && open;
-        _popupWasOpen[name] = false;
+        var seen = _popupMouseDownSeen;
+        _popupMouseDownSeen = false;
+        var wasOpen = seen && _popupWasOpen.TryGetValue(name, out var open) && open;
+        if (!seen)
+        {
+            // Клавиатурная активация: фактическое состояние popup'а вместо
+            // устаревшего значения прошлого мышиного клика.
+            wasOpen = FindPopup(name)?.IsOpen == true;
+        }
+        else
+        {
+            _popupWasOpen[name] = false;
+        }
+
         Action<bool> apply = name switch
         {
             "Downloads" => value => vm.IsDownloadsOpen = value,

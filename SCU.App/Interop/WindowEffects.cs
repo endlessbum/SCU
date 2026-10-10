@@ -14,6 +14,7 @@ public static class WindowEffects
 {
     private const int DwmwaUseImmersiveDarkMode = 20;
     private const int DwmwaCaptionColor = 35;
+    private const int DwmwaBorderColor = 34;
     private const int DwmwaUseImmersiveDarkModeBefore20H1 = 19;
     private const int DwmwaWindowCornerPreference = 33;
     private const int DwmwaSystemBackdropType = 3819;
@@ -62,6 +63,14 @@ public static class WindowEffects
 
             var colorref = brush.Color.R | (brush.Color.G << 8) | (brush.Color.B << 16);
             DwmSetWindowAttribute(hwnd, DwmwaCaptionColor, ref colorref, sizeof(int));
+
+            // П. 8: граница окна — тем же цветом. В максимизированном состоянии
+            // Windows 11 выводит за край экрана верхнюю рамку окна на толщину
+            // невидимой границы (8 px) — стандартное поведение, не управляется
+            // ни MINMAXINFO, ни SetWindowPos. Без перекраски рамка видна как
+            // тёмная полоса над строкой заголовка; с цветом заголовка полоса
+            // сливается с ней, и заголовок выглядит одинаково во всех состояниях.
+            DwmSetWindowAttribute(hwnd, DwmwaBorderColor, ref colorref, sizeof(int));
         }
         catch
         {

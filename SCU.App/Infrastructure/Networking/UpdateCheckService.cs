@@ -18,15 +18,23 @@ public sealed record UpdateCheckResult(
 // П. releases-аудита: раньше база сканера публиковалась как обычный релиз
 // db-ГГГГ.М.ДД с флагом --latest и перетягивала плашку «Latest» у приложения.
 // Теперь база — rolling pre-release с фиксированным тегом scanner-db
-// (database.yml), и «Latest» всегда принадлежит релизу SCU. Тем не менее
-// читается список релизов, а версией приложения считается первый тег,
-// разбираемый как версия: теги scanner-db/db-* пропускаются на всякий случай.
-// Сравнение — по трём частям версии сборки (2.2.0), тег допускает префикс «v».
+// (database.yml), и «Latest» всегда принадлежит релизу SCU.
+// Выбор версии (аудит обновлений): из всех релизов выбирается МАКСИМАЛЬНАЯ
+// стабильная версия по объектам релизов, а не первый подходящий тег списка —
+// иначе prerelease, опубликованный позже stable, загораживал её и обновление
+// не предлагалось. Статус prerelease/draft берётся из метаданных GitHub, а не
+// из наличия «-» в теге. Сравнение — по трём частям версии сборки (2.2.0),
+// тег допускает префикс «v».
 public sealed class UpdateCheckService
 {
     public const string ReleasesPageUrl = "https://github.com/endlessbum/SCU/releases";
+    // per_page=100: узкая страница пропускала свежий стабильный релиз, если
+    // после него вышло больше пререлизов/служебных тегов, чем влезло в выборку.
     private const string ReleasesListUrl =
-        "https://api.github.com/repos/endlessbum/SCU/releases?per_page=10";
+        "https://api.github.com/repos/endlessbum/SCU/releases?per_page=100";
+
+    // Минимум полей релиза GitHub, нужных для выбора версии приложения.
+    internal sealed record GitHubReleaseInfo(string? TagName, bool Draft, bool Prerelease);
 
     public string CurrentVersion { get; } =
         (Assembly.GetEntryAssembly()?.GetName().Version is { } version
@@ -58,29 +66,27 @@ public sealed class UpdateCheckService
 
             await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             using var json = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-            var tags = json.RootElement.ValueKind == JsonValueKind.Array
+            var releases = json.RootElement.ValueKind == JsonValueKind.Array
                 ? json.RootElement.EnumerateArray()
-                    .Select(release => release.TryGetProperty("tag_name", out var tagName)
-                        ? tagName.GetString()
-                        : null)
-                : Enumerable.Empty<string?>();
+                    .Select(release => new GitHubReleaseInfo(
+                        release.TryGetProperty("tag_name", out var tagName) ? tagName.GetString() : null,
+                        release.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True,
+                        release.TryGetProperty("prerelease", out var prerelease) && prerelease.ValueKind == JsonValueKind.True))
+                : Enumerable.Empty<GitHubReleaseInfo>();
 
-            var chosenTag = SelectVersionTag(tags);
-            if (chosenTag is null)
+            var chosen = SelectLatestStableRelease(releases);
+            if (chosen is null)
             {
                 return new UpdateCheckResult(false, false, null, CurrentVersion, ReleasesPageUrl,
                     "в релизах не найдена версия приложения");
             }
 
-            // Пререлизы (тег с суффиксом «-…») обновлением не предлагаются.
-            var isPrerelease = chosenTag.Contains('-', StringComparison.Ordinal);
-
-            var latest = NormalizeVersion(chosenTag)!;
+            var latest = NormalizeVersion(chosen.TagName)!;
 
             var current = Version.TryParse(CurrentVersion, out var parsed) ? parsed : new Version(0, 0, 0);
             return new UpdateCheckResult(
                 true,
-                !isPrerelease && latest > current,
+                latest > current,
                 latest.ToString(),
                 CurrentVersion,
                 ReleasesPageUrl,
@@ -96,31 +102,39 @@ public sealed class UpdateCheckService
         }
     }
 
-    // Первый тег, разбираемый как версия приложения, в порядке свежести релизов.
-    // Датные релизы базы (db-…) пропускаются: это не версии SCU.
-    internal static string? SelectVersionTag(IEnumerable<string?> tags)
+    // Максимальная стабильная версия среди релизов: draft/prerelease (по
+    // метаданным GitHub) и релизы базы (db-*, scanner-db) пропускаются,
+    // остальные сравниваются по нормализованной версии. Порядок в списке
+    // GitHub — по дате публикации, поэтому «первый подходящий» мог выбрать
+    // prerelease и скрыть более новую stable.
+    internal static GitHubReleaseInfo? SelectLatestStableRelease(IEnumerable<GitHubReleaseInfo> releases)
     {
-        foreach (var tag in tags)
+        GitHubReleaseInfo? best = null;
+        Version? bestVersion = null;
+        foreach (var release in releases)
         {
-            if (string.IsNullOrWhiteSpace(tag))
+            if (release.Draft || release.Prerelease)
             {
                 continue;
             }
 
-            if (tag.StartsWith("db-", StringComparison.OrdinalIgnoreCase))
+            var tag = release.TagName;
+            if (string.IsNullOrWhiteSpace(tag)
+                || tag.StartsWith("db-", StringComparison.OrdinalIgnoreCase)
+                || tag.StartsWith("scanner-db", StringComparison.OrdinalIgnoreCase)
+                || NormalizeVersion(tag) is not { } version)
             {
                 continue;
             }
 
-            if (NormalizeVersion(tag) is null)
+            if (bestVersion is null || version > bestVersion)
             {
-                continue;
+                best = release;
+                bestVersion = version;
             }
-
-            return tag;
         }
 
-        return null;
+        return best;
     }
 
     // «v2.3.1» / «2.3.1» / «2.3» → Version; null, если разобрать не удалось.

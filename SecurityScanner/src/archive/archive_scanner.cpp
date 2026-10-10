@@ -3,11 +3,13 @@
 #include "core/path_util.h"
 
 #include <windows.h>
+#include <objbase.h>
 
 #include "miniz.h"
 
 #include <cstdio>
 #include <cstring>
+#include <chrono>
 
 namespace scan {
 
@@ -17,6 +19,30 @@ std::wstring TempRoot()
 {
     const std::wstring temp = GetTempPathDynamic();
     return temp.empty() ? std::wstring(L".") : temp;
+}
+
+// Создание каталога без следования по reparse-точкам: если путь уже существует,
+// он обязан быть обычным каталогом — junction/symlink на нём означает, что
+// кто-то подготовил цель для записи с правами сканера (fail-closed).
+DWORD CreateDirectoryRecursiveNoReparse(const std::wstring& path)
+{
+    if (CreateDirectoryW(path.c_str(), nullptr)) {
+        return ERROR_SUCCESS;
+    }
+
+    const DWORD error = GetLastError();
+    if (error != ERROR_ALREADY_EXISTS) {
+        return error;
+    }
+
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES
+        || (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0
+        || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+        return ERROR_ACCESS_DENIED; // существующий путь не является обычным каталогом
+    }
+
+    return ERROR_SUCCESS;
 }
 
 std::wstring ToWideName(const char* name, mz_uint bitFlag)
@@ -67,6 +93,56 @@ size_t WriteChunk(void* opaque, mz_uint64 /*fileOfs*/, const void* buffer, size_
 
 } // namespace
 
+// RAII-держатель кредита бюджета: резерв живёт до конца ScanZip, освобождается
+// после уничтожения буфера (guard объявлен раньше buffer — разрушается позже).
+class ArchiveBufferGuard {
+public:
+    ArchiveBufferGuard(unsigned long long bytes, const std::atomic<bool>& isCancelled)
+        : bytes_(bytes)
+        , acquired_(ArchiveMemoryBudget::Instance().Acquire(bytes, isCancelled)) {}
+    ~ArchiveBufferGuard() {
+        if (acquired_) {
+            ArchiveMemoryBudget::Instance().Release(bytes_);
+        }
+    }
+    ArchiveBufferGuard(const ArchiveBufferGuard&) = delete;
+    ArchiveBufferGuard& operator=(const ArchiveBufferGuard&) = delete;
+    bool Acquired() const { return acquired_; }
+
+private:
+    unsigned long long bytes_;
+    bool acquired_;
+};
+
+ArchiveMemoryBudget& ArchiveMemoryBudget::Instance()
+{
+    static ArchiveMemoryBudget budget;
+    return budget;
+}
+
+bool ArchiveMemoryBudget::Acquire(unsigned long long bytes, const std::atomic<bool>& isCancelled)
+{
+    std::unique_lock lock(mutex_);
+    while (!isCancelled.load(std::memory_order_relaxed)) {
+        if (inUse_ + bytes <= kBudgetBytes || inUse_ == 0) {
+            inUse_ += bytes;
+            return true;
+        }
+        // Ожидание порциями: отмену воркера нельзя пропустить надолго.
+        released_.wait_for(lock, std::chrono::milliseconds(100));
+    }
+    return false;
+}
+
+void ArchiveMemoryBudget::Release(unsigned long long bytes) noexcept
+{
+    {
+        std::lock_guard lock(mutex_);
+        inUse_ = inUse_ >= bytes ? inUse_ - bytes : 0;
+    }
+    released_.notify_all();
+}
+
 ArchiveScanner::ArchiveScanner(const ArchiveLimits& limits,
                                const std::atomic<bool>& isCancelled,
                                MemberCallback onMember,
@@ -106,6 +182,14 @@ bool ArchiveScanner::ScanZip(const std::wstring& path, const std::wstring& virtu
         CloseHandle(file);
         onIssue_({virtualPath, L"too-large", path});
         return true;
+    }
+
+    // Глобальный бюджет памяти (M-02): кредит резервируется до выделения буфера —
+    // пиковое потребление ZIP-буферов ограничено независимо от числа воркеров.
+    const ArchiveBufferGuard guard(static_cast<unsigned long long>(fileSize.QuadPart), isCancelled_);
+    if (!guard.Acquired()) {
+        CloseHandle(file);
+        return false; // отмена во время ожидания кредита
     }
 
     // Архив читается в память: miniz открывает файлы через ANSI-пути, а нам
@@ -214,24 +298,39 @@ bool ArchiveScanner::ScanMember(int index,
 {
     // Temp-каталог — один на экземпляр сканера (создаётся при первом члене);
     // члены извлекаются по индексам (без имён из архива — защита от zip slip).
-    // Имя каталога уникально для экземпляра: параллельные воркеры сканируют
-    // свои архивы одновременно (п. 26), pid+tick могут совпасть.
+    //
+    // Имя каталога НЕПРЕДСКАЗУМО (GUID): предсказуемое «pid_tick_n» позволяло
+    // не-админ процессу заранее создать его как junction на защищённый каталог
+    // — elevated-сканер писал бы туда (CREATE_ALWAYS). После создания каждого
+    // уровня проверяем отсутствие REPARSE_POINT, а члены пишутся CREATE_NEW.
     if (tempDir_.empty()) {
-        static std::atomic<unsigned long> instanceCounter{0};
-        wchar_t id[64];
-        swprintf_s(id, L"ScannerCore\\%lu_%lu_%lu", GetCurrentProcessId(),
-                   GetTickCount(), instanceCounter.fetch_add(1));
-        tempDir_ = TempRoot() + id;
-        CreateDirectoryW((TempRoot() + L"ScannerCore").c_str(), nullptr);
-        CreateDirectoryW(tempDir_.c_str(), nullptr);
+        GUID guid{};
+        wchar_t guidText[64] = {};
+        if (FAILED(CoCreateGuid(&guid)) || StringFromGUID2(guid, guidText, 64) <= 0) {
+            onIssue_({virtualPath, L"temp-unavailable", TempRoot(), true});
+            return true;
+        }
+
+        const std::wstring root = TempRoot() + L"ScannerCore";
+        tempDir_ = root + L"\\" + guidText;
+        const DWORD rootError = CreateDirectoryRecursiveNoReparse(root);
+        const DWORD leafError = CreateDirectoryRecursiveNoReparse(tempDir_);
+        if ((rootError != ERROR_SUCCESS && rootError != ERROR_ALREADY_EXISTS)
+            || (leafError != ERROR_SUCCESS && leafError != ERROR_ALREADY_EXISTS)) {
+            tempDir_.clear();
+            onIssue_({virtualPath, L"temp-unavailable", TempRoot(), true});
+            return true;
+        }
     }
 
     wchar_t name[32];
     swprintf_s(name, L"m%06lu", ++memberCounter_);
     const std::wstring tempPath = tempDir_ + L"\\" + name;
 
+    // CREATE_NEW, а не CREATE_ALWAYS: подгонянный по имени ранее созданный
+    // файл/симлинк в нашем каталоге не перезаписывается, а роняет извлечение.
     HANDLE outFile = CreateFileW(tempPath.c_str(), GENERIC_WRITE, 0,
-                                 nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY,
+                                 nullptr, CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY,
                                  nullptr);
     if (outFile == INVALID_HANDLE_VALUE) {
         onIssue_({virtualPath, L"corrupt-archive", tempPath, true});

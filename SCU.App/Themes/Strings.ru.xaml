@@ -18,6 +18,8 @@
     <sys:String x:Key="S_Section02_Desc">DirectX, VC++ и .NET</sys:String>
     <sys:String x:Key="S_Section03_Title">Очистка системы и диска</sys:String>
     <sys:String x:Key="S_Section03_Desc">Корзина, temp, браузеры и системная очистка</sys:String>
+    <sys:String x:Key="S_Section26_Title">Кэш приложений</sys:String>
+    <sys:String x:Key="S_Section26_Desc">Временные данные установленных приложений</sys:String>
     <sys:String x:Key="S_Section04_Title">Удаление мусорного ПО</sys:String>
     <sys:String x:Key="S_Section04_Desc">AppX и другие необязательные компоненты</sys:String>
     <sys:String x:Key="S_Section05_Title">Приватность и телеметрия</sys:String>
@@ -70,7 +72,7 @@
     <sys:String x:Key="S_Section25_Desc">Инвентарь ключевого оборудования и обновление драйверов через Windows Update</sys:String>
     <sys:String x:Key="S_DrvStateTitle">Состояние драйверов</sys:String>
     <sys:String x:Key="S_DrvStateDesc">Ключевое оборудование и его драйверы; проблемные устройства помечаются значком предупреждения.</sys:String>
-    <sys:String x:Key="S_DrvRescan">Проверить ещё раз</sys:String>
+    <sys:String x:Key="S_DrvRescan">Проверить</sys:String>
     <sys:String x:Key="S_DrvUpdatesTitle">Обновления драйверов</sys:String>
     <sys:String x:Key="S_DrvUpdatesDesc">Поиск по серверам Windows Update — тот же канал, которым Windows ставит драйверы сама: подбор по устройству и подпись Microsoft.</sys:String>
     <sys:String x:Key="S_DrvSearch">Проверить обновления</sys:String>
@@ -170,6 +172,9 @@
     <sys:String x:Key="S_PowerFastBoot">Быстрый запуск</sys:String>
     <sys:String x:Key="S_PowerFastBootDesc">Использует уменьшенный файл гибернации для ускорения последующей загрузки Windows после завершения работы. Отключение может увеличить время запуска, но исключает гибридное завершение работы. На современных SSD обычно оставляют включённым, если нет причины отключать (отладка, полный холодный старт, проблемы с драйверами).</sys:String>
     <sys:String x:Key="S_PowerFastBootTip">Реестр HiberbootEnabled и проверка доступности через powercfg. Изменение может потребовать перезагрузки.</sys:String>
+    <sys:String x:Key="S_PowerDiskIdleTitle">Отключение диска</sys:String>
+    <sys:String x:Key="S_PowerDiskIdleDesc">Запрещает отключение диска в режиме простоя.</sys:String>
+    <sys:String x:Key="S_PowerDiskIdleTip">Включено — таймаут отключения диска 0 (диск не переводится в спящий режим). Выключено — стандартные 20 минут. Значение задаётся powercfg для активной схемы (AC и DC).</sys:String>
     <sys:String x:Key="S_PowerStateBadgeTip">Значки: ? — состояние неизвестно; * — нужна перезагрузка; ≠ — смешанное или частичное; — — недоступно.</sys:String>
     <sys:String x:Key="S_PowerMemTitle">Память и файловая система</sys:String>
     <sys:String x:Key="S_PowerMemCompression">Сжатие памяти</sys:String>
@@ -212,6 +217,13 @@
     <sys:String x:Key="S_NetNetBiosDisable">Отключить (режим 2)</sys:String>
     <sys:String x:Key="S_NetNetBiosDhcp">По DHCP (режим 0)</sys:String>
     <sys:String x:Key="S_NetNetBiosFlush">Сбросить кэш (nbtstat -R / -RR)</sys:String>
+    <!-- Заголовок «Очистки DNS» в списке пакетной очистки на «Главной» -->
+    <sys:String x:Key="S_BatchDnsFlush">Очистка DNS</sys:String>
+    <!-- Карточка «Путь очистки загрузок» в «Настройках» -->
+    <sys:String x:Key="S_SettingsDownloadsPath">Путь очистки загрузок</sys:String>
+    <sys:String x:Key="S_SettingsDownloadsPathDesc">Указывается путь для очистки загрузок в другой папке.</sys:String>
+    <sys:String x:Key="S_SettingsDownloadsPathAdd">Добавить</sys:String>
+    <sys:String x:Key="S_SettingsDownloadsPathClear">Убрать путь очистки</sys:String>
     <sys:String x:Key="S_NetAutoTuningLabel">Auto-Tuning:</sys:String>
     <sys:String x:Key="S_NetEcnLabel">ECN:</sys:String>
     <sys:String x:Key="S_NetNetBiosTitle">NetBIOS over TCP/IP</sys:String>
@@ -258,10 +270,14 @@
     <sys:String x:Key="S_CleanupDesc">Все операции очищают только кэши и временные файлы. Занятые файлы пропускаются, состояние служб при очистке кэша обновлений сохраняется и восстанавливается автоматически.</sys:String>
     <sys:String x:Key="S_CleanupQuick">Быстрая очистка</sys:String>
     <sys:String x:Key="S_CleanupRecycleBin">Корзина</sys:String>
+    <sys:String x:Key="S_CleanupDownloads">Загрузки</sys:String>
     <sys:String x:Key="S_CleanupTemp">Папки Temp</sys:String>
     <sys:String x:Key="S_CleanupBrowsers">Кэш браузеров</sys:String>
     <sys:String x:Key="S_CleanupServiceCaches">Служебные кэши</sys:String>
     <sys:String x:Key="S_CleanupUpdateCache">Кэш загрузок обновлений Windows</sys:String>
+    <sys:String x:Key="S_AppCacheCardTitle">Очистка кэша приложений</sys:String>
+    <sys:String x:Key="S_AppCacheCardDesc">Сбор информации о занятом пространстве временных данных приложений</sys:String>
+    <sys:String x:Key="I_AppCacheScanScope">Кэш считывается только с данных расположенных на системном диске.</sys:String>
     <sys:String x:Key="S_Cancel">Отмена</sys:String>
     <sys:String x:Key="S_Clean">Очистить</sys:String>
     <sys:String x:Key="S_ColIndex">#</sys:String>
@@ -294,6 +310,10 @@
     <sys:String x:Key="S_SettingsLogDesc">Показывать или скрывать блок журнала под окном. Применяется сразу.</sys:String>
     <sys:String x:Key="S_SettingsUac">UAC</sys:String>
     <sys:String x:Key="S_SettingsUacDesc">Окно подтверждения рисковых действий</sys:String>
+    <!-- Формат с хвостовым пробелом: склеивается с именем интерфейса в Run -->
+    <sys:String x:Key="S_NetworkSelectedInterface" xml:space="preserve">Выбран: </sys:String>
+    <sys:String x:Key="S_SettingsAnimations">Анимации интерфейса</sys:String>
+    <sys:String x:Key="S_SettingsAnimationsDesc">Плавные переходы разделов, вкладок и окон. Применяется сразу.</sys:String>
     <sys:String x:Key="S_SettingsUpdates">Обновления SCU</sys:String>
     <sys:String x:Key="S_SettingsUpdatesDesc">Проверить наличие обновлений</sys:String>
     <sys:String x:Key="S_SettingsUpdatesButton">Проверить</sys:String>
@@ -479,6 +499,7 @@
     <sys:String x:Key="I_MaintDumpsWer">Удаляет дампы памяти и очередь отчётов об ошибках Windows Error Reporting. Диагностическую информацию после сбоя (BSOD) восстановить будет нельзя.</sys:String>
 
     <sys:String x:Key="I_CleanupRecycleBin">Безвозвратно очищает корзину на всех дисках.</sys:String>
+    <sys:String x:Key="I_CleanupDownloads">Файлы и папки из пользовательской папки Downloads.</sys:String>
     <sys:String x:Key="I_CleanupTemp">Удаляет временные файлы из папок TEMP пользователя и Windows, Prefetch, Recent и INetCache. Занятые файлы пропускаются.</sys:String>
     <sys:String x:Key="I_CleanupBrowsers">Удаляет кэш Chrome, Edge, Яндекс Браузера, Brave, Vivaldi, Firefox и Opera. Закладки, пароли и история не затрагиваются; заранее закройте браузеры.</sys:String>
     <sys:String x:Key="I_CleanupUpdateCache">Останавливает службы обновления (с сохранением их состояния), очищает SoftwareDistribution\Download и кэш Delivery Optimization, затем возвращает службы. Может освободить несколько ГБ.</sys:String>

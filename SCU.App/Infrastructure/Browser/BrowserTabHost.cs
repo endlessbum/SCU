@@ -11,7 +11,9 @@ namespace SCU.Infrastructure.Browser;
 // Один экземпляр — одна вкладка: создаёт WebView2, применяет политику безопасности
 // и транслирует события движка в модель вкладки и ViewModel. Создаётся ТОЛЬКО по
 // явному запросу (после «Запустить»); закрытие вкладки освобождает все ресурсы.
-public sealed class BrowserTabHost : IDisposable
+// Не sealed + виртуальные ClearBrowsingDataAsync/Dispose: тестовый шов для
+// lifecycle-регрессий закрытия (fake-хост с управляемой очисткой).
+public class BrowserTabHost : IDisposable
 {
     private readonly BrowserTabModel _model;
     private readonly IBrowserService _browserService;
@@ -139,17 +141,13 @@ public sealed class BrowserTabHost : IDisposable
 
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
-        // Пользовательская ссылка на странице — в новую вкладку (продуктовое
-        // решение «каждая ссылка — отдельная вкладка»). Клики по ссылкам приходят
-        // с IsUserInitiated=true; адресная строка, назад/вперёд, перезагрузка и
-        // редиректы инициируются кодом (false) и остаются в текущей вкладке.
-        if (e.IsUserInitiated && BrowserNavigationPolicy.Evaluate(e.Uri) == BrowserNavigationDecision.Allow)
-        {
-            e.Cancel = true;
-            _ = _viewModel.OpenTab(e.Uri);
-            return;
-        }
-
+        // Ссылки открываются в текущей вкладке. Перехват «IsUserInitiated → новая
+        // вкладка» не работает: WebView2 помечает флагом ВСЮ цепочку навигаций
+        // после жеста пользователя (отправку формы и последующие редиректы тоже),
+        // каждая отменённая навигация открывала новую вкладку, чья навигация
+        // также считалась пользовательской — каскад до лимита вкладок, поиск
+        // (submit формы) не доходил до поисковика. target=_blank по-прежнему
+        // обслуживается OnNewWindowRequested.
         var decision = BrowserNavigationPolicy.Evaluate(e.Uri);
         switch (decision)
         {
@@ -257,15 +255,25 @@ public sealed class BrowserTabHost : IDisposable
 
     private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
     {
-        // target=_blank / window.open — внутренняя вкладка вместо отдельного окна.
+        // target=_blank / window.open — те же три решения политики, что и для
+        // обычной навигации (аудит: ExternalWithConfirmation раньше сводился к
+        // блокировке — window.open("mailto:...") терялся).
         e.Handled = true;
-        if (BrowserNavigationPolicy.Evaluate(e.Uri) == BrowserNavigationDecision.Allow)
+        switch (BrowserNavigationPolicy.Evaluate(e.Uri))
         {
-            _ = _viewModel.OpenTab(e.Uri);
-        }
-        else
-        {
-            _logger.Warn("BROWSER | popup blocked | " + ShortUrl(e.Uri));
+            case BrowserNavigationDecision.Allow:
+                TaskRunner.RunAndForget(_viewModel.OpenTab(e.Uri), _logger, "BROWSER popup open-tab");
+                break;
+
+            case BrowserNavigationDecision.ExternalWithConfirmation:
+                _logger.Info("BROWSER | popup external protocol | " + ShortUrl(e.Uri));
+                _viewModel.LaunchExternalScheme(e.Uri);
+                break;
+
+            default:
+                _logger.Warn("BROWSER | popup blocked | " + ShortUrl(e.Uri));
+                _viewModel.ReportBlockedNavigation();
+                break;
         }
     }
 
@@ -306,8 +314,8 @@ public sealed class BrowserTabHost : IDisposable
             ? FileNameFromContentDisposition(operation.ContentDisposition) ?? SafeFileName(operation.Uri)
             : SafeFileName(operation.Uri);
 
-        var path = BrowserDownloadPolicy.BuildDownloadPath(_settings.DownloadFolder, suggested);
-        if (path is null)
+        var suggestedPath = BrowserDownloadPolicy.BuildDownloadPath(_settings.DownloadFolder, suggested);
+        if (suggestedPath is null)
         {
             _logger.Error("BROWSER | download path refused | " + suggested);
             _viewModel.ReportDownloadFailure(L.T("Загрузка не удалась: небезопасное имя файла."));
@@ -315,17 +323,32 @@ public sealed class BrowserTabHost : IDisposable
             return;
         }
 
+        string? path;
         if (_settings.AskDownloadPath)
         {
             // Путь выбирает пользователь в системном диалоге — сознательное действие,
-            // граница папки загрузок на него намеренно не распространяется.
-            var chosen = _viewModel.PickDownloadPath(path);
+            // граница папки загрузок на него намеренно не распространяется. Конфликт
+            // имён разрешает сам диалог («Заменить?»), резервирование не нужно.
+            var chosen = _viewModel.PickDownloadPath(suggestedPath);
             if (chosen is null)
             {
                 operation.Cancel();
                 return;
             }
             path = chosen;
+        }
+        else
+        {
+            // Атомарное резервирование (L-02): имя фиксируется CreateNew сразу,
+            // другой процесс не может занять его до создания файла WebView2.
+            path = BrowserDownloadPolicy.ReserveDownloadPath(suggestedPath);
+            if (path is null)
+            {
+                _logger.Error("BROWSER | download path reserve failed | " + suggested);
+                _viewModel.ReportDownloadFailure(L.T("Загрузка не удалась: имя файла занято."));
+                operation.Cancel();
+                return;
+            }
         }
 
         // Путь назначения задаётся только через DownloadStartingEventArgs.
@@ -335,12 +358,15 @@ public sealed class BrowserTabHost : IDisposable
         _viewModel.AddDownload(operation, path, suggested, operation.Uri);
     }
 
-    // filename*=UTF-8''... имеет приоритет; затем filename="..." или filename=...;
-    // значение всегда проходит BrowserDownloadPolicy.SanitizeFileName — заголовок
-    // сервера не доверяется (path traversal, абсолютные пути и пр.).
+    // filename*=UTF-8''... и filename*=UTF-8'en'... (RFC 5987, language-part
+    // обязателен к поддержке — раньше совпадал только пустой) имеют приоритет;
+    // затем filename="..." или filename=...; значение всегда проходит
+    // BrowserDownloadPolicy.SanitizeFileName — заголовок сервера не доверяется
+    // (path traversal, абсолютные пути и пр.).
     internal static string? FileNameFromContentDisposition(string header)
     {
-        var starMatch = Regex.Match(header, @"filename\*=(?:[^']*''){1,3}(?<value>[^;]+)", RegexOptions.IgnoreCase);
+        var starMatch = Regex.Match(
+            header, @"filename\*=(?<charset>[^']*)'(?<lang>[^']*)'(?<value>[^;]+)", RegexOptions.IgnoreCase);
         if (starMatch.Success)
         {
             var decoded = Uri.UnescapeDataString(starMatch.Groups["value"].Value.Trim().Trim('"'));
@@ -429,22 +455,28 @@ public sealed class BrowserTabHost : IDisposable
 
     public double ZoomFactor => View?.ZoomFactor ?? 1.0;
 
-    // Очистка данных сайтов (cookies/кэш) по профилю этой вкладки — best-effort:
-    // при закрытии SCU завершение не гарантировано, решение фиксируется в журнале.
-    public async void ClearBrowsingData(CoreWebView2BrowsingDataKinds kinds)
+    // Очистка данных сайтов (cookies/кэш) по профилю этой вкладки. Возврат false —
+    // очистка не удалась ( best-effort, но вызывающий обязан это знать и логировать:
+    // настройка «очищать при выходе» не должна молча не срабатывать). Продолжение
+    // после await выполняется вне UI-потока — синхронное ожидание на пути закрытия
+    // окна/выхода не deadlock'ит UI.
+    public virtual async Task<bool> ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds kinds)
     {
         try
         {
-            await View.CoreWebView2.Profile.ClearBrowsingDataAsync(kinds).ConfigureAwait(true);
+            await View.CoreWebView2.Profile.ClearBrowsingDataAsync(kinds).ConfigureAwait(false);
+            _logger.Info("BROWSER | clear browsing data | id=" + _model.Id);
+            return true;
         }
         catch (Exception exception)
         {
             _logger.Warn("BROWSER | clear browsing data | " + exception.Message);
+            return false;
         }
     }
 
     // Закрытие вкладки: отписка, остановка, освобождение WebView2.
-    public void Dispose()
+    public virtual void Dispose()
     {
         if (View is null)
         {

@@ -72,7 +72,9 @@ public sealed class UserScriptStore
         }
     }
 
-    public void Save(IReadOnlyList<UserScriptData> scripts)
+    // false — сохранить не удалось: вызывающая сторона обязана не сообщать
+    // пользователю успех (иначе scripts.json расходится с реальностью).
+    public bool Save(IReadOnlyList<UserScriptData> scripts)
     {
         try
         {
@@ -80,6 +82,7 @@ public sealed class UserScriptStore
             var temp = _jsonPath + ".tmp";
             File.WriteAllText(temp, JsonSerializer.Serialize(scripts, JsonOptions));
             File.Move(temp, _jsonPath, overwrite: true);
+            return true;
         }
         catch (Exception exception)
         {
@@ -87,6 +90,7 @@ public sealed class UserScriptStore
             // «незавершённый файл» при следующем чтении.
             try { File.Delete(_jsonPath + ".tmp"); } catch { /* .tmp мог не создаться */ }
             _logger.Warn("USCRIPT | save failed | " + exception.Message);
+            return false;
         }
     }
 
@@ -108,6 +112,124 @@ public sealed class UserScriptStore
         File.Copy(sourcePath, ScriptPath(data), overwrite: true);
         data.Sha256 = ComputeSha256(ScriptPath(data)) ?? string.Empty;
         return data;
+    }
+
+    // Сохранение отредактированного в редакторе содержимого: запись файла +
+    // пересчёт эталонного SHA-256 (иначе следующий запуск отменяется по
+    // целостности) + persistence scripts.json. Экземпляр data заменяет запись
+    // с тем же Id в scripts.json (у вызывающих — свой экземпляр из Load()).
+    // false — эталон/список не обновились, правку считать не сохранённой.
+    public bool UpdateContent(UserScriptData data, string text)
+    {
+        // Полная транзакционность (аудит HIGH): порядок temp → replace target →
+        // persist metadata, с откатом целевого файла и SHA при любом сбое.
+        // Раньше data.Sha256 мутировался до Move: сбой Move оставлял scripts.json
+        // с новым SHA против старого файла — скрипт навсегда блокировался
+        // проверкой целостности, а in-memory объект был изменён при return false.
+        var target = ScriptPath(data);
+        var temp = target + ".new";
+        var backup = target + ".old";
+        var oldSha = data.Sha256;
+        var targetExisted = File.Exists(target);
+
+        try
+        {
+            File.WriteAllText(temp, text);
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("USCRIPT | update content failed | " + data.Id + " | " + exception.Message);
+            return false;
+        }
+
+        var sha = ComputeSha256(temp);
+        if (sha is null)
+        {
+            // Файл записан, но не читается — пустой хэш оставлять нельзя:
+            // он включил бы TOFU на чужом содержимом при первом запуске.
+            _logger.Error("USCRIPT | update content | hash unreadable | " + data.Id);
+            try { File.Delete(temp); } catch { /* уже удалён */ }
+            return false;
+        }
+
+        if (targetExisted)
+        {
+            // Откаточная копия старого контента — до подмены целевого файла.
+            try
+            {
+                File.Copy(target, backup, overwrite: true);
+            }
+            catch (Exception exception)
+            {
+                _logger.Warn("USCRIPT | update content | old backup failed | " + data.Id + " | " + exception.Message);
+                try { File.Delete(temp); } catch { /* уже удалён */ }
+                return false;
+            }
+        }
+
+        try
+        {
+            File.Move(temp, target, overwrite: true);
+        }
+        catch (Exception exception)
+        {
+            // Целевой файл не подменён — metadata и in-memory не тронуты.
+            _logger.Error("USCRIPT | update content | replace failed | " + data.Id + " | " + exception.Message);
+            try { File.Delete(temp); } catch { /* уже удалён */ }
+            try { File.Delete(backup); } catch { /* копии могло не быть */ }
+            return false;
+        }
+
+        data.Sha256 = sha;
+        var scripts = Load();
+        var index = scripts.FindIndex(script => script.Id == data.Id);
+        if (index >= 0)
+        {
+            scripts[index] = data;
+        }
+        else
+        {
+            scripts.Add(data);
+        }
+
+        if (Save(scripts))
+        {
+            try { File.Delete(backup); } catch { /* копия не создавалась */ }
+            return true;
+        }
+
+        // Metadata не сохранилась — откат целевого файла и in-memory SHA
+        // к состоянию до правки (аудит: metadata и файл обязаны совпадать).
+        try
+        {
+            if (targetExisted)
+            {
+                File.Move(backup, target, overwrite: true);
+            }
+            else
+            {
+                File.Delete(target);
+            }
+
+            data.Sha256 = oldSha;
+            var rolledBack = Load();
+            var rollbackIndex = rolledBack.FindIndex(script => script.Id == data.Id);
+            if (rollbackIndex >= 0)
+            {
+                rolledBack[rollbackIndex] = data;
+                Save(rolledBack);
+            }
+        }
+        catch (Exception rollbackException)
+        {
+            _logger.Error("USCRIPT | update content | rollback failed | " + data.Id + " | " + rollbackException.Message);
+        }
+        finally
+        {
+            try { File.Delete(backup); } catch { /* уже возвращён на место */ }
+        }
+
+        return false;
     }
 
     // true — файла нет или удалён; false — занят/не удалился: запись из
@@ -259,11 +381,21 @@ public sealed class UserScriptStore
                })
             : (SystemTool.Path("cmd.exe"), new List<string> { "/d", "/c", path });
 
-        var result = await RunCaptureAsync(fileName, arguments, ct).ConfigureAwait(false);
-        var tail = result.Output.Length > 600
-            ? "…" + result.Output[^600..]
-            : result.Output;
-        return (result.ExitCode, tail.Trim());
+        // Таймаут (аудит): TimeoutException из RunCaptureAsync превращается в
+        // честный статус карточки, а не в необработанное исключение.
+        try
+        {
+            var result = await RunCaptureAsync(fileName, arguments, ct).ConfigureAwait(false);
+            var tail = result.Output.Length > 600
+                ? "…" + result.Output[^600..]
+                : result.Output;
+            return (result.ExitCode, tail.Trim());
+        }
+        catch (TimeoutException exception)
+        {
+            _logger.Warn("USCRIPT | run timeout | " + data.Id + " | " + exception.Message);
+            return (-1, L.T(exception.Message));
+        }
     }
 
     // SHA-256 файла; null — файл не читается (отсутствует или занят).
@@ -281,9 +413,19 @@ public sealed class UserScriptStore
         }
     }
 
+    // Лимит пользовательского скрипта (аудит): без таймаута бесконечный цикл
+    // в скрипте держал IsRunning=true вечно и оставлял elevated-процесс после
+    // выхода из приложения. Таймаут ставит CTS.CancelAfter — зарегистрированный
+    // киллер гасит дерево процессов.
+    internal static readonly TimeSpan ScriptRunTimeout = TimeSpan.FromMinutes(15);
+
     private static async Task<(int ExitCode, string Output)> RunCaptureAsync(
         string fileName, IReadOnlyList<string> arguments, CancellationToken ct)
     {
+        using var timeoutCts = new CancellationTokenSource(ScriptRunTimeout);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        var runToken = linked.Token;
+
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
         {
@@ -300,9 +442,9 @@ public sealed class UserScriptStore
 
         process.Start();
 
-        // Отмена убивает дерево процессов (аудит п. 7): powershell/cmd и их
-        // дочерние процессы не продолжают жить после отмены в UI.
-        using var registration = ct.Register(() =>
+        // Отмена/таймаут убивают дерево процессов (аудит п. 7): powershell/cmd и
+        // их дочерние процессы не продолжают жить после отмены в UI.
+        using var registration = runToken.Register(() =>
         {
             try
             {
@@ -323,7 +465,12 @@ public sealed class UserScriptStore
         var stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
         try
         {
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            await process.WaitForExitAsync(runToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            await RunnerGuard.ObserveQuietly(stdout, stderr).ConfigureAwait(false);
+            throw new TimeoutException($"Скрипт не завершился за {ScriptRunTimeout.TotalMinutes:F0} мин — процесс принудительно снят.");
         }
         catch (OperationCanceledException)
         {

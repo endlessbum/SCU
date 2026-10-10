@@ -125,7 +125,10 @@ public sealed class MaintenanceService
         {
             IgnoreInaccessible = true,
             RecurseSubdirectories = true,
-            AttributesToSkip = 0
+            // ReparsePoint обязателен (как в FileCleanupService/AppCacheService):
+            // обход всего диска сквозь junction зацикливался на классических
+            // «Application Data» и уводил рекурсию на чужие тома.
+            AttributesToSkip = System.IO.FileAttributes.ReparsePoint
         };
 
         var rootInfo = new DirectoryInfo(root);
@@ -184,10 +187,14 @@ public sealed class MaintenanceService
 
     // DISM /Online /Cleanup-Image /RestoreHealth, затем sfc /scannow — итог с кодами обоих.
     // После «Отмены» SFC не запускается.
+    // Таймаут 2 ч на каждый шаг (аудит): DISM/SFC на медленном диске легитимно
+    // идут дольше дефолтных 30 минут и раньше убивались на середине операции.
+    private static readonly TimeSpan IntegrityStepTimeout = TimeSpan.FromHours(2);
+
     public async Task<Result> RunIntegrityCheckAsync(CancellationToken ct = default)
     {
         var dism = await _runner
-            .RunAsync("DISM.exe", ["/Online", "/Cleanup-Image", "/RestoreHealth"], null, ct)
+            .RunAsync("DISM.exe", ["/Online", "/Cleanup-Image", "/RestoreHealth"], null, ct, IntegrityStepTimeout)
             .ConfigureAwait(false);
         _logger.Info("MAINT | DISM | rc=" + dism.Code);
 
@@ -198,7 +205,7 @@ public sealed class MaintenanceService
         }
 
         var sfc = await _runner
-            .RunAsync("sfc.exe", ["/scannow"], null, ct)
+            .RunAsync("sfc.exe", ["/scannow"], null, ct, IntegrityStepTimeout)
             .ConfigureAwait(false);
         _logger.Info("MAINT | SFC | rc=" + sfc.Code);
 
@@ -243,7 +250,7 @@ public sealed class MaintenanceService
         string[] arguments = resetBase
             ? ["/Online", "/Cleanup-Image", "/StartComponentCleanup", "/ResetBase"]
             : ["/Online", "/Cleanup-Image", "/StartComponentCleanup"];
-        var result = await _runner.RunAsync("DISM.exe", arguments, null, ct).ConfigureAwait(false);
+        var result = await _runner.RunAsync("DISM.exe", arguments, null, ct, IntegrityStepTimeout).ConfigureAwait(false);
         _logger.Info($"MAINT | StartComponentCleanup resetBase={resetBase} | rc={result.Code}");
         return result.IsSuccess
             ? Result.Success(resetBase

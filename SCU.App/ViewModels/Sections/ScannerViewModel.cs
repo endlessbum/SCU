@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
@@ -30,7 +31,8 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     // Сериализация доступа к ScannerCore: автообновление базы идёт вне IsBusy
     // (тихое), и без общего gate оно могло стартовать параллельно с ручным
     // сканом/установкой пакета — два процесса ScannerCore и гонка за файл базы.
-    private readonly SemaphoreSlim _scannerGate = new(1, 1);
+    // internal: тест-шов — регрессия badge отмены занимает gate извне.
+    internal readonly SemaphoreSlim _scannerGate = new(1, 1);
 
     // Останавливает автообновление при закрытии приложения.
     private readonly CancellationTokenSource _lifetimeCts = new();
@@ -349,7 +351,10 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
             return;
         }
 
-        SafeViewerViewModel.ShowFile(detection.Path, verdictLine);
+        // Persistence-запись: Path — псевдопуть (HKCU\...\Run\X), смотреть
+        // можно только реальный файл цели. Кнопка скрыта, когда цели нет,
+        // но ShowFile и сам деградирует в «Файл не найден» (fail-safe).
+        SafeViewerViewModel.ShowFile(detection.QuarantineTarget, verdictLine);
     }
 
     [RelayCommand]
@@ -375,24 +380,35 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
 
     private bool CanView() => !IsBusy;
 
+    // Обход каталога карантина — вне UI-потока (аудит производительности):
+    // раньше список перечитывался синхронно при каждом открытии секции 21.
     public void RefreshQuarantineList()
     {
-        QuarantineItems.Clear();
-        foreach (var item in _quarantine.List())
-        {
-            QuarantineItems.Add(item);
-        }
+        TaskRunner.RunAndForget(RefreshQuarantineListAsync(), _logger, "quarantine refresh");
+    }
 
-        // П. 29 аудита 2: скрытые из-за повреждённых метаданных записи не
-        // превращаются в молчаливое «карантин пуст».
-        if (_quarantine.CorruptedMetadataCount > 0)
+    private async Task RefreshQuarantineListAsync()
+    {
+        var items = await Task.Run(() => _quarantine.List().ToList()).ConfigureAwait(false);
+        var corrupted = _quarantine.CorruptedMetadataCount;
+        Application.Current?.Dispatcher.Invoke(() =>
         {
-            AppNotificationCenter.Instance.Push(
-                L.T("Карантин: часть записей недоступна"),
-                L.T("Некоторые записи карантина повреждены и не отображаются: {0}.",
-                    _quarantine.CorruptedMetadataCount),
-                AppNotificationKind.Warn);
-        }
+            QuarantineItems.Clear();
+            foreach (var item in items)
+            {
+                QuarantineItems.Add(item);
+            }
+
+            // П. 29 аудита 2: скрытые из-за повреждённых метаданных записи не
+            // превращаются в молчаливое «карантин пуст».
+            if (corrupted > 0)
+            {
+                AppNotificationCenter.Instance.Push(
+                    L.T("Карантин: часть записей недоступна"),
+                    L.T("Некоторые записи карантина повреждены и не отображаются: {0}.", corrupted),
+                    AppNotificationKind.Warn);
+            }
+        });
     }
 
     // Автообновление базы при старте приложения: тихое — состояния вкладки и
@@ -400,7 +416,7 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     // сервер недоступен) остаётся только в журнале.
     public async Task AutoUpdateDatabaseAsync()
     {
-        if (!IsScannerReady())
+        if (!IsScannerReadyForCommand())
         {
             return;
         }
@@ -493,7 +509,28 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         }
     }
 
-    private bool IsScannerReady() =>
+    // Готовность сканера для других разделов (авто-скан загрузок браузера).
+    public bool IsScannerReady => _scanner.IsAvailable && ScannerAvailable;
+
+    // Проверка одного файла из других разделов под ТЕМ ЖЕ общим gate, что и
+    // ручной скан и обновления базы: два ScannerCore параллельно недопустимы —
+    // они делят файл базы и disk cache.
+    public async Task<Result<ScanResultDto>> RunFileScanAsync(string filePath, CancellationToken ct = default)
+    {
+        await _scannerGate.WaitAsync(ct).ConfigureAwait(true);
+        try
+        {
+            return await _scanner
+                .RunScanAsync(filePath, scanDirectory: false, ct: ct)
+                .ConfigureAwait(true);
+        }
+        finally
+        {
+            _scannerGate.Release();
+        }
+    }
+
+    private bool IsScannerReadyForCommand() =>
         _scanner.IsAvailable && ScannerAvailable;
 
     // Обновление базы по HTTPS (п. 30): скачать во временный файл →
@@ -501,6 +538,20 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     [RelayCommand(CanExecute = nameof(CanScan))]
     private async Task UpdateDatabaseOnlineAsync()
     {
+        // Единый lifecycle с ручным сканом (аудит HIGH): операция получает
+        // собственный CTS, связанный с lifetime — CancelOngoing()/Dispose
+        // отменяют загрузку и установку пакета.
+        if (IsBusy)
+        {
+            return;
+        }
+
+        _operationCts?.Dispose();
+        _operationCts = new CancellationTokenSource();
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            _lifetimeCts.Token, _operationCts.Token);
+        var ct = linkedCts.Token;
+
         IsBusy = true;
         StatusText = L.T("Загрузка пакета базы…");
         var tempPath = string.Empty;
@@ -508,10 +559,10 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         try
         {
             // Gate с тихим автообновлением базы и сканом.
-            await _scannerGate.WaitAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            await _scannerGate.WaitAsync(ct).ConfigureAwait(true);
             gateHeld = true;
 
-            var download = await _updateService.DownloadPackageAsync(_updateService.ResolveUrl())
+            var download = await _updateService.DownloadPackageAsync(_updateService.ResolveUrl(), ct)
                 .ConfigureAwait(true);
             if (!download.IsSuccess || download.Value is null)
             {
@@ -522,7 +573,7 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
 
             tempPath = download.Value;
             StatusText = L.T("Установка загруженного пакета…");
-            var result = await _scanner.RunUpdateAsync(tempPath).ConfigureAwait(true);
+            var result = await _scanner.RunUpdateAsync(tempPath, ct).ConfigureAwait(true);
             if (result.IsSuccess && result.Value is not null)
             {
                 // Версия базы — календарная (yyyy.MM.dd): в статусе показываем дд.мм.гггг.
@@ -548,6 +599,11 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                     HistoryEvent.StatusFail,
                     _updateService.ResolveUrl()));
             }
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = L.T("Отменено.");
+            _logger.Warn("DBUPDATE | cancelled");
         }
         catch (Exception exception)
         {
@@ -587,16 +643,29 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
             return;
         }
 
+        // Единый lifecycle с ручным сканом (аудит HIGH): offline-установка тоже
+        // отменяема — собственный CTS, связанный с lifetime.
+        if (IsBusy)
+        {
+            return;
+        }
+
+        _operationCts?.Dispose();
+        _operationCts = new CancellationTokenSource();
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            _lifetimeCts.Token, _operationCts.Token);
+        var ct = linkedCts.Token;
+
         IsBusy = true;
         StatusText = L.T("Установка пакета базы…");
         var gateHeld = false;
         try
         {
             // Gate с тихим автообновлением базы и сканом.
-            await _scannerGate.WaitAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            await _scannerGate.WaitAsync(ct).ConfigureAwait(true);
             gateHeld = true;
 
-            var result = await _scanner.RunUpdateAsync(path).ConfigureAwait(true);
+            var result = await _scanner.RunUpdateAsync(path, ct).ConfigureAwait(true);
             if (result.IsSuccess && result.Value is not null)
             {
                 StatusText = result.Value;
@@ -622,6 +691,11 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                     Path.GetFileName(path)));
             }
         }
+        catch (OperationCanceledException)
+        {
+            StatusText = L.T("Отменено.");
+            _logger.Warn("DBUPDATE | install cancelled");
+        }
         finally
         {
             if (gateHeld)
@@ -636,7 +710,7 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
     }
 
     // Подсчёт целевого объекта: файл → сам файл; папка → все файлы рекурсивно.
-    private void EnumerateScanTarget(string path)
+    private void EnumerateScanTarget(string path, CancellationToken ct)
     {
         try
         {
@@ -650,12 +724,24 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
                 {
                     IgnoreInaccessible = true,
                     RecurseSubdirectories = true,
+                    // C++-энумератор сканера обрабатывает hidden/system файлы —
+                    // знаменатель прогресса обязан их считать, иначе процент
+                    // достигает 100% задолго до фактического конца скана.
+                    AttributesToSkip = 0,
                 };
                 foreach (var file in new DirectoryInfo(path).EnumerateFiles("*", options))
                 {
+                    // Отмена обязана прерывать сам обход, а не только ожидание
+                    // его запуска: на большой папке Task.Run-токен до запуска
+                    // делегата ничего не отменял.
+                    ct.ThrowIfCancellationRequested();
                     _scanFileSizes[file.FullName] = file.Length;
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception exception)
         {
@@ -769,7 +855,12 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         try
         {
             // Gate с тихим автообновлением базы: не стартуем скан, пока идёт установка пакета.
-            await _scannerGate.WaitAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            // Ждём на linked-токене: Cancel во время ожидания gate должен
+            // немедленно прервать ожидание, а не оставить «отменяемую»
+            // операцию висеть до чужого релиза.
+            using var gateCts = CancellationTokenSource.CreateLinkedTokenSource(
+                _lifetimeCts.Token, _operationCts.Token);
+            await _scannerGate.WaitAsync(gateCts.Token).ConfigureAwait(true);
             gateHeld = true;
 
             // Предварительный подсчёт файлов и объёма: база для процента и ETA.
@@ -779,7 +870,8 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
             _scanBytesDone = 0;
             _scanCurrentFile = null;
             _scanElapsedKnown = false;
-            await Task.Run(() => EnumerateScanTarget(path), _operationCts.Token).ConfigureAwait(true);
+            await Task.Run(() => EnumerateScanTarget(path, _operationCts.Token), _operationCts.Token)
+                .ConfigureAwait(true);
             var progress = new Progress<ScanEvent>(scanEvent =>
             {
                 // Событие уже разобрано в ScannerRunner — VM только отражает статус.
@@ -898,6 +990,12 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         }
         catch (OperationCanceledException)
         {
+            // Единая семантика с отменой внутри ScannerCore: badge «Прервано»
+            // ставится независимо от того, на каком этапе пришла отмена —
+            // раньше отмена до старта ScannerCore оставляла badge пустым
+            // (аудит UI-состояний).
+            SetOutcomeBadge(ScanOutcome.Cancelled);
+            LastScanSummaryText = L.T("Сканирование прервано пользователем.");
             StatusText = L.T("Сканирование отменено.");
         }
         catch (Exception exception)

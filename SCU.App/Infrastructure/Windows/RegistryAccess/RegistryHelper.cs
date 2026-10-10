@@ -224,9 +224,12 @@ public sealed class RegistryHelper
         if (skipped.Count > 0)
         {
             _logger.Warn("REG | restore skipped | " + string.Join("; ", skipped));
+            // Успех с оговоркой (код 2): восстановлено не всё. Источник восстановления
+            // (бэкап) вызывающий код обязан сохранить — пропущенные значения иначе
+            // теряются навсегда (см. UpdateService.UnpauseUpdates).
             return Result.Success(
                 "Реестр восстановлен из бэкапа. Пропущены значения, отсутствующие в текущем списке твиков: "
-                + string.Join("; ", skipped) + ".");
+                + string.Join("; ", skipped) + ".", 2);
         }
 
         return Result.Success("Реестр восстановлен из бэкапа.");
@@ -250,24 +253,44 @@ public sealed class RegistryHelper
         }
     }
 
-    // Возврат к заводскому состоянию без бэкапа: значения удаляются (RestoreValue=null-семантика).
+    // Возврат к заводскому состоянию без бэкапа. Семантика RestoreValue из RegistryTweak:
+    // null — параметр удаляется (policy-ключи), непустой RestoreValue — записывается
+    // объявленное значение по умолчанию (системные настройки вроде ToastEnabled имеют
+    // осмысленный default = 1, удаление вернуло бы поведение «запрещено»).
     // Нужно для «Включить», когда отключение делали не через приложение и бэкапа нет.
     public Result ResetToDefault(IReadOnlyList<RegistryTweak> tweaks)
     {
-        var deleted = 0;
+        var applied = 0;
         foreach (var tweak in tweaks)
         {
-            var deleteResult = DeleteValue(tweak.Hive, tweak.SubKey, tweak.ValueName);
-            if (!deleteResult.IsSuccess)
+            Result result;
+            if (tweak.RestoreValue is null)
             {
-                return deleteResult;
+                result = DeleteValue(tweak.Hive, tweak.SubKey, tweak.ValueName);
+                if (result.IsSuccess)
+                {
+                    _logger.Info($"REG | default | {Label(tweak)} удалено");
+                }
+            }
+            else
+            {
+                result = WriteValue(
+                    tweak.Hive, tweak.SubKey, tweak.ValueName, tweak.Kind, tweak.RestoreValue);
+                if (result.IsSuccess)
+                {
+                    _logger.Info($"REG | default | {Label(tweak)} = {tweak.RestoreValue}");
+                }
             }
 
-            deleted++;
-            _logger.Info($"REG | default | {Label(tweak)} удалено");
+            if (!result.IsSuccess)
+            {
+                return result;
+            }
+
+            applied++;
         }
 
-        return Result.Success($"Возвращено к заводским значениям ({deleted}).");
+        return Result.Success($"Возвращено к заводским значениям ({applied}).");
     }
 
     // Верификация: все твики в состоянии «отключено»?

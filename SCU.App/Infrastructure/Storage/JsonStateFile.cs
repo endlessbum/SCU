@@ -35,6 +35,11 @@ internal sealed class JsonStateFile<T>
     private readonly Func<T, DateTime>? _timestampSelector;
     private readonly TimeSpan? _maxAge;
     private readonly SemaphoreSlim _gate;
+    // Файл записан более новой схемой, чем понимает этот билд: данные читаются,
+    // но запись запрещена — перезапись конвертом с локальной SchemaVersion
+    // молча теряла бы неизвестные поля (аудит storage, forward-compatibility).
+    // Чтение и запись идут под одним файловым семафором.
+    private bool _futureSchema;
 
     public JsonStateFile(Logger logger, string path, int capacity, string label)
         : this(logger, path, capacity, label, null, null)
@@ -76,7 +81,9 @@ internal sealed class JsonStateFile<T>
     }
 
     // Добавляет запись и усекает список до ёмкости (старые записи вытесняются).
-    public async Task AppendAsync(T item, CancellationToken ct = default)
+    // Возвращает false, если запись не попала на диск (аудит persistence):
+    // вызывающий код решает — показать предупреждение или ограничиться журналом.
+    public async Task<bool> AppendAsync(T item, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -86,7 +93,7 @@ internal sealed class JsonStateFile<T>
             var trimmed = items.Count > _capacity
                 ? items.Skip(items.Count - _capacity).ToList()
                 : items;
-            await TaskRunner.RunBlocking(() => WriteList(trimmed), ct).ConfigureAwait(false);
+            return await TaskRunner.RunBlocking(() => WriteList(trimmed), ct).ConfigureAwait(false);
         }
         finally
         {
@@ -96,12 +103,12 @@ internal sealed class JsonStateFile<T>
 
     // Полная очистка хранилища (нужно BaselineStore): файл удаляется целиком.
     // Сбой удаления не роняет вызывающий код — как и сбой записи.
-    public async Task ClearAsync(CancellationToken ct = default)
+    public async Task<bool> ClearAsync(CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await TaskRunner.RunBlocking(() =>
+            return await TaskRunner.RunBlocking(() =>
             {
                 try
                 {
@@ -109,10 +116,15 @@ internal sealed class JsonStateFile<T>
                     {
                         File.Delete(_path);
                     }
+
+                    // Файл удалён — read-only режим больше не нужен.
+                    _futureSchema = false;
+                    return true;
                 }
                 catch (Exception exception)
                 {
                     _logger.Warn($"{_label} | clear failed | {exception.Message}");
+                    return false;
                 }
             }, ct).ConfigureAwait(false);
         }
@@ -130,6 +142,9 @@ internal sealed class JsonStateFile<T>
         {
             if (!File.Exists(_path))
             {
+                // Файла нет (удалён ClearAsync или пользователем): future-schema
+                // режим снимается — писать больше нечего защищать (аудит).
+                _futureSchema = false;
                 return [];
             }
 
@@ -146,9 +161,11 @@ internal sealed class JsonStateFile<T>
                 {
                     if (envelope.Version > SchemaVersion)
                     {
-                        // Файл записан более новой версией схемы: неизвестные поля
-                        // будут потеряны при перезаписи — предупреждаем.
-                        _logger.Warn($"{_label} | file version {envelope.Version} > {SchemaVersion}");
+                        // Файл записан более новой версией схемы: переводим хранилище
+                        // в read-only, чтобы WriteList не затёр неизвестные поля
+                        // конвертом с локальной версией (forward-compatibility).
+                        _futureSchema = true;
+                        _logger.Warn($"{_label} | file version {envelope.Version} > {SchemaVersion}; writes disabled until the file is migrated");
                     }
 
                     items = envelope.Items ?? [];
@@ -195,8 +212,19 @@ internal sealed class JsonStateFile<T>
         return items.Where(item => _timestampSelector(item) >= cutoff).ToList();
     }
 
-    private void WriteList(List<T> items)
+    // Возвращает false при сбое записи (аудит persistence): вызывающий код
+    // больше не получает «успешный Task» поверх потерянной записи.
+    private bool WriteList(List<T> items)
     {
+        if (_futureSchema)
+        {
+            // Данные на диске записаны более новой схемой: чтение — да, запись —
+            // нет. Старый билд больше не теряет данные новой версии, причина
+            // видна в журнале.
+            _logger.Warn($"{_label} | write skipped: state file uses a newer schema");
+            return false;
+        }
+
         try
         {
             System.IO.Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
@@ -204,6 +232,7 @@ internal sealed class JsonStateFile<T>
             var envelope = new StateEnvelope { Version = SchemaVersion, Items = items };
             File.WriteAllText(temp, JsonSerializer.Serialize(envelope, JsonOptions));
             File.Move(temp, _path, overwrite: true);
+            return true;
         }
         catch (Exception exception)
         {
@@ -211,6 +240,7 @@ internal sealed class JsonStateFile<T>
             // «незавершённый файл» при следующем чтении.
             try { File.Delete(_path + ".tmp"); } catch { /* .tmp мог не создаться */ }
             _logger.Warn($"{_label} | save failed | {exception.Message}");
+            return false;
         }
     }
 }

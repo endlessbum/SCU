@@ -4,12 +4,14 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:sc="clr-namespace:SCU.Models.Browser"
+        xmlns:ui="clr-namespace:SCU.Common"
         mc:Ignorable="d"
         Title="{DynamicResource S_BrowserTitle}"
         MinWidth="1040" MinHeight="700"
         WindowState="Maximized"
         Background="{DynamicResource SolidRootBrush}"
         PreviewKeyDown="OnWindowPreviewKeyDown"
+        MouseUp="OnWindowMouseUp"
         d:DesignHeight="720" d:DesignWidth="1200">
 
     <Window.Resources>
@@ -138,20 +140,39 @@
             <Button Style="{StaticResource BrowserToolButton}"
                     Content="&#xE710;" Command="{Binding NewTabCommand}"
                     ToolTip="{DynamicResource S_BrowserNewTab}" ToolTipService.InitialShowDelay="300" />
-            <ItemsControl ItemsSource="{Binding Tabs}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
+            <!-- Горизонтальная прокрутка (L-03): при 8 вкладках лента может
+                 переполнить окно; вертикальный скролл и лишние полосы отключены. -->
+            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled"
+                          Padding="0,0,0,1">
+                <ItemsControl ItemsSource="{Binding Tabs}" x:Name="TabStrip">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <!-- Флаг триггерных анимаций — на контейнере: MultiDataTrigger
+                         шапки вкладки читает его через RelativeSource Self. -->
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="ui:UiAnimations.TriggerAnimations" Value="{DynamicResource UiAnimationsOn}" />
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <!-- Без обёртки Button: ButtonBase захватывает мышь на LeftDown и
-                             гасит MouseBinding'ы дочерних элементов. Middle-click работает всегда. -->
+                        <!-- Шапка вкладки: мышь через MouseBinding, клавиатура —
+                             Focusable + Enter/Space (OnTabHeaderKeyDown), a11y-имя
+                             из заголовка (аудит доступности). Внутренний Button
+                             для крестика невозможен: ButtonBase гасит дочерние
+                             MouseBinding'и на LeftDown. -->
                         <Border Margin="6,0,0,0"
+                                x:Name="TabHeader"
                                 CornerRadius="6"
-                                Padding="8,4"
-                                Cursor="Hand">
+                                Cursor="Hand"
+                                Focusable="True"
+                                FocusVisualStyle="{StaticResource AppFocusVisual}"
+                                AutomationProperties.Name="{Binding Title}"
+                                KeyDown="OnTabHeaderKeyDown">
                             <Border.InputBindings>
                                 <MouseBinding MouseAction="LeftClick"
                                               Command="{Binding DataContext.ActivateTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -165,53 +186,95 @@
                                     <Setter Property="Background" Value="Transparent" />
                                     <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
                                     <Setter Property="BorderThickness" Value="1" />
+                                    <Setter Property="ui:UiAnimations.TriggerAnimations" Value="{DynamicResource UiAnimationsOn}" />
                                     <Style.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
                                             <Setter Property="Background" Value="{DynamicResource ControlFillBrush}" />
                                         </Trigger>
-                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                            <Setter Property="Background" Value="{DynamicResource AccentTintBrush}" />
-                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentStrokeBrush}" />
-                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Border.Style>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock VerticalAlignment="Center"
-                                           MaxWidth="160"
-                                           TextTrimming="CharacterEllipsis"
-                                           Style="{StaticResource CaptionText}"
-                                           Text="{Binding Title}" />
-                                <TextBlock Margin="8,0,0,0"
-                                           VerticalAlignment="Center"
-                                           Cursor="Hand"
-                                           FontFamily="{DynamicResource IconFontFamily}"
-                                           FontSize="11"
-                                           ToolTip="{DynamicResource S_BrowserCloseTab}"
-                                           AutomationProperties.Name="{DynamicResource S_BrowserCloseTab}"
-                                           ToolTipService.InitialShowDelay="300"
-                                           Text="&#xE711;">
-                                    <TextBlock.InputBindings>
-                                        <MouseBinding MouseAction="LeftClick"
-                                                      Command="{Binding DataContext.CloseTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                      CommandParameter="{Binding}" />
-                                    </TextBlock.InputBindings>
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
-                                            <Style.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
-                                                </Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
+                            <Grid>
+                                <Border x:Name="ActiveBg"
+                                        CornerRadius="5"
+                                        Background="{DynamicResource AccentTintBrush}"
+                                        Opacity="0"
+                                        IsHitTestVisible="False" />
+                                <StackPanel Orientation="Horizontal" Margin="8,4">
+                                    <TextBlock VerticalAlignment="Center"
+                                               MaxWidth="160"
+                                               TextTrimming="CharacterEllipsis"
+                                               Style="{StaticResource CaptionText}"
+                                               Text="{Binding Title}" />
+                                    <TextBlock Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               Cursor="Hand"
+                                               FontFamily="{DynamicResource IconFontFamily}"
+                                               FontSize="11"
+                                               ToolTip="{DynamicResource S_BrowserCloseTab}"
+                                               AutomationProperties.Name="{DynamicResource S_BrowserCloseTab}"
+                                               ToolTipService.InitialShowDelay="300"
+                                               Text="&#xE711;">
+                                        <TextBlock.InputBindings>
+                                            <MouseBinding MouseAction="LeftClick"
+                                                          Command="{Binding DataContext.CloseTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                          CommandParameter="{Binding}" />
+                                        </TextBlock.InputBindings>
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
                         </Border>
+                        <!-- Анимация подсветки активной вкладки: вне Border.Style, чтобы
+                             DataTrigger с ExitActions работал поверх шаблона. -->
+                        <DataTemplate.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsActive}" Value="True" />
+                                    <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=(ui:UiAnimations.TriggerAnimations)}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <MultiDataTrigger.Setters>
+                                    <Setter TargetName="TabHeader" Property="BorderBrush" Value="{DynamicResource AccentStrokeBrush}" />
+                                </MultiDataTrigger.Setters>
+                                <MultiDataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ActiveBg"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0.15" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiDataTrigger.EnterActions>
+                                <MultiDataTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ActiveBg"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0"
+                                                             Duration="0:0:0.2" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiDataTrigger.ExitActions>
+                            </MultiDataTrigger>
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                <Setter TargetName="ActiveBg" Property="Opacity" Value="1" />
+                                <Setter TargetName="TabHeader" Property="BorderBrush" Value="{DynamicResource AccentStrokeBrush}" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                </ItemsControl>
+            </ScrollViewer>
         </StackPanel>
 
         <!-- Web-контент: созданные вкладки живут здесь, видима только активная -->
@@ -227,6 +290,8 @@
                 <TextBlock VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"
                            Style="{StaticResource CaptionText}"
+                           ToolTip="{Binding StatusText}"
+                           ToolTipService.InitialShowDelay="300"
                            Text="{Binding StatusText}" />
             </StackPanel>
         </Border>

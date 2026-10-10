@@ -206,6 +206,14 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
     [RelayCommand(CanExecute = nameof(CanRun))]
     private async Task RunBenchmarkAsync()
     {
+        // Guard в теле, а не только CanExecute: автозапуск после пакета идёт
+        // через ExecuteAsync, который CanExecute не проверяет (аудит) — без
+        // guard'а возможны два параллельных прогона и dispose CTS под живым.
+        if (IsRunning)
+        {
+            return;
+        }
+
         _operationCts?.Dispose();
         _operationCts = new CancellationTokenSource();
         var ct = _operationCts.Token;
@@ -217,7 +225,9 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
             var snapshot = await _systemState.CollectFullSnapshotAsync(ct).ConfigureAwait(true);
 
             // Сырые данные снимка — в snapshots.json (бэнчмарк — надстройка над снимками).
-            await _snapshots.SaveAsync(snapshot).ConfigureAwait(true);
+            // Сбой записи не скрывается (аудит persistence): пользователь видит,
+            // что снимок/история не сохранены, а не получает «успех» втихую.
+            var snapshotSaved = await _snapshots.SaveAsync(snapshot).ConfigureAwait(true);
 
             var result = _service.Evaluate(snapshot);
 
@@ -231,7 +241,9 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
                 result.Coverage,
                 result.Potential,
                 result.Metrics);
-            await _store.AppendAsync(run, ct).ConfigureAwait(true);
+            // L-03: AppendAsync честно возвращает успешность записи — игнорировать
+            // её нельзя, иначе запуск исчезнет из журнала при «успешном» статусе.
+            var historySaved = await _store.AppendAsync(run, ct).ConfigureAwait(true);
 
             Render(run, previous, runs);
 
@@ -239,8 +251,14 @@ public partial class BenchmarkViewModel : ObservableObject, ISectionOperationCan
             // больше не актуальна; при отмене/ошибке остаётся висеть.
             IsStale = false;
 
-            StatusText = L.T("Проверка завершена.");
-            _logger.Info($"BENCH | run | index={result.Index} coverage={result.Coverage} potential={result.Potential}");
+            StatusText = (snapshotSaved, historySaved) switch
+            {
+                (true, true) => L.T("Проверка завершена."),
+                (false, true) => L.T("Проверка завершена, но снимок не сохранён на диск — подробности в журнале."),
+                (true, false) => L.T("Проверка завершена, но журнал не сохранён на диск — подробности в журнале."),
+                (false, false) => L.T("Проверка завершена, но снимок и журнал не сохранены на диск — подробности в журнале."),
+            };
+            _logger.Info($"BENCH | run | index={result.Index} coverage={result.Coverage} potential={result.Potential} snapshotSaved={snapshotSaved} historySaved={historySaved}");
         }
         catch (OperationCanceledException)
         {

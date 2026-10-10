@@ -63,6 +63,7 @@ std::string DetectionToJson(const Detection& d)
 {
     std::ostringstream json;
     json << "{\"path\":" << QuoteWide(d.path)
+         << ",\"targetPath\":" << QuoteWide(d.targetPath)
          << ",\"sha256\":" << Quote(d.sha256)
          << ",\"verdict\":" << Quote(VerdictToString(d.verdict))
          << ",\"ruleId\":" << QuoteWide(d.ruleId)

@@ -12,6 +12,9 @@ public static class ConsoleOutputDecoder
     // Максимум повторов чтения после разового IOException (см. ReadLinesAsync).
     private const int MaxIoRetries = 2;
 
+    // Пауза перед повтором чтения после IOException.
+    private const int IoRetryDelayMs = 50;
+
     static ConsoleOutputDecoder()
     {
         // Регистрация провайдера кодировок один раз на класс.
@@ -42,11 +45,12 @@ public static class ConsoleOutputDecoder
     public static async Task ReadLinesAsync(Stream baseStream, Action<string> onLine, CancellationToken ct)
     {
         var buffer = new List<byte>(4096);
+        var pendingCr = false;
         var readBuffer = new byte[4096];
         var ioRetries = 0;
         while (true)
         {
-            int read = 0;
+            int read;
             try
             {
                 read = await baseStream.ReadAsync(readBuffer.AsMemory(), ct).ConfigureAwait(false);
@@ -62,10 +66,23 @@ public static class ConsoleOutputDecoder
             }
             catch (IOException) when (ioRetries < MaxIoRetries && !ct.IsCancellationRequested)
             {
-                // Разовое IO-исключение не обязано быть концом вывода: раньше часть
-                // вывода терялась молча. Краткий retry — если пайп закрылся вместе с
-                // процессом (нормальное окончание), все попытки истекают мгновенно.
+                // Разовое IO-исключение не обязано быть концом вывода: повторяем
+                // чтение после короткой паузы (аудит: раньше счётчик retry
+                // инкрементировался без continue — первая же IOException молча
+                // обрывала чтение и теряла остаток вывода). Если пайп закрылся
+                // вместе с процессом (нормальное окончание), попытки истекают
+                // мгновенно и срабатывает ветка break ниже.
                 ioRetries++;
+                try
+                {
+                    await Task.Delay(IoRetryDelayMs, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+
+                continue;
             }
             catch (IOException)
             {
@@ -80,15 +97,38 @@ public static class ConsoleOutputDecoder
 
             ioRetries = 0;
 
+            // pendingCr: '\r' на границе чанка — решение откладывается до первого
+            // байта следующего чтения ('\n' — пара CRLF, иначе CR-терминатор).
             for (var i = 0; i < read; i++)
             {
                 var b = readBuffer[i];
                 if (b == '\n')
                 {
                     EmitLine(buffer, onLine);
+                    pendingCr = false;
                 }
-                else if (b != '\r')
+                else if (b == '\r')
                 {
+                    if (i + 1 >= read)
+                    {
+                        pendingCr = true;
+                    }
+                    else if (readBuffer[i + 1] != '\n')
+                    {
+                        // Одиночный '\r' — терминатор строки (CR-перерисовка
+                        // прогресса «10%\r 20%\r…»): раньше выбрасывался, и весь
+                        // прогресс сливался в одну бесконечно растущую строку.
+                        EmitLine(buffer, onLine);
+                    }
+                }
+                else
+                {
+                    if (pendingCr)
+                    {
+                        EmitLine(buffer, onLine);
+                        pendingCr = false;
+                    }
+
                     buffer.Add(b);
                 }
             }

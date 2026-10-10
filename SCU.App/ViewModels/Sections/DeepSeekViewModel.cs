@@ -159,6 +159,18 @@ public partial class DeepSeekViewModel : ObservableObject
     private void ApplyProviderState()
     {
         var (apiKey, chatModel) = _settings.GetActive();
+        // Миграция deprecated-моделей (аудит совместимости): сохранённая модель
+        // может быть отключена в API (deepseek-chat/reasoner после 24.07.2026) —
+        // заменяем на актуальный идентификатор и сразу сохраняем состояние.
+        var migratedModel = DeepSeekClient.MigrateDeprecatedModel(chatModel);
+        if (migratedModel != chatModel && !string.IsNullOrEmpty(apiKey))
+        {
+            _settings.SetActive(apiKey, migratedModel, _settings.GetActiveAccountId());
+            _settingsService.Save(_settings);
+            _logger.Info($"DEEPSEEK | model migrated | {chatModel} -> {migratedModel}");
+        }
+        chatModel = migratedModel;
+
         IsConnected = !string.IsNullOrEmpty(apiKey);
         if (IsConnected)
         {
@@ -191,7 +203,7 @@ public partial class DeepSeekViewModel : ObservableObject
         }
 
         var (apiKey, chatModel) = _settings.GetActive();
-        _assistantVm.Configure(apiKey, chatModel, ActiveProviderConfig);
+        _assistantVm.Configure(apiKey, DeepSeekClient.MigrateDeprecatedModel(chatModel), ActiveProviderConfig);
     }
 
     partial void OnApiKeyTextChanged(string value)

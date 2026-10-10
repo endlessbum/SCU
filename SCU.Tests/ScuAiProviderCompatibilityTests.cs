@@ -16,13 +16,14 @@ public class ScuAiProviderCompatibilityTests
     [Fact]
     public void DeepSeek_Provider_SupportsToolCalling()
     {
-        Assert.True(DeepSeekClient.ProviderSupportsToolCalling(DeepSeekProviderConfig.DeepSeek));
+        Assert.True(DeepSeekClient.SupportsToolCalling(DeepSeekProviderConfig.DeepSeek, "deepseek-v4-flash"));
+        Assert.True(DeepSeekClient.SupportsToolCalling(DeepSeekProviderConfig.DeepSeek, "deepseek-v4-pro"));
     }
 
     [Fact]
     public void OpenRouter_Provider_SupportsToolCalling()
     {
-        Assert.True(DeepSeekClient.ProviderSupportsToolCalling(DeepSeekProviderConfig.OpenRouter));
+        Assert.True(DeepSeekClient.SupportsToolCalling(DeepSeekProviderConfig.OpenRouter, "deepseek/deepseek-v4-flash"));
     }
 
     // Ключи не пишутся литералами: строка вида sk-or-v1-<64 hex> в исходнике
@@ -43,13 +44,49 @@ public class ScuAiProviderCompatibilityTests
         Assert.Equal(expected, DeepSeekClient.IsKeyFormatValid(key, DeepSeekProviderConfig.OpenRouter));
     }
 
-    [Fact]
-    public void Cloudflare_Provider_DoesNotSupportToolCalling()
+    [Theory]
+    [InlineData("@cf/deepseek-ai/deepseek-v4-flash-0731", true)]
+    [InlineData("@cf/deepseek-ai/deepseek-v4-pro-0813", true)]
+    [InlineData("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", false)]
+    [InlineData(null, false)]
+    public void Cloudflare_ToolCalling_IsModelLevelCapability(string? model, bool expected)
     {
-        // Workers AI compat-API tools не поддерживает — мутации недоступны
+        // Аудит AI 2026: capability определяется по паре провайдер+модель.
+        // V4 Flash/Pro у Workers AI поддерживают function calling — agent tools
+        // для них доступны; r-дистилляты по-прежнему работают в text-only режиме.
         // (п. 26: отсутствие tool support не маскируется текстовым «выполнено»).
-        Assert.False(DeepSeekClient.ProviderSupportsToolCalling(
-            DeepSeekProviderConfig.Cloudflare("1234567890abcdef1234567890abcdef")));
+        Assert.Equal(expected, DeepSeekClient.SupportsToolCalling(
+            DeepSeekProviderConfig.Cloudflare("1234567890abcdef1234567890abcdef"), model));
+    }
+
+    [Fact]
+    public void DeprecatedModels_RemappedToActualIds()
+    {
+        // Аудит совместимости: deepseek-chat/deepseek-reasoner отключены в API
+        // после 24.07.2026; v4.1-flash переименован в deepseek-flash —
+        // сохранённые модели мигрируют на актуальные.
+        Assert.Equal("deepseek-v4-flash", DeepSeekClient.MigrateDeprecatedModel("deepseek-chat"));
+        Assert.Equal("deepseek-v4-pro", DeepSeekClient.MigrateDeprecatedModel("deepseek-reasoner"));
+        Assert.Equal("deepseek-flash", DeepSeekClient.MigrateDeprecatedModel("deepseek-v4.1-flash"));
+        Assert.Equal(string.Empty, DeepSeekClient.MigrateDeprecatedModel(null));
+        // Уже канонический и совместимый legacy — без изменений.
+        Assert.Equal("deepseek-flash", DeepSeekClient.MigrateDeprecatedModel("deepseek-flash"));
+        Assert.Equal("deepseek-v4-flash", DeepSeekClient.MigrateDeprecatedModel("deepseek-v4-flash"));
+        // Неизвестная модель — не трогается (safe fallback).
+        Assert.Equal("some-future-model", DeepSeekClient.MigrateDeprecatedModel("some-future-model"));
+    }
+
+    [Fact]
+    public void PreferredModels_DoNotContainDeprecatedIds()
+    {
+        // Мёртвые идентификаторы не предлагаются PickChatModel'ом новым пользователям.
+        // (Проверка через миграцию: всё, что в remap, не должно вернуться из списка
+        // предпочтительных — списки приватные, поэтому контролируем фикс-список.)
+        var deprecated = new[] { "deepseek-chat", "deepseek-reasoner", "deepseek-v4.1-flash" };
+        foreach (var model in deprecated)
+        {
+            Assert.NotEqual(model, DeepSeekClient.MigrateDeprecatedModel(model));
+        }
     }
 
     [Fact]

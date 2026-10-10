@@ -8,19 +8,21 @@ namespace SCU.Tests;
 public class CleanupFormattingTests
 {
     [Fact]
-    public void FormatBytes_Megabytes_UsesInvariantOneDecimal()
+    public void FormatBytes_Megabytes_UsesLocalizedUnitsAndCurrentCulture()
     {
-        Assert.Equal("1.5 MB", CleanupViewModel.FormatBytes((long)(1.5 * 1024 * 1024)));
-        Assert.Equal("1.0 MB", CleanupViewModel.FormatBytes(1024 * 1024));
+        // Единый форматтер HumanSize: единицы локализуются словарём, число —
+        // по культуре интерфейса (аудит: раньше «1.5 MB» и «2,1 GB» скачали).
+        var text = CleanupViewModel.FormatBytes((long)(1.5 * 1024 * 1024));
+        Assert.EndsWith(" " + L.T("МБ"), text);
+        Assert.Equal((1.5).ToString("F1"), text[..^(" " + L.T("МБ")).Length].Trim());
+        Assert.EndsWith(" " + L.T("МБ"), CleanupViewModel.FormatBytes(1024 * 1024));
     }
 
     [Fact]
-    public void FormatBytes_BelowMegabyte_ShowsByteCount()
+    public void FormatBytes_BelowKilobyte_ShowsByteCount()
     {
-        // N0 c InvariantCulture ставит разделители групп запятыми.
-        Assert.Equal("1,023 байт", CleanupViewModel.FormatBytes(1023));
+        Assert.Equal("1023 байт", CleanupViewModel.FormatBytes(1023));
         Assert.Equal("0 байт", CleanupViewModel.FormatBytes(0));
-        Assert.Equal("1,048,575 байт", CleanupViewModel.FormatBytes(1024 * 1024 - 1));
     }
 
     [Fact]
@@ -54,7 +56,7 @@ public class CleanupFormattingTests
         var text = CleanupViewModel.FormatCleanupResult(result);
 
         Assert.Contains("10", text);              // 8 + 2 удалённых файла
-        Assert.Contains("2.0 MB", text);          // 2*1024*1024 + 512 байт
+        Assert.Contains(" МБ).", text);           // 2*1024*1024 + 512 байт ≈ 2,0 МБ
         Assert.Contains("Осталось занятых: 5.", text); // (10-8) + (5-2)
     }
 

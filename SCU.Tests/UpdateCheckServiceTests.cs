@@ -39,28 +39,90 @@ public sealed class UpdateCheckServiceTests
         Assert.Null(UpdateCheckService.NormalizeVersion(tag));
 
     [Fact]
-    public void SelectVersionTag_SkipsDatabaseReleases()
+    public void SelectLatestStableRelease_SkipsDatabaseReleases()
     {
-        // Latest-релизом бывает датный релиз базы (db-*): версией приложения
-        // считается первый тег, разбираемый как версия.
-        var tags = new[] { "db-2026.10.01", "v3.1.1", "v2.2.0" };
+        // Релизы базы (db-* / scanner-db) — не версии приложения.
+        var releases = new[]
+        {
+            new UpdateCheckService.GitHubReleaseInfo("db-2026.10.01", false, false),
+            new UpdateCheckService.GitHubReleaseInfo("scanner-db", false, false),
+            new UpdateCheckService.GitHubReleaseInfo("v3.1.1", false, false),
+            new UpdateCheckService.GitHubReleaseInfo("v2.2.0", false, false)
+        };
 
-        Assert.Equal("v3.1.1", UpdateCheckService.SelectVersionTag(tags));
+        Assert.Equal("v3.1.1", UpdateCheckService.SelectLatestStableRelease(releases)?.TagName);
     }
 
     [Fact]
-    public void SelectVersionTag_FirstParseableTag_Wins()
+    public void SelectLatestStableRelease_PrereleaseBeforeStable_PicksStable()
     {
-        Assert.Equal("v3.2.0-beta1", UpdateCheckService.SelectVersionTag(new[] { "v3.2.0-beta1", "v3.1.1" }));
-        Assert.Equal("v3.1.1", UpdateCheckService.SelectVersionTag(new[] { "v3.1.1" }));
+        // Ключевой регресс: prerelease, опубликованный позже stable, не должен
+        // загораживать её — раньше выбирался первый подходящий тег списка.
+        var releases = new[]
+        {
+            new UpdateCheckService.GitHubReleaseInfo("v3.2.0-beta1", false, true),
+            new UpdateCheckService.GitHubReleaseInfo("v3.1.3", false, false),
+            new UpdateCheckService.GitHubReleaseInfo("v3.1.2", false, false)
+        };
+
+        Assert.Equal("v3.1.3", UpdateCheckService.SelectLatestStableRelease(releases)?.TagName);
     }
 
     [Fact]
-    public void SelectVersionTag_NothingParseable_ReturnsNull()
+    public void SelectLatestStableRelease_MultipleStable_PicksMaximum()
     {
-        Assert.Null(UpdateCheckService.SelectVersionTag(Array.Empty<string?>()));
-        Assert.Null(UpdateCheckService.SelectVersionTag(new string?[] { "db-2026.10.01", "release", null, "" }));
+        // Порядок в списке GitHub — по дате, не по версии: берём максимум.
+        var releases = new[]
+        {
+            new UpdateCheckService.GitHubReleaseInfo("v3.1.2", false, false),
+            new UpdateCheckService.GitHubReleaseInfo("v3.1.10", false, false),
+            new UpdateCheckService.GitHubReleaseInfo("v3.1.9", false, false)
+        };
+
+        Assert.Equal("v3.1.10", UpdateCheckService.SelectLatestStableRelease(releases)?.TagName);
     }
+
+    [Fact]
+    public void SelectLatestStableRelease_PrereleaseWithoutDash_Skipped()
+    {
+        // Статус prerelease берётся из метаданных релиза, а не из «-» в теге.
+        var releases = new[]
+        {
+            new UpdateCheckService.GitHubReleaseInfo("v4.0.0", false, true),
+            new UpdateCheckService.GitHubReleaseInfo("v3.1.3", false, false)
+        };
+
+        Assert.Equal("v3.1.3", UpdateCheckService.SelectLatestStableRelease(releases)?.TagName);
+    }
+
+    [Fact]
+    public void SelectLatestStableRelease_Draft_Skipped()
+    {
+        var releases = new[]
+        {
+            new UpdateCheckService.GitHubReleaseInfo("v4.0.0", true, false),
+            new UpdateCheckService.GitHubReleaseInfo("v3.1.3", false, false)
+        };
+
+        Assert.Equal("v3.1.3", UpdateCheckService.SelectLatestStableRelease(releases)?.TagName);
+    }
+
+    [Fact]
+    public void SelectLatestStableRelease_OnlyPrereleases_ReturnsNull()
+    {
+        var releases = new[]
+        {
+            new UpdateCheckService.GitHubReleaseInfo("v3.2.0-beta1", false, true),
+            new UpdateCheckService.GitHubReleaseInfo("db-2026.10.01", false, false),
+            new UpdateCheckService.GitHubReleaseInfo("release", false, false)
+        };
+
+        Assert.Null(UpdateCheckService.SelectLatestStableRelease(releases));
+    }
+
+    [Fact]
+    public void SelectLatestStableRelease_Empty_ReturnsNull() =>
+        Assert.Null(UpdateCheckService.SelectLatestStableRelease(Array.Empty<UpdateCheckService.GitHubReleaseInfo>()));
 
     [Fact]
     public void CurrentVersion_ReportsThreePartVersion() =>

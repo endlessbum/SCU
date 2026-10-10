@@ -92,13 +92,23 @@ public class ScanOutcomeMapperTests
     }
 
     // Обнаружения в summary без списка DetectionDto (рассинхрон протокола)
-    // не даёт Clean — считается по списку детектов, как в Runner.
+    // не дают Clean: расхождение двух источников counts трактуется
+    // консервативно — детекты есть (Threats), а не «угроз не обнаружено».
     [Fact]
-    public void DetectionsCountMismatch_MapsToClean_WhenListEmpty()
+    public void DetectionsCountMismatch_MapsToThreats_WhenSummaryHasDetections()
     {
-        // Список пуст, summary.Detections > 0 — классификация по списку.
+        // Список пуст, summary.Detections > 0 — классификация по максимуму.
         var result = MakeResult();
         result.Summary.Detections = 5;
-        Assert.Equal(ScanOutcome.Clean, ScanOutcomeMapper.Map(result));
+        Assert.Equal(ScanOutcome.Threats, ScanOutcomeMapper.Map(result));
+    }
+
+    // Summary без payload (malformed-пейлоад, прошедший защиту парсера) —
+    // Failed, а не NullReferenceException и не Clean.
+    [Fact]
+    public void NullSummary_MapsToFailed()
+    {
+        var result = new ScanResultDto { Summary = null! };
+        Assert.Equal(ScanOutcome.Failed, ScanOutcomeMapper.Map(result));
     }
 }

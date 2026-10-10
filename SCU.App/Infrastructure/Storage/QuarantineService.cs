@@ -209,10 +209,32 @@ public sealed class QuarantineService
             {
                 var item = JsonSerializer.Deserialize<QuarantineItem>(
                     File.ReadAllText(metadataPath), JsonOptions);
-                if (item is not null)
+                if (item is null)
                 {
-                    items.Add(item);
+                    continue;
                 }
+
+                // Reconciliation orphans (аудит): метаданные без объекта-компаньона
+                // не должны отображаться вечно — они же блокируют повторный
+                // DeletePermanently той записи. Объект мог быть потерян только
+                // при сбое среднего шага Restore.
+                if (!File.Exists(ObjectPath(item.Id)))
+                {
+                    _logger.Warn("QUARANTINE | orphan metadata (no object) cleaned | " + item.Id);
+                    try
+                    {
+                        File.Delete(metadataPath);
+                    }
+                    catch (Exception deleteException)
+                    {
+                        _logger.Warn("QUARANTINE | orphan cleanup failed | " + deleteException.Message);
+                        corrupted++;
+                    }
+
+                    continue;
+                }
+
+                items.Add(item);
             }
             catch (IOException exception)
             {
@@ -322,9 +344,47 @@ public sealed class QuarantineService
                 }
             }
 
+            // Аудит идемпотентности: цель — восстановленный файл у пользователя.
+            // Delete(metadata) не влияет на успех: сбой оставляет orphan-метаданные,
+            // которые подчищаются reconciliation'ом при старте/повторе. А вот
+            // сбой Delete(object) после Copy — полный откат: удаляем
+            // восстановленный target, объект возвращается в карантин.
             File.Copy(objectPath, target, overwrite: false);
-            File.Delete(objectPath);
-            File.Delete(MetadataPath(item.Id));
+            try
+            {
+                File.Delete(objectPath);
+            }
+            catch (Exception deleteException)
+            {
+                try
+                {
+                    File.Delete(target);
+                }
+                catch (Exception rollbackException)
+                {
+                    // Откат тоже не удался: в отчёте — обе ошибки, файл-копия
+                    // остаётся у пользователя как единственная копия данных.
+                    error = "Объект не удалён из карантина, восстановленная копия оставлена: "
+                            + deleteException.Message + " Откат: " + rollbackException.Message;
+                    return false;
+                }
+
+                error = "Объект не удалён из карантина: " + deleteException.Message;
+                return false;
+            }
+
+            try
+            {
+                File.Delete(MetadataPath(item.Id));
+            }
+            catch (Exception metadataException)
+            {
+                // Восстановление состоялось; orphan-метаданные не мешают
+                // повторному Restore (он ответит «объект не найден») и будут
+                // подчищены повторным DeletePermanently.
+                _logger.Warn("QUARANTINE | restore | metadata cleanup failed | " + metadataException.Message);
+            }
+
             return true;
         }
         catch (IOException exception)

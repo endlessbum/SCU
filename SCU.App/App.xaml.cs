@@ -54,6 +54,12 @@ public partial class App : Application
         // в тот же цвет, что задан настройкой «Цвет иконки приложения».
         ThemeManager.SetIconAccent(ThemeManager.LoadIconAccent());
 
+        // Тумблер «Анимации интерфейса»: XAML-триггеры читают ресурс со
+        // стартовым True — реальное значение из settings.json нужно выставить
+        // до создания окон (аудит: иначе после перезапуска XAML-анимации
+        // работали вопреки выключенному тумблеру).
+        Application.Current.Resources["UiAnimationsOn"] = ThemeManager.AnimationsEnabled;
+
         // Заставка показывается до любой тяжёлой работы: резко, без анимации появления.
         var splash = new SplashWindow();
         splash.Show();
@@ -95,7 +101,8 @@ public partial class App : Application
             L.SetLanguage(L.LoadLanguage(), notify: false);
 
             var isAdmin = Elevation.IsAdmin();
-            var scriptPath = Path.Combine(AppContext.BaseDirectory, "Assets", "SCU.ps1");
+            // Тот же резолвер, что у SCURunner — INIT-лог показывает фактический путь.
+            var scriptPath = SCURunner.FindScript();
 
             _logger.Info(
                 $"INIT | admin={isAdmin} | scu={File.Exists(scriptPath)} | log={_logger.FilePath}");
@@ -146,8 +153,41 @@ public partial class App : Application
 
     private static bool TryAcquireSingleInstanceMutex()
     {
-        _singleInstanceMutex = new Mutex(initiallyOwned: true, @"Local\SCU.SingleInstance", out var createdNew);
-        if (!createdNew)
+        // Имя может быть занято объектом другого типа (namespace не различает
+        // Mutex/Event/Semaphore) или недоступно: деградация — работаем без
+        // single-instance guard, та же политика, что у notify-события ниже.
+        try
+        {
+            _singleInstanceMutex = new Mutex(initiallyOwned: false, @"Local\SCU.SingleInstance");
+        }
+        catch (Exception exception)
+        {
+            _singleInstanceMutex = null;
+            Console.Error.WriteLine("SINGLE INSTANCE | mutex unavailable | " + exception.Message);
+            return true;
+        }
+
+        bool owned;
+        try
+        {
+            owned = _singleInstanceMutex.WaitOne(TimeSpan.Zero);
+        }
+        catch (AbandonedMutexException)
+        {
+            // Предыдущая копия умерла, не отпустив mutex: владение уже перешло
+            // к нам (исключение бросается ПОСЛЕ успешного захвата) — считаем
+            // это штатным запуском вместо падения до перезагрузки.
+            owned = true;
+        }
+        catch (Exception exception)
+        {
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+            Console.Error.WriteLine("SINGLE INSTANCE | wait failed | " + exception.Message);
+            return true;
+        }
+
+        if (!owned)
         {
             return false;
         }

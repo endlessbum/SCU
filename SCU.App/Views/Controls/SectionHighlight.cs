@@ -245,7 +245,8 @@ internal sealed class SectionHighlight
 
     // Одноразовый бегущий контур: секунда мягкого появления (рамка уже движется),
     // две секунды удержания, полсекунды исчезновения; эффект не остаётся на
-    // постоянной основе.
+    // постоянной основе. Аудит UX: при выключенных анимациях — статичный контур
+    // без march/flash (флаг UiAnimations.Enabled).
     private void StartOutline(UIElement target)
     {
         if (AdornerLayer.GetAdornerLayer(target) is not { } layer)
@@ -260,6 +261,34 @@ internal sealed class SectionHighlight
                 previousLayer.Remove(previous);
             }
             _outlineAdorner = null;
+        }
+
+        if (!UiAnimations.Enabled)
+        {
+            var staticOutline = new Views.Controls.SearchOutlineAdorner(
+                target, _owner.TryFindResource("AccentFillBrush") as Brush ?? Brushes.DodgerBlue);
+            layer.Add(staticOutline);
+            _outlineAdorner = staticOutline;
+            // Статичный контур исчезает по таймеру — как завершение flash.
+            var removalTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(3500),
+            };
+            removalTimer.Tick += (_, _) =>
+            {
+                removalTimer.Stop();
+                if (ReferenceEquals(_outlineAdorner, staticOutline)
+                    && AdornerLayer.GetAdornerLayer(staticOutline.AdornedElement) is { } staticLayer)
+                {
+                    staticLayer.Remove(staticOutline);
+                    if (ReferenceEquals(_outlineAdorner, staticOutline))
+                    {
+                        _outlineAdorner = null;
+                    }
+                }
+            };
+            removalTimer.Start();
+            return;
         }
 
         var brush = _owner.TryFindResource("AccentFillBrush") as Brush ?? Brushes.DodgerBlue;

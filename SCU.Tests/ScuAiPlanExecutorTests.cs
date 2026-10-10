@@ -347,6 +347,32 @@ public class ScuAiPlanExecutorTests
     }
 
     [Fact]
+    public async Task Apply_PreStateReadThrows_FailsWithoutMutationAndKeepsPlanRetryable()
+    {
+        // Чтение состояния перед claim (реестр/службы) может бросить на урезанных
+        // правах: отказ с локализованной причиной, без мутации, план остаётся
+        // Confirmed для повтора.
+        var holder = new FakeCapabilityHolder();
+        var capability = holder.Create("Вкл.");
+        capability.ReadState = () => throw new UnauthorizedAccessException("ветка реестра недоступна");
+        var (plans, executor) = CreateWithCapability(capability);
+        var plan = plans.Create(new ScuAiActionPlanTemplate(
+            "prepare_scu_change", "fake", "Тест",
+            "Вкл.", "Выкл.", ScuAiRiskLevel.Mutate,
+            "Сводка", "Детали", false, false));
+        executor.Confirm(plan.PlanId);
+
+        var outcome = await executor.ApplyAsync(plan.PlanId, CancellationToken.None);
+
+        Assert.False(outcome.Success);
+        Assert.Equal(ScuAiErrorCode.ExecutionFailed, outcome.ErrorCode);
+        Assert.Contains("Не удалось прочитать текущее состояние", outcome.Message);
+        Assert.Equal(0, holder.ApplyCalls);
+        Assert.True(plans.IsConfirmed(plan.PlanId));
+        Assert.NotNull(plans.TryClaimForApply(plan.PlanId, "Вкл.", out _));
+    }
+
+    [Fact]
     public async Task Apply_HighRiskWithoutDialogs_FailsClosed()
     {
         // Аудит 2, п. 19: HighRisk без Dialogs — отказ, а не молчаливое применение.

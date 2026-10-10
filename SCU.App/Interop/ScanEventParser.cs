@@ -78,7 +78,10 @@ public static class ScanEventParser
                     // finished без payload результата ({"event":"finished"}, обрыв
                     // протокола) — НЕ «пустой чистый скан» (аудит 3, п. 2): Result
                     // остаётся null, раннер обязан классифицировать прогон как Failed.
-                    scanEvent.Result = root.TryGetProperty("summary", out _)
+                    // summary обязателен и должен быть объектом с числовыми полями:
+                    // {"summary":{}} с нулями — malformed-протокол, а не Clean;
+                    // {"summary":null} раньше давал NullReferenceException в маппере.
+                    scanEvent.Result = HasValidSummary(root)
                         ? root.Deserialize<ScanResultDto>(Options)
                         : null;
                     break;
@@ -95,6 +98,29 @@ public static class ScanEventParser
         }
 
         return scanEvent;
+    }
+
+    // Валидный summary — JSON-объект, содержащий все четыре числовых поля
+    // протокола (ScannerCore пишет их всегда). Отсутствие любого из них —
+    // malformed-пейлоад: Result = null → прогон классифицируется как Failed.
+    private static bool HasValidSummary(JsonElement root)
+    {
+        if (!root.TryGetProperty("summary", out var summary)
+            || summary.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        foreach (var field in new[] { "filesScanned", "filesSkipped", "errors", "detections" })
+        {
+            if (!summary.TryGetProperty(field, out var value)
+                || value.ValueKind != JsonValueKind.Number)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static string GetString(JsonElement root, string name) =>

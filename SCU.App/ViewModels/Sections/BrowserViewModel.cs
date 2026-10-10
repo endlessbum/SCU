@@ -21,6 +21,10 @@ public interface IBrowserHostBridge
     void ActivateTabView(BrowserTabModel tab);
     void CloseTabView(BrowserTabModel tab);
     void FocusAddress();
+
+    // Анимация исчезновения шапки вкладки перед фактическим закрытием.
+    // Реализации без UI (тестовые мосты) наследуют no-op: true — можно закрывать сразу.
+    Task<bool> AnimateTabCloseAsync(BrowserTabModel tab) => Task.FromResult(true);
 }
 
 // Раздел 22 «Браузер»: два состояния — карточка запуска (ENTRY) и браузер (BROWSER).
@@ -36,7 +40,10 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
     private readonly IShellOpenService _shell;
     private readonly IFilePickerService _filePicker;
     private readonly IBrowserService _browserService;
-    private readonly ScannerRunner _scanner;
+    // Авто-скан загрузок идёт через ScannerViewModel раздела «Сканер» — под его
+    // общим gate. Собственный ScannerRunner здесь давал параллельные
+    // ScannerCore с ручным сканом/обновлением базы (гонка за файл базы и кэш).
+    private readonly ScannerViewModel? _scannerViewModel;
     private readonly BrowserSettingsService _settingsService;
     private readonly BrowserHistoryService _historyService;
     private readonly BrowserBookmarkService _bookmarkService;
@@ -49,6 +56,13 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
     private bool _disposed;
     private bool _settingsSync;
     private DateTime _lastExternalPrompt;
+
+    // Поколение сессии браузера (H-03): закрытие окна во время запуска
+    // инвалидирует in-flight async-операции — после каждого await запуска
+    // вызывающий сверяет поколение и прерывает устаревшую работу.
+    private int _sessionGeneration;
+
+    internal int SessionGeneration => _sessionGeneration;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartBrowserCommand))]
@@ -148,9 +162,10 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         BrowserSettingsService settingsService,
         BrowserHistoryService historyService,
         BrowserBookmarkService bookmarkService,
-        BrowserDownloadsService downloadsService)
+        BrowserDownloadsService downloadsService,
+        ScannerViewModel? scannerViewModel = null)
         : this(logger, dialogs, browserService, settingsService, historyService, bookmarkService,
-               downloadsService, new ShellOpenService(), new FilePickerService())
+               downloadsService, new ShellOpenService(), new FilePickerService(), scannerViewModel)
     {
     }
 
@@ -163,14 +178,15 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         BrowserBookmarkService bookmarkService,
         BrowserDownloadsService downloadsService,
         IShellOpenService shell,
-        IFilePickerService filePicker)
+        IFilePickerService filePicker,
+        ScannerViewModel? scannerViewModel = null)
     {
         _logger = logger;
         _dialogs = dialogs;
         _shell = shell;
         _filePicker = filePicker;
         _browserService = browserService;
-        _scanner = new ScannerRunner(logger);
+        _scannerViewModel = scannerViewModel;
         _settingsService = settingsService;
         _historyService = historyService;
         _bookmarkService = bookmarkService;
@@ -184,7 +200,8 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         {
             // Legacy-файлы без StateKey и прерванные незавершённые состояния — «Прервано».
             var key = record.StateKey ?? BrowserDownloadItem.StateAborted;
-            var item = new BrowserDownloadItem(record.FileName, record.FilePath, key, record.Url);
+            // Timestamp из журнала (L-01): время загрузки переживает перезапуск.
+            var item = new BrowserDownloadItem(record.FileName, record.FilePath, key, record.Url, record.Timestamp);
             if (item.IsUnfinished)
             {
                 // SCU был закрыт посреди загрузки/проверки — состояние финализируем.
@@ -227,6 +244,7 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         IsRuntimeMissing = false;
         StatusText = L.T("Запуск браузера…");
         _logger.Info("BROWSER | start requested");
+        var session = _sessionGeneration;
 
         try
         {
@@ -251,6 +269,11 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
 
             // Окно браузера создаётся лениво при первом запуске (фабрика назначена
             // карточкой раздела); повторные запуски переиспользуют тот же мост.
+            if (_sessionGeneration != session)
+            {
+                return;
+            }
+
             Host ??= HostFactory?.Invoke();
             if (Host is null)
             {
@@ -267,6 +290,10 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
             }
 
             await _browserService.InitializeEnvironmentAsync().ConfigureAwait(true);
+            if (_sessionGeneration != session)
+            {
+                return;
+            }
 
             _browserService.EnsureNewTabFile(
                 ThemeManager.IsDarkTheme(ThemeManager.LoadThemeMode()),
@@ -275,7 +302,19 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
             var firstTab = new BrowserTabModel(++_nextTabId, _browserService.NewTabUrl, L.T("Новая вкладка"));
             if (!await Host.InitializeAsync(this, firstTab).ConfigureAwait(true))
             {
-                StatusText = L.T("Не удалось запустить браузер. Подробности в журнале.");
+                if (_sessionGeneration == session)
+                {
+                    StatusText = L.T("Не удалось запустить браузер. Подробности в журнале.");
+                }
+                return;
+            }
+
+            if (_sessionGeneration != session)
+            {
+                // Окно закрыли во время запуска (H-03): сессия уже сброшена,
+                // вкладка уничтожена мостом, состояние VM трогать нельзя —
+                // иначе VM считает браузер запущенным, а окна уже нет.
+                _logger.Info("BROWSER | start aborted | session closed during start");
                 return;
             }
 
@@ -389,6 +428,7 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         }
 
         var tab = new BrowserTabModel(++_nextTabId, url, L.T("Новая вкладка"));
+        var generation = _sessionGeneration;
         try
         {
             if (Host is not null)
@@ -403,9 +443,21 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Окно могли закрыть, пока создавалась вкладка (аудит): без сверки
+        // поколения вкладка-сирота оставалась бы в уже очищенной сессии.
+        if (_sessionGeneration != generation)
+        {
+            _logger.Info("BROWSER | tab open aborted | session closed while creating");
+            return;
+        }
+
         Tabs.Add(tab);
         await ActivateTabAsync(tab).ConfigureAwait(true);
     }
+
+    // Вкладки, чьё закрытие уже идёт (асинхронная анимация шапки между кликом
+    // и фактическим удалением): повторный Ctrl+W/клик по крестику — no-op.
+    private readonly HashSet<int> _closingTabs = [];
 
     [RelayCommand]
     private async Task CloseTabAsync(BrowserTabModel? tab)
@@ -417,43 +469,61 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (!string.Equals(tab.Url, _browserService.NewTabUrl, StringComparison.Ordinal))
+        if (!_closingTabs.Add(tab.Id))
         {
-            _closedTabs.Add((tab.Url, tab.Title));
-            if (_closedTabs.Count > 20)
-            {
-                _closedTabs.RemoveAt(0);
-            }
-        }
-
-        if (Host is not null)
-        {
-            Host.CloseTabView(tab);
-        }
-
-        if (_hosts.Remove(tab.Id, out var host))
-        {
-            host.Dispose();
-        }
-
-        var wasActive = ReferenceEquals(ActiveTab, tab);
-        Tabs.Remove(tab);
-        if (wasActive)
-        {
-            ActiveTab = null;
-            AddressText = string.Empty;
-        }
-
-        if (Tabs.Count == 0)
-        {
-            // Последнюю вкладку не закрываем в пустоту — открываем новую стартовую.
-            await OpenTabAsync(_browserService.NewTabUrl).ConfigureAwait(true);
             return;
         }
 
-        if (wasActive)
+        try
         {
-            await ActivateTabAsync(Tabs[^1]).ConfigureAwait(true);
+            // Шапка вкладки сначала плавно исчезает, потом удаляется по-настоящему.
+            if (Host is not null)
+            {
+                await Host.AnimateTabCloseAsync(tab).ConfigureAwait(true);
+            }
+
+            if (!string.Equals(tab.Url, _browserService.NewTabUrl, StringComparison.Ordinal))
+            {
+                _closedTabs.Add((tab.Url, tab.Title));
+                if (_closedTabs.Count > 20)
+                {
+                    _closedTabs.RemoveAt(0);
+                }
+            }
+
+            if (Host is not null)
+            {
+                Host.CloseTabView(tab);
+            }
+
+            if (_hosts.Remove(tab.Id, out var host))
+            {
+                host.Dispose();
+            }
+
+            var wasActive = ReferenceEquals(ActiveTab, tab);
+            Tabs.Remove(tab);
+            if (wasActive)
+            {
+                ActiveTab = null;
+                AddressText = string.Empty;
+            }
+
+            if (Tabs.Count == 0)
+            {
+                // Последнюю вкладку не закрываем в пустоту — открываем новую стартовую.
+                await OpenTabAsync(_browserService.NewTabUrl).ConfigureAwait(true);
+                return;
+            }
+
+            if (wasActive)
+            {
+                await ActivateTabAsync(Tabs[^1]).ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _closingTabs.Remove(tab.Id);
         }
     }
 
@@ -651,11 +721,11 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         }
         else if (control && shift && key == Key.T)
         {
-            _ = ReopenClosedTabCommand.ExecuteAsync(null);
+            TaskRunner.RunAndForget(ReopenClosedTabCommand.ExecuteAsync(null), _logger, "BROWSER shortcut reopen-tab");
         }
         else if (control && key == Key.T)
         {
-            _ = NewTabCommand.ExecuteAsync(null);
+            TaskRunner.RunAndForget(NewTabCommand.ExecuteAsync(null), _logger, "BROWSER shortcut new-tab");
         }
         else if (control && key == Key.W)
         {
@@ -663,7 +733,10 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         }
         else if (control && key == Key.Tab)
         {
-            _ = (shift ? PreviousTabCommand : NextTabCommand).ExecuteAsync(null);
+            TaskRunner.RunAndForget(
+                (shift ? PreviousTabCommand : NextTabCommand).ExecuteAsync(null),
+                _logger,
+                "BROWSER shortcut cycle-tab");
         }
         else if (key == Key.F5 || control && key == Key.R)
         {
@@ -861,7 +934,7 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
                         L.T("Загрузка завершена"),
                         L.T("{0} — файл не был запущен автоматически.", item.FileName),
                         AppNotificationKind.Success);
-                    ScanDownloadIfEnabled(item);
+                    RunAndForgetScan(item);
                 }
                 break;
 
@@ -876,6 +949,8 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
                     StatusText = L.T("Загрузка не удалась: {0}.", item.FileName);
                     _logger.Warn("BROWSER | download interrupted | " + operation.InterruptReason);
                 }
+
+                TryCleanupPlaceholder(item);
                 _operations.Remove(operation);
                 if (Downloads.Contains(item))
                 {
@@ -888,6 +963,26 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
     internal void ReportDownloadFailure(string message)
     {
         StatusText = message;
+    }
+
+    // Чистка placeholder (аудит загрузок): ReserveDownloadPath создаёт реальный
+    // 0-байтовый файл; после отмены/сбоя он оставался в «Загрузках» навсегда.
+    // Удаляется ТОЛЬКО пустой файл — непустой может содержать частично скачанные
+    // данные пользователя.
+    private void TryCleanupPlaceholder(BrowserDownloadItem item)
+    {
+        try
+        {
+            if (File.Exists(item.FilePath) && new FileInfo(item.FilePath).Length == 0)
+            {
+                File.Delete(item.FilePath);
+                _logger.Info("BROWSER | download placeholder cleaned | " + Path.GetFileName(item.FilePath));
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("BROWSER | download placeholder cleanup failed | " + exception.Message);
+        }
     }
 
     internal void ReportBlockedNavigation()
@@ -910,6 +1005,9 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         {
             _operations.Remove(operation);
             operation.Cancel();
+            // Событие StateChanged могло не дойти (WebView2 занят) — чистим
+            // пустой placeholder сразу; непустой файл не трогаем.
+            TryCleanupPlaceholder(item);
         }
 
         // Из списка: сам файл на диске не трогаем.
@@ -1002,30 +1100,48 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
     }
 
     // Проверка скачанного файла ScannerCore (если включена в настройках).
-    private async void ScanDownloadIfEnabled(BrowserDownloadItem item)
+    // Аудит lifecycle: не async void — задача хранится и отменяется при Dispose;
+    // результат скана после ветвления повторно сохраняется в downloads.json (№3):
+    // раньше persistent state навсегда оставался «Completed» даже при обнаруженных
+    // угрозах.
+    private readonly CancellationTokenSource _scanDownloadsCts = new();
+
+    // Обёртка fire-and-forget: задача хранится и отменяется при Dispose VM.
+    private Task? _scanDownloadsTask;
+
+    private void RunAndForgetScan(BrowserDownloadItem item)
+    {
+        _scanDownloadsTask = ScanDownloadIfEnabledAsync(item);
+    }
+
+    private async Task ScanDownloadIfEnabledAsync(BrowserDownloadItem item)
     {
         if (!Settings.ScanDownloads)
         {
             return;
         }
 
-        if (!_scanner.IsAvailable)
+        if (_scannerViewModel is null || !_scannerViewModel.IsScannerReady)
         {
             item.ScanResult = L.T("встроенная проверка недоступна");
             _logger.Warn("BROWSER | download scan skipped | ScannerCore unavailable");
+            _downloadsService.AddOrUpdate(item);
             return;
         }
 
         item.StateKey = BrowserDownloadItem.StateChecking;
         try
         {
-            var result = await _scanner.RunScanAsync(item.FilePath, scanDirectory: false).ConfigureAwait(true);
+            // Под общим gate раздела «Сканер»: авто-скан не стартует параллельно
+            // с ручным сканом или установкой пакета базы.
+            var result = await _scannerViewModel.RunFileScanAsync(item.FilePath, _scanDownloadsCts.Token).ConfigureAwait(true);
             if (!result.IsSuccess || result.Value is null)
             {
                 // Ошибка проверки ≠ чистый результат: состояние «Ошибка», а не «Завершено».
                 item.ScanResult = L.T("ошибка проверки");
                 _logger.Warn("BROWSER | download scan failed | " + result.Message);
                 item.StateKey = BrowserDownloadItem.StateError;
+                _downloadsService.AddOrUpdate(item);
                 return;
             }
 
@@ -1067,6 +1183,10 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
             item.StateKey = BrowserDownloadItem.StateError;
             _logger.Error("BROWSER | download scan error | " + exception);
         }
+
+        // Финальный persist: итоговое состояние (Threat/Error/...) попадает в
+        // downloads.json — перезапуск больше не показывает «Completed».
+        _downloadsService.AddOrUpdate(item);
     }
 
     // ===================== Внешние схемы и пути =====================
@@ -1133,8 +1253,16 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
             host.SetZoom(settings.DefaultZoom);
         }
 
-        _settingsService.Save(settings);
-        _logger.Info("BROWSER | settings saved");
+        // Настройки критичны (аудит persistence): сбой записи виден пользователю,
+        // а не спрятан за безусловным «saved» в журнале.
+        if (_settingsService.Save(settings))
+        {
+            _logger.Info("BROWSER | settings saved");
+        }
+        else
+        {
+            StatusText = L.T("Настройки не сохранены на диск — подробности в журнале.");
+        }
     }
 
     private void UpdateSettingIfChanged(Func<BrowserSettingsModel, BrowserSettingsModel> withValue)
@@ -1177,27 +1305,36 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void ClearBrowsingDataNow()
+    private async Task ClearBrowsingDataNowAsync()
     {
         _historyService.Clear();
         OnPropertyChanged(nameof(HistoryEntries));
-        ClearWebViewDataAsync(
+        // Статус — только после фактического завершения очистки (H-02).
+        var cleared = await ClearBrowsingDataAsync(
             CoreWebView2BrowsingDataKinds.Cookies
-            | CoreWebView2BrowsingDataKinds.DiskCache);
-        StatusText = L.T("История и данные сайтов очищены.");
+            | CoreWebView2BrowsingDataKinds.DiskCache).ConfigureAwait(true);
+        StatusText = cleared
+            ? L.T("История и данные сайтов очищены.")
+            : L.T("Очистить данные сайтов не удалось — подробности в журнале.");
     }
 
-    // Очистка данных WebView2 — по профилю активной вкладки, best-effort.
-    private void ClearWebViewDataAsync(CoreWebView2BrowsingDataKinds kinds)
+    // Очистка по профилю всех живых вкладок: профиль общий, но хост именно
+    // активной вкладки может отсутствовать — очистка не должна зависеть от неё.
+    private async Task<bool> ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds kinds)
     {
-        try
+        var hosts = _hosts.Values.ToList();
+        if (hosts.Count == 0)
         {
-            ActiveHost()?.ClearBrowsingData(kinds);
+            return false;
         }
-        catch (Exception exception)
+
+        var cleared = true;
+        foreach (var host in hosts)
         {
-            _logger.Warn("BROWSER | clear data failed | " + exception.Message);
+            cleared &= await host.ClearBrowsingDataAsync(kinds).ConfigureAwait(true);
         }
+
+        return cleared;
     }
 
     // ===================== Окно браузера =====================
@@ -1208,16 +1345,78 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
 
     // Закрытие окна браузера = конец сессии: раздел возвращается к карточке
     // запуска, повторный «Запустить» открывает окно заново.
+    // Синхронная версия — только для пути выхода из SCU (Dispose) и тестов:
+    // из WPF Closing она дедлокила очистку (см. CloseBrowserAsync).
     internal void CloseBrowser()
     {
-        if (!IsBrowserStarted && _hosts.Count == 0)
+        if (!IsBrowserStarted && _hosts.Count == 0 && !IsStarting)
         {
             return;
         }
 
-        _logger.Info("BROWSER | window closed");
-        ShutdownSession();
+        // Инвалидация in-flight запуска (H-03) — до любых await внутри старта.
+        _sessionGeneration++;
 
+        _logger.Info("BROWSER | window closed");
+
+        // Настройка «очищать при выходе» (H-02): хосты живы только сейчас —
+        // после ShutdownSession очищать данные сайтов нечем. Очистка на закрытии
+        // окна вместо выхода из SCU: раньше обещанного — никогда не позже.
+        if (Settings.ClearCookiesOnExit || Settings.ClearCacheOnExit)
+        {
+            ClearBrowsingDataBlocking(BuildExitClearKinds());
+        }
+
+        ShutdownSession();
+        FinalizeClosedSession();
+    }
+
+    // Очистка данных сайтов включена и есть что закрывать: окно закрывается
+    // в две фазы (Closing → CloseBrowserAsync → повторный Close).
+    internal bool NeedsExitCleanup =>
+        IsBrowserStarted && (Settings.ClearCookiesOnExit || Settings.ClearCacheOnExit);
+
+    // Асинхронное закрытие сессии из пути закрытия окна (аудит lifecycle):
+    // очистка данных сайтов ждётся через await, а не через блокирующий Wait на
+    // UI-потоке. ClearBrowsingDataAsync содержит ConfigureAwait(true) — её
+    // продолжению нужен диспетчер, и синхронный Wait из WPF Closing дедлокил
+    // цепочку до 5-секундного таймаута, обрезая очистку.
+    internal async Task CloseBrowserAsync()
+    {
+        if (!IsBrowserStarted && _hosts.Count == 0 && !IsStarting)
+        {
+            return;
+        }
+
+        // Инвалидация in-flight запуска (H-03) — до любых await внутри старта.
+        _sessionGeneration++;
+
+        _logger.Info("BROWSER | window closed");
+
+        if (Settings.ClearCookiesOnExit || Settings.ClearCacheOnExit)
+        {
+            try
+            {
+                var cleared = await ClearBrowsingDataAsync(BuildExitClearKinds())
+                    .WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(true);
+                if (!cleared)
+                {
+                    _logger.Warn("BROWSER | exit cleanup incomplete | cookies/cache may remain");
+                }
+            }
+            catch (TimeoutException)
+            {
+                _logger.Warn("BROWSER | exit cleanup timeout | cookies/cache may remain");
+            }
+        }
+
+        ShutdownSession();
+        FinalizeClosedSession();
+    }
+
+    // Общая часть закрытия: сброс UI-состояния раздела к карточке запуска.
+    private void FinalizeClosedSession()
+    {
         IsBrowserStarted = false;
         // Кнопка «Запустить» обязана вернуться в активное состояние сразу.
         StartBrowserCommand.NotifyCanExecuteChanged();
@@ -1227,6 +1426,31 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         IsDownloadsOpen = IsHistoryOpen = IsBookmarksOpen = IsSettingsOpen = false;
         StatusText = string.Empty;
         Host = null;
+    }
+
+    private CoreWebView2BrowsingDataKinds BuildExitClearKinds() =>
+        (CoreWebView2BrowsingDataKinds)0
+        | (Settings.ClearCookiesOnExit ? CoreWebView2BrowsingDataKinds.Cookies : 0)
+        | (Settings.ClearCacheOnExit ? CoreWebView2BrowsingDataKinds.DiskCache : 0);
+
+    // Синхронное ожидание очистки на пути закрытия окна/выхода: продолжение после
+    // await в BrowserTabHost.ClearBrowsingDataAsync выполняется вне UI-потока
+    // (ConfigureAwait(false)), поэтому Wait не deadlock'ит UI; лимит — закрытие
+    // не должно зависать на очистке. Best-effort: сбой фиксируется в журнале.
+    private void ClearBrowsingDataBlocking(CoreWebView2BrowsingDataKinds kinds)
+    {
+        try
+        {
+            var cleanup = ClearBrowsingDataAsync(kinds);
+            if (!cleanup.Wait(TimeSpan.FromSeconds(5)) || !cleanup.Result)
+            {
+                _logger.Warn("BROWSER | exit cleanup incomplete | cookies/cache may remain");
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("BROWSER | exit cleanup failed | " + exception.Message);
+        }
     }
 
     private void ShutdownSession()
@@ -1250,6 +1474,19 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
 
         _disposed = true;
 
+        // Аудит lifecycle: авто-скан загрузок отменяется при завершении сессии;
+        // короткое ожидание даёт задаче шанс выйти до утилизации хостов.
+        _scanDownloadsCts.Cancel();
+        try
+        {
+            _scanDownloadsTask?.Wait(TimeSpan.FromSeconds(3));
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("BROWSER | download scan wait on dispose | " + exception.Message);
+        }
+        _scanDownloadsCts.Dispose();
+
         try
         {
             if (Settings.ClearHistoryOnExit)
@@ -1259,10 +1496,9 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
 
             if (Settings.ClearCookiesOnExit || Settings.ClearCacheOnExit)
             {
-                var kinds = (CoreWebView2BrowsingDataKinds)0
-                    | (Settings.ClearCookiesOnExit ? CoreWebView2BrowsingDataKinds.Cookies : 0)
-                    | (Settings.ClearCacheOnExit ? CoreWebView2BrowsingDataKinds.DiskCache : 0);
-                ClearWebViewDataAsync(kinds);
+                // Окно браузера ещё открыто — хосты живы, очищаем до их освобождения
+                // (H-02). Если окно уже закрыто, очистка выполнена в CloseBrowser.
+                ClearBrowsingDataBlocking(BuildExitClearKinds());
             }
         }
         catch (Exception exception)

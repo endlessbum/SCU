@@ -77,8 +77,9 @@ public sealed class SystemStateService
         }
 
         // Чтения реестра — быстрые и не падают (внутри try/catch возвращают false).
-        snapshot.UpdateBlocked = UpdateService.IsBlocked();
-        snapshot.UpdatePaused = UpdateService.IsPaused();
+        // Try-варианты: сбой чтения = null → бэнчмарк видит Unknown, а не «не заблокировано».
+            snapshot.UpdateBlocked = UpdateService.TryIsBlocked();
+            snapshot.UpdatePaused = UpdateService.TryIsPaused();
 
         return snapshot;
     }
@@ -183,17 +184,37 @@ public sealed class SystemStateService
 
         await RunAreaAsync(snapshot, progress, AreaTasks, async () =>
         {
-            // Отдельный файл кэша Dashboard, чтобы не пересекаться с TasksViewModel.
-            var outFile = Path.Combine(GetCacheDirectory(), "dashboard_tasks_list.txt");
-            var result = await _tasks.ListAsync(outFile, ct).ConfigureAwait(false);
-            if (!result.IsSuccess || result.Value is null)
+            // Файл кэша УНИКАЛЬНЫЙ на вызов (та же логика, что у AreaStartup):
+            // фиксированный dashboard_tasks_list.txt при параллельных снимках
+            // перезаписывался и читался недописанным — TasksTotal/TasksDisabled
+            // бэнчмарка искажались.
+            var outFile = Path.Combine(GetCacheDirectory(), $"dashboard_tasks_list_{Guid.NewGuid():N}.txt");
+            try
             {
-                throw new InvalidOperationException(result.Message);
-            }
+                var result = await _tasks.ListAsync(outFile, ct).ConfigureAwait(false);
+                if (!result.IsSuccess || result.Value is null)
+                {
+                    throw new InvalidOperationException(result.Message);
+                }
 
-            var list = result.Value;
-            snapshot.TasksTotal = list.Count;
-            snapshot.TasksDisabled = list.Count(task => task.IsDisabled);
+                var list = result.Value;
+                snapshot.TasksTotal = list.Count;
+                snapshot.TasksDisabled = list.Count(task => task.IsDisabled);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(outFile))
+                    {
+                        File.Delete(outFile);
+                    }
+                }
+                catch
+                {
+                    // Временный файл не критичен.
+                }
+            }
         }).ConfigureAwait(false);
 
         await RunAreaAsync(snapshot, progress, AreaNetwork, async () =>
@@ -261,8 +282,9 @@ public sealed class SystemStateService
 
         await RunAreaAsync(snapshot, progress, AreaUpdates, async () =>
         {
-            snapshot.UpdateBlocked = UpdateService.IsBlocked();
-            snapshot.UpdatePaused = UpdateService.IsPaused();
+            // Try-варианты: сбой чтения = null → бэнчмарк видит Unknown.
+            snapshot.UpdateBlocked = UpdateService.TryIsBlocked();
+            snapshot.UpdatePaused = UpdateService.TryIsPaused();
         }).ConfigureAwait(false);
 
         return snapshot;

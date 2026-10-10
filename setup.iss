@@ -64,38 +64,49 @@ Root: HKCU; Subkey: "Software\SCU"; ValueType: string; ValueName: "Language"; Va
 Filename: "{app}\SCU.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; Журналы работы приложения, если писал их рядом с exe.
+; Логи/данные, которые приложение может создавать рядом с установленными файлами.
 Type: filesandordirs; Name: "{app}\logs"
-; Страховка: каталог базы сканера (ставится через [Files] и удаляется сам,
-; но если приложение пересоздавало его в рантайме — чтобы не оставлять).
 Type: filesandordirs; Name: "{app}\security"
+Type: filesandordirs; Name: "{app}\Assets\logs"
+Type: filesandordirs; Name: "{app}\Assets\backup"
+
+; Пользовательские данные ({userappdata}/{localappdata}/{commonappdata}\SCU)
+; по умолчанию СОХРАНЯЮТСЯ (аудит: настройки, бэкапы для отката твиков, журнал,
+; карантин — данные пользователя, а не файлы программы). Удаляются только
+; после явного согласия в диалоге деинсталлятора — см. [Code].
 
 [Code]
 // Данные в профиле пользователя переживают удаление: %AppData%\SCU (настройки,
-// бэкапы служб/сети/обновлений, журналы, скрипты, состояние браузера/DeepSeek)
-// и %LocalAppData%\SCU (кэш сканера, карантин). Деинсталлятор спрашивает один
-// раз и сносит оба каталога; «Нет» оставляет данные для переустановки.
+// бэкапы служб/сети/обновлений, журналы, скрипты, состояние браузера/DeepSeek),
+// %LocalAppData%\SCU (кэш сканера, карантин) и %ProgramData%\SCU (общие данные).
+// Деинсталлятор спрашивает один раз и сносит все три каталога; «Нет» оставляет
+// данные для переустановки. В silent-режиме вопроса нет — данные сохраняются.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   UserDataDir: string;
   LocalDataDir: string;
+  CommonDataDir: string;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
     UserDataDir := ExpandConstant('{userappdata}') + '\SCU';
     LocalDataDir := ExpandConstant('{localappdata}') + '\SCU';
-    if DirExists(UserDataDir) or DirExists(LocalDataDir) then
-      if MsgBox(
-           'Удалить также данные SCU в профиле пользователя?' + #13#10 +
-           UserDataDir + #13#10 +
-           LocalDataDir + #13#10 + #13#10 +
-           'Это настройки, бэкапы служб/сети/обновлений (откат твиков станет невозможен),' + #13#10 +
-           'журналы, скрипты и карантин (файлы карантина восстановить будет нельзя).' + #13#10 +
-           'Если оставить, при переустановке прежние настройки и бэкапы сохранятся.',
-           mbConfirmation, MB_YESNO) = IDYES then
-      begin
-        DelTree(UserDataDir, True, True, True);
-        DelTree(LocalDataDir, True, True, True);
-      end;
+    CommonDataDir := ExpandConstant('{commonappdata}') + '\SCU';
+    if not UninstallSilent() then
+      if DirExists(UserDataDir) or DirExists(LocalDataDir) or DirExists(CommonDataDir) then
+        if MsgBox(
+             'Удалить также данные SCU?' + #13#10 +
+             UserDataDir + #13#10 +
+             LocalDataDir + #13#10 +
+             CommonDataDir + #13#10 + #13#10 +
+             'Это настройки, бэкапы служб/сети/обновлений (откат твиков станет невозможен),' + #13#10 +
+             'журналы, скрипты и карантин (файлы карантина восстановить будет нельзя).' + #13#10 +
+             'Если оставить, при переустановке прежние настройки и бэкапы сохранятся.',
+             mbConfirmation, MB_YESNO) = IDYES then
+        begin
+          DelTree(UserDataDir, True, True, True);
+          DelTree(LocalDataDir, True, True, True);
+          DelTree(CommonDataDir, True, True, True);
+        end;
   end;
 end;

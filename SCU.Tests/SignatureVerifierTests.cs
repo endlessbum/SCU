@@ -13,7 +13,18 @@ public class SignatureVerifierTests
         var target = Path.Combine(Environment.SystemDirectory, "wermgr.exe");
         if (!File.Exists(target))
         {
-            return;
+            // Аудит: тихий return делал тест зелёным, не проверив ничего —
+            // недопустимо (тот же принцип, что у ScannerCore-тестов). Осознанный
+            // локальный skip — только через SCU_ALLOW_INTEGRATION_SKIP=1.
+            const string message =
+                "SKIPPED: wermgr.exe не найден — среда без системных бинарников Windows.";
+            if (Environment.GetEnvironmentVariable("SCU_ALLOW_INTEGRATION_SKIP") == "1")
+            {
+                Console.WriteLine(message);
+                return;
+            }
+
+            Assert.Fail(message);
         }
 
         var result = SignatureVerifier.VerifyMicrosoftSigned(target, minBytes: 1024);

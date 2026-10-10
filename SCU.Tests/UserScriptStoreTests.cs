@@ -175,4 +175,45 @@ public sealed class UserScriptStoreTests : IDisposable
         var (secondCode, _) = await _store.RunAsync(data);
         Assert.Equal(0, secondCode);
     }
+
+    // ===================== Редактор: UpdateContent (аудит 3, п. 2/11) =====================
+
+    // Правка содержимого через редактор: файл записан, эталонный SHA-256
+    // пересчитан (иначе запуск отменяется по целостности), scripts.json
+    // обновлён на диске.
+    [Fact]
+    public async Task UpdateContent_RehashesAndPersists_NewHashIsRunnable()
+    {
+        var source = Path.Combine(_directory, "src.bat");
+        File.WriteAllText(source, "@echo off");
+        var data = _store.Import(source, 3, "t", "", "", "us_edit");
+        var originalSha = data.Sha256;
+
+        Assert.True(_store.UpdateContent(data, "@echo off" + Environment.NewLine + "echo EDITED"));
+        Assert.NotEqual(originalSha, data.Sha256);
+
+        // scripts.json на диске содержит новый хэш.
+        var loaded = Assert.Single(_store.Load());
+        Assert.Equal(data.Sha256, loaded.Sha256);
+
+        // Запуск отредактированного скрипта не блокируется целостностью.
+        var (exitCode, _) = await _store.RunAsync(data);
+        Assert.Equal(0, exitCode);
+    }
+
+    // UpdateContent по экземпляру из Load() (как в окне «Установленные»):
+    // запись с тем же Id в scripts.json заменяется, а не дублируется.
+    [Fact]
+    public void UpdateContent_ReplaceById_DoesNotDuplicate()
+    {
+        var source = Path.Combine(_directory, "src.bat");
+        File.WriteAllText(source, "@echo off");
+        var data = _store.Import(source, 3, "t", "", "", "us_replace");
+        _store.Save([data]);
+
+        var stored = Assert.Single(_store.Load());
+        Assert.True(_store.UpdateContent(stored, "@echo off" + Environment.NewLine + "echo V2"));
+
+        Assert.Single(_store.Load());
+    }
 }

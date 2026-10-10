@@ -17,6 +17,8 @@ public partial class InstalledScriptsWindow : Window
     public InstalledScriptsWindow(MainViewModel main, Logger logger)
     {
         InitializeComponent();
+        // Появление окна: fade + подъём корня (единый паттерн ConfirmDialog/OnboardingWindow).
+        Loaded += (_, _) => SCU.Common.UiAnimations.AppearWindow(this);
         Owner = Application.Current?.MainWindow;
         _main = main;
         _logger = logger;
@@ -58,6 +60,10 @@ public partial class InstalledScriptsWindow : Window
         if (ScriptFromButton(sender) is { } data)
         {
             new ScriptEditorWindow(_store, data, isReadOnly: false) { Owner = this }.ShowDialog();
+            // Редактор обновил эталонный SHA-256 в scripts.json: карточки в
+            // памяти обязаны перечитать список, иначе следующий запуск этого
+            // скрипта отменится по целостности (старый хэш в card.Data).
+            _main.RefreshUserScripts();
         }
     }
 

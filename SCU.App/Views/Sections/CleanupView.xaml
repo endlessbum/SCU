@@ -62,6 +62,27 @@
                 </Grid>
             </Border>
 
+            <!-- Загрузки — пользовательские файлы: подтверждение прямо
+                 предупреждает о необратимости удаления. -->
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}" Text="{DynamicResource S_CleanupDownloads}" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource I_CleanupDownloads}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Control Style="{StaticResource CardSpinner}" Tag="{Binding IsMeasuringDownloads}" />
+                        <TextBlock Style="{StaticResource CardSizeText}" Text="{Binding DownloadsSizeText}" />
+                        <Button Content="{DynamicResource S_Clean}" Command="{Binding CleanDownloadsCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
             <Border Style="{StaticResource SectionCard}">
                 <Grid>
                     <Grid.ColumnDefinitions>

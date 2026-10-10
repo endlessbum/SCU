@@ -114,6 +114,14 @@ public partial class DeepSeekView : UserControl
             return;
         }
 
+        // Тумблер «Анимации интерфейса» (аудит UX): при OFF — статичный контур
+        // без fade/march/blink (декоративный индикатор, не progress).
+        if (!UiAnimations.Enabled)
+        {
+            outline.Outline.Opacity = 1;
+            return;
+        }
+
         // Появление (0→1 за 1 c); фаза движения запускается из Completed —
         // две анимации одного свойства Opacity одновременно конфликтуют.
         var appear = new DoubleAnimation(0, 1, AppearDuration);
@@ -195,8 +203,9 @@ public partial class DeepSeekView : UserControl
     }
 
     // Окно AI-помощника: отдельный режим того же раздела (п. 27 ТЗ) —
-    // обычный чат не затрагивается.
-    private void OnOpenAiAssistantRequested()
+    // обычный чат не затрагивается. Публичный метод: зовётся и кнопкой
+    // карточки, и Ctrl+Shift+A из MainWindow (раздел может быть не открыт).
+    public void OpenAssistantWindow()
     {
         if (ViewModel is not { Assistant: { } assistant })
         {
@@ -207,4 +216,6 @@ public partial class DeepSeekView : UserControl
         window.Show();
         window.Activate();
     }
+
+    private void OnOpenAiAssistantRequested() => OpenAssistantWindow();
 }

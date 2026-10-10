@@ -100,22 +100,31 @@ public static class DesktopIconService
         }
 
         dynamic shell = Activator.CreateInstance(shellType)!;
+        object? shortcut = null;
         try
         {
-            dynamic shortcut = shell.CreateShortcut(shortcutPath);
-            var current = ((string)shortcut.IconLocation).Split(',')[0].Trim();
+            shortcut = shell.CreateShortcut(shortcutPath);
+            dynamic shortcutDynamic = shortcut;
+            var current = ((string)shortcutDynamic.IconLocation).Split(',')[0].Trim();
             if (string.Equals(current, iconPath, StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
 
-            shortcut.IconLocation = iconPath + ",0";
-            shortcut.Save();
+            shortcutDynamic.IconLocation = iconPath + ",0";
+            shortcutDynamic.Save();
             NotifyShell(shortcutPath);
             return true;
         }
         finally
         {
+            // RCW ярлыка — тоже COM-объект: без освобождения RCW копились при
+            // каждой смене цвета иконки (вызов из Task.Run).
+            if (shortcut is not null)
+            {
+                Marshal.FinalReleaseComObject(shortcut);
+            }
+
             Marshal.ReleaseComObject(shell);
         }
     }

@@ -228,7 +228,19 @@ public sealed class PrivacyService
         if (!serviceResult.IsSuccess)
         {
             _logger.Error($"PRIVACY | {categoryId} | service: {serviceResult.Message}");
-            return Result.Failure(registryResult.Message + " Служба: " + serviceResult.Message);
+            // Компенсирующий откат (аудит partial state): реестр уже применён,
+            // служба — нет. Возвращаем реестр из свежего бэкапа, иначе категория
+            // остаётся наполовину применённой при честном Failure.
+            var rollback = _registry.Restore(tweaks, Path.Combine(BackupDirectory, categoryId + ".json"));
+            if (!rollback.IsSuccess)
+            {
+                _logger.Error($"PRIVACY | {categoryId} | registry rollback failed: {rollback.Message}");
+                return Result.Failure(
+                    "Служба: " + serviceResult.Message + " Откат реестра также не удался: " + rollback.Message
+                    + " Состояние частично применено — используйте «Включить» для повторной попытки.");
+            }
+
+            return Result.Failure("Служба: " + serviceResult.Message + " Изменения реестра откатаны.");
         }
 
         return Result.Success("Параметры применены и проверены. " + serviceResult.Message);
@@ -249,19 +261,9 @@ public sealed class PrivacyService
             return Result.Failure($"Неизвестная категория: {categoryId}", 2);
         }
 
-        var serviceResult = categoryId switch
-        {
-            "telemetry" => await _serviceManager.SetAutomaticAsync("DiagTrack", ct).ConfigureAwait(false),
-            "do" => await _serviceManager.SetAutomaticAsync("DoSvc", ct).ConfigureAwait(false),
-            _ => Result.Success()
-        };
-        if (!serviceResult.IsSuccess)
-        {
-            return serviceResult;
-        }
-
-        // Если категорию отключали не через приложение — бэкапа нет.
-        // Тогда «включить» = вернуть заводское состояние (удалить значения), а не падать.
+        // Порядок «Включить» (аудит partial state): сначала восстановление
+        // реестра, затем служба — сбой службы не оставляет «реестр восстановлен,
+        // служба отключена» без честного сообщения о частичном состоянии.
         var backupFile = Path.Combine(BackupDirectory, categoryId + ".json");
         var restoreResult = File.Exists(backupFile)
             ? _registry.Restore(tweaks, backupFile)
@@ -271,24 +273,39 @@ public sealed class PrivacyService
             return restoreResult;
         }
 
-        return Result.Success("Включено. " + restoreResult.Message + (serviceResult.Message.Length > 0 ? " " + serviceResult.Message : string.Empty));
+        var enableServiceResult = categoryId switch
+        {
+            "telemetry" => await _serviceManager.SetAutomaticAsync("DiagTrack", ct).ConfigureAwait(false),
+            "do" => await _serviceManager.SetAutomaticAsync("DoSvc", ct).ConfigureAwait(false),
+            _ => Result.Success()
+        };
+        if (!enableServiceResult.IsSuccess)
+        {
+            return Result.Failure("Реестр восстановлен. Служба: " + enableServiceResult.Message
+                + " Повторите «Включить» для завершения.");
+        }
+
+        return Result.Success("Включено. " + restoreResult.Message + (enableServiceResult.Message.Length > 0 ? " " + enableServiceResult.Message : string.Empty));
     }
 
     // CEIP-задачи: отключение через PS с бэкапом, включение из бэкапа.
     public async Task<Result> DisableCeipTasksAsync(SCURunner runner, CancellationToken ct = default)
     {
-        // Повторное отключение не перезаписывает бэкап: первый манifест = исходное состояние задач.
-        if (File.Exists(TasksBackupFile))
-        {
-            return Result.Success("Бэкап задач уже существует; задачи уже отключены.");
-        }
-
+        // Повторное отключение выполняется по-настоящему (аудит): раньше при
+        // живом бэкапе возвращался «успех» без действий, и после частично
+        // провалившегося первого прогона часть задач оставалась включённой.
+        // Флаг NoBackupWrite сохраняет бэкап с ИСХОДНЫМИ состояниями —
+        // перезаписывать его уже-Disabled состояниями нельзя.
+        var backupExists = File.Exists(TasksBackupFile);
         return await runner.RunAsync(
             "TasksDisable",
             new Dictionary<string, string?>
             {
                 ["Tasks"] = CeipTasksCsv,
-                ["OutFile"] = TasksBackupFile
+                ["OutFile"] = TasksBackupFile,
+                // SCURunner передаёт null как «ключ без значения» — для [string]
+                // параметра PS это ошибка, поэтому всегда явное значение.
+                ["NoBackupWrite"] = backupExists ? "1" : "0"
             },
             null,
             ct).ConfigureAwait(false);

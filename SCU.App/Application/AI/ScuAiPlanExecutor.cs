@@ -70,7 +70,20 @@ public sealed class ScuAiPlanExecutor
 
         // Состояние могло измениться после preview: применяем только то, что
         // пользователь видел в карточке (п. 9 ТЗ — защита от рассинхрона).
-        var before = capability.ReadState();
+        // Чтение состояния — внешняя операция (реестр/службы) и может бросить
+        // на урезанных правах: это происходит до claim, план остаётся
+        // Confirmed и доступен для повтора — отдаем отказ вместо исключения.
+        string before;
+        try
+        {
+            before = capability.ReadState();
+        }
+        catch (Exception readException)
+        {
+            _deps.Logger.Warn($"SCU_AI | pre-apply state read failed | {readException.Message}");
+            return ApplyOutcome.Fail(ScuAiErrorCode.ExecutionFailed,
+                L.T("Не удалось прочитать текущее состояние: {0}", readException.Message));
+        }
         var plan = _deps.Plans.TryClaimForApply(planId, before, out var claimReason);
         if (plan is null)
         {

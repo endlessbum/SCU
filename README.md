@@ -1,13 +1,13 @@
-# SCU — Safecleanup
+# SCU
 
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F92%20detections-brightgreen?logo=virustotal)](https://www.virustotal.com/gui/url/a9416c9d8d47920b994f3e8fac1d888850546200e9b99e8268ebd03d431da9bd?nocache=1)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F92%20detections-brightgreen?logo=virustotal)](https://www.virustotal.com/gui/url/045ecb6929775c21c262108dd68dac88d495233fc03173e26ca48c2301626d59?nocache=1)
 
 <p align="center">
   <img src="docs/images/scu-logo.png" alt="SCU" width="520">
 </p>
 
 <p align="center">
-  <strong>Safecleanup</strong><br>
+  <strong>SCU</strong><br>
   Современный набор инструментов для настройки, обслуживания и диагностики Windows.
 </p>
 
@@ -22,6 +22,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20x64-0078D4?style=flat-square&logo=windows" alt="Windows x64">
   <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet" alt=".NET 10">
+  <img src="https://img.shields.io/badge/version-3.1.2-2EA043?style=flat-square" alt="Version 3.1.2">
   <img src="https://img.shields.io/badge/UI-WPF-5C2D91?style=flat-square" alt="WPF">
   <img src="https://img.shields.io/badge/C%2B%2B-CMake-00599C?style=flat-square&logo=cplusplus" alt="C++ CMake">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square" alt="MIT License">
@@ -31,7 +32,7 @@
 
 ## О проекте
 
-**SCU (Safecleanup)** — desktop-приложение для Windows, которое объединяет в одном интерфейсе инструменты, обычно разбросанные по системным настройкам, классической панели управления и сторонним утилитам.
+**SCU** — desktop-приложение для Windows, которое объединяет в одном интерфейсе инструменты, обычно разбросанные по системным настройкам, классической панели управления и сторонним утилитам.
 
 Проект построен вокруг нескольких принципов:
 
@@ -49,54 +50,67 @@ SCU подходит как для повседневного обслужива
 
 ### 🖥️ Обзор и диагностика
 
-- Дашборд состояния системы.
+- Дашборд состояния системы с закреплёнными карточками.
 - Сводная информация о Windows и оборудовании.
 - История операций и изменений.
-- Системный benchmark.
+- Системный benchmark (индекс, покрытие, потенциал, метрики, журнал запусков).
 - Рекомендации по обслуживанию.
+- Общий поиск по разделам и настройкам.
 
 ### 🧹 Очистка и обслуживание
 
 - Очистка временных файлов и системного мусора.
+- Кэш приложений с замером и выборочной очисткой.
 - Работа с компонентами Windows.
-- Поиск проблем и проверка целостности.
-- Удаление нежелательных приложений.
-- Управление пользовательскими сценариями.
+- Поиск проблем и проверка целостности (troubleshooting).
+- Удаление нежелательных приложений (AppX, Store, Edge).
+- Управление пользовательскими сценариями (PowerShell-скрипты на панели и в пинах).
 
 ### 🔐 Приватность и безопасность
 
-- Настройки приватности и телеметрии.
+- Настройки приватности и телеметрии (с бэкапом и откатом).
 - Управление UAC.
 - On-demand сканирование файлов.
 - Изолированный `ScannerCore.exe`.
-- Поддержка подписанной базы IOC/hash-сигнатур.
+- Поддержка подписанной базы IOC/hash-сигнатур с автообновлением.
 - Quarantine/workflow для обнаруженных объектов.
+- Создание и удаление точек восстановления.
 
 ### ⚙️ Управление Windows
 
 - Службы Windows.
 - Автозагрузка.
 - Задачи планировщика.
-- Обновления Windows.
-- Установленные приложения.
-- Питание, память и CPU.
+- Обновления Windows (пауза, блокировка службы, драйверы).
+- Установленные приложения: размеры, классификация, удаление с зачисткой остатков.
+- Питание, память, CPU и файл подкачки.
+- Драйверы устройств.
 - Системные параметры и поведение интерфейса.
 
 ### 🌐 Сеть, ввод и браузер
 
-- Настройка сетевых параметров.
-- Профили сетевых адаптеров.
-- Параметры ввода.
+- Настройка сетевых параметров (MTU, NetBIOS, QoS, TCP-глобал).
+- Профили сетевых адаптеров с бэкапом и откатом.
+- Параметры ввода, Game Bar / DVR / Game Mode.
 - Настройки браузера.
 - Встроенный browser workflow на базе WebView2.
 
+### 🤖 AI-ассистент
+
+- Чат-ассистент (DeepSeek/OpenRouter/Cloudflare-совместимые провайдеры).
+- Поиск по справке и открытие разделов по запросу.
+- Применение изменений только через подтверждаемый план действий.
+- Read-only доступ к файлам установки SCU для ответов о самом приложении.
+
 ### 🎨 Интерфейс
 
-- Dark / Light theme.
+- Dark / Light theme с акцентными цветами.
 - RU / EN localization.
+- Редактор меню: переименование, группы, скрытие разделов, пользовательские вкладки.
 - Навигация по секциям без открытия множества окон.
 - Поиск по настройкам.
 - Уведомления и контролируемые confirmation dialogs.
+- Горячие клавиши: `Ctrl+Alt+S` — показать/скрыть SCU, `Ctrl+Shift+A` — AI-ассистент, `F5` — обновление раздела, `Ctrl+1..9` — быстрый переход.
 - Поддержка accessibility-имен для элементов управления.
 
 ---
@@ -149,19 +163,24 @@ flowchart LR
 ```text
 SCU/
 ├── SCU.App/
-│   ├── Common/             # общие компоненты, безопасность, темы, локализация
-│   ├── Interop/            # Win32 и запуск внешних процессов
+│   ├── Common/             # темы, локализация, операции разделов, SecurityPrompts
+│   ├── Interop/            # Win32, раннеры процессов, глобальные хоткеи
 │   ├── Models/             # модели данных
-│   ├── Services/           # системные сервисы и бизнес-логика
+│   ├── Infrastructure/     # системные сервисы: Windows (твики, сеть, питание,
+│   │                       # службы, приложения...), Browser, DeepSeek,
+│   │                       # Networking, Storage, Updates, Logging
+│   ├── Application/        # app-уровень: AI-агент и его инструменты, dashboard,
+│   │                       # help, retention
 │   ├── ViewModels/         # MVVM ViewModels
 │   ├── Views/
 │   │   ├── Sections/       # основные разделы приложения
+│   │   ├── Cards/          # карточки разделов
 │   │   └── Controls/       # переиспользуемые WPF-контролы
-│   ├── Themes/             # темы и стили
-│   └── Assets/              # ресурсы приложения
+│   ├── Themes/             # темы, стили, локализационные словари
+│   └── Assets/             # SCU.ps1, Utilities.bat, иконки
 │
 ├── SecurityScanner/
-│   ├── src/                # C++ scanner
+│   ├── src/                # C++ scanner (core, pe, script, archive, system, ipc)
 │   ├── database/           # security database
 │   ├── tools/              # build/update/test tooling
 │   └── signing/            # локальные signing metadata
@@ -185,9 +204,14 @@ Security scanner разработан как **on-demand компонент**, �
 - Несовпадение ожидаемого отпечатка приводит к отказу (`fail-closed`).
 - База сигнатур имеет строгую валидацию формата.
 - Поддерживается подписанный пакет обновления базы.
-- Для archive targets предусмотрено отдельное сканирование содержимого.
-- Кэш вердиктов привязан к версии движка, базы и профилю сканирования.
-- Повреждённые или некорректные записи кэша игнорируются.
+- Для archive targets предусмотрено отдельное сканирование содержимого
+  (извлечение в непредсказуемый temp-каталог с защитой от junction-подмены).
+- Кэш вердиктов подписывается HMAC-ключом и хранится в доверенном каталоге
+  `%ProgramData%\SCU\scanner-cache` со строгим DACL (только SYSTEM/Администраторы):
+  не-elevated процесс не может подменить ключ или записи. Кэш привязан к версии
+  движка, базы, профилю сканирования и не читается не-elevated прогоном.
+- Тестовые хуки (`SCU_TEST_*`) компилируются только с CMake-опцией
+  `SCU_ENABLE_TEST_HOOKS=ON` и отсутствуют в release-бинарнике.
 - Приватные ключи подписи не должны храниться в репозитории.
 
 > **Важно:** SCU не заменяет Microsoft Defender или другой основной endpoint security продукт. ScannerCore предназначен для on-demand проверок и сосуществует с системной защитой Windows.
@@ -205,6 +229,9 @@ Security scanner разработан как **on-demand компонент**, �
 - явные confirmation dialogs;
 - проверки границ путей перед файловыми операциями;
 - контролируемое удаление приложений и их данных;
+- автоматический откат при частично применённых операциях (профили сетевых
+  адаптеров, TCP/QoS, NetBIOS, файл подкачки — если изменение не подтвердилось
+  чтением, система возвращается к исходному состоянию из бэкапа);
 - ведение истории операций.
 
 Это позволяет отделить обычные диагностические операции от действий, которые действительно меняют систему.
@@ -221,7 +248,7 @@ SCU рассчитан на:
 - современную Windows 10/11-среду;
 - административные права для операций, которые требуют изменения системного состояния.
 
-> Само приложение собирается как self-contained publish, поэтому отдельная установка .NET Runtime для release-сборки не требуется.
+> Само приложение собирается как self-contained publish, поэтому отдельная установка .NET Runtime для release-сборки не требуется. WebView2 Runtime для встроенного браузера при необходимости приложение установит самостоятельно (пакет скачивается с проверкой подписи Microsoft в защищённый каталог).
 
 ---
 
@@ -241,7 +268,7 @@ SCU рассчитан на:
 ### 1. ScannerCore
 
 ```powershell
-cmake -S SecurityScanner -B SecurityScanner/build -A x64
+cmake -S SecurityScanner -B SecurityScanner/build -A x64 -DSCU_ENABLE_TEST_HOOKS=ON
 cmake --build SecurityScanner/build --config Release
 ```
 
@@ -250,6 +277,10 @@ cmake --build SecurityScanner/build --config Release
 ```text
 SecurityScanner/out/Release/ScannerCore.exe
 ```
+
+> `SCU_ENABLE_TEST_HOOKS=ON` включает тестовые хуки (`SCU_TEST_*`) — они нужны
+> интеграционным тестам и **не должны** включаться в production-сборке
+> (release pipeline собирает сканер без этой опции).
 
 ### 2. Приложение
 
@@ -300,13 +331,14 @@ powershell -File build-release.ps1
 
 Скрипт последовательно:
 
-1. собирает `ScannerCore`;
-2. публикует `SCU.App`;
-3. проверяет наличие обязательных runtime-файлов;
-4. подписывает бинарники при включённом signing;
-5. собирает Inno Setup installer;
-6. проверяет подписи;
-7. формирует `SHA256SUMS.txt`.
+1. собирает и подписывает `ScannerCore` (с фреш-гейтом «бинарник не старее исходников»);
+2. прогоняет **release-тест-гейт** (`dotnet test -c Release`) — publish невозможен после регрессии;
+3. публикует `SCU.App` (publish очищается перед сборкой);
+4. проверяет наличие обязательных runtime-файлов и соответствие версии `build/release-payload.json`;
+5. подписывает `SCU.exe`;
+6. формирует `SHA256SUMS.txt` по содержимому `publish`;
+7. собирает Inno Setup installer (с подписью установщика и деинсталлятора) и обновляет `installer/SHA256SUMS.txt`;
+8. верифицирует подписи всех exe из `publish` и самого установщика.
 
 ---
 
@@ -318,13 +350,29 @@ powershell -File build-release.ps1
 dotnet test SCU.Tests
 ```
 
+Интеграционные тесты сканера требуют собранного `ScannerCore.exe` (см. шаг 1):
+без него тест падает с явной ошибкой, а не тихо пропускается. Для локальной
+разработки допускается осознанный skip:
+
+```powershell
+$env:SCU_ALLOW_INTEGRATION_SKIP = "1"
+dotnet test SCU.Tests
+```
+
+Кэш-тесты сканера требуют elevated-прогона (ScannerCore вне elevated-сессии
+отключает дисковый кэш — доверенный каталог кэша создаётся только с правами
+администратора).
+
 Security scanner также предусматривает сценарии для:
 
 - EICAR;
-- ZIP/archive scanning;
+- ZIP/archive scanning (включая nested-архивы и защиту temp-каталога);
 - scripts;
-- persistence;
+- persistence (Run/RunOnce 64/32-bit, Winlogon, Startup-папки с разрешением
+  `.lnk`-целей, службы, планировщик задач);
 - проверки certificate pinning;
+- доверенного каталога кэша вердиктов (подмена ключа, инвалидация по версии
+  движка/базы/профиля);
 - отмены операций;
 - повреждённой базы;
 - regression/security cases.
@@ -355,11 +403,11 @@ SCU старается держать системные операции мак
 
 Если вы хотите добавить новый системный раздел:
 
-1. Создайте модель состояния / сервис в `SCU.App/Services`.
-2. Добавьте ViewModel.
+1. Создайте сервис в `SCU.App/Infrastructure/Windows/...` (по области — Tweaks, Power, Network и т.д.).
+2. Добавьте ViewModel в `SCU.App/ViewModels/Sections`.
 3. Создайте `Views/Sections/<Name>View.xaml`.
 4. Подключите View в `MainWindow.xaml.cs`.
-5. Добавьте локализацию и accessibility-метаданные.
+5. Добавьте локализацию (Strings.ru/en.xaml + LocalizationDictionaries.En.cs) и accessibility-метаданные.
 6. Для операций, меняющих систему, добавьте подтверждение и backup/restore workflow.
 7. Покройте критическую логику тестами.
 
@@ -374,6 +422,6 @@ SCU старается держать системные операции мак
 ---
 
 <p align="center">
-  <sub>SCU — Safecleanup</sub><br>
+  <sub>SCU</sub><br>
   <sub>Windows system tools without the clutter.</sub>
 </p>

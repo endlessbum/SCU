@@ -63,7 +63,36 @@ public sealed class NetworkService
 
         if (autoTuning is null || ecn is null)
         {
-            return Result<TcpGlobalState>.Failure("Не удалось разобрать TCP Global параметры из netsh.");
+            // Локализованный netsh: значения (как и метки) могут быть не
+            // английскими. Fallback — Get-NetTCPSetting: значения этого cmdlet —
+            // имена enum модуля и не локализуются (прецедент: MTU читается из
+            // WMI StandardCimv2, а не из netsh).
+            var ps = await _runner
+                .RunAsync(
+                    "powershell.exe",
+                    [
+                        "-NoProfile", "-NoLogo", "-NonInteractive", "-Command",
+                        "(Get-NetTCPSetting -SettingName Internet).AutoTuningLevelLocal; (Get-NetTCPSetting -SettingName Internet).EcnCapability"
+                    ],
+                    null,
+                    ct)
+                .ConfigureAwait(false);
+            if (ps.IsSuccess)
+            {
+                var values = (ps.Value ?? string.Empty)
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (values.Length >= 2)
+                {
+                    autoTuning ??= values[0].ToLowerInvariant();
+                    ecn ??= values[1].ToLowerInvariant();
+                }
+            }
+        }
+
+        if (autoTuning is null || ecn is null)
+        {
+            return Result<TcpGlobalState>.Failure(
+                "Не удалось разобрать TCP Global параметры (netsh и Get-NetTCPSetting).");
         }
 
         return Result<TcpGlobalState>.Success(new TcpGlobalState(autoTuning, ecn));
@@ -214,6 +243,10 @@ public sealed class NetworkService
             return Result.Success("Бэкап MTU отсутствует — восстанавливать нечего.");
         }
 
+        // Контракт rollback (аудит restore-операций): apply → verify → удалить
+        // бэкап только после подтверждения. netsh может отчитаться успехом и не
+        // применить значение — сверяем фактический MTU каждого интерфейса.
+        var restored = 0;
         var failures = 0;
         foreach (var line in File.ReadAllLines(backupFile))
         {
@@ -233,12 +266,25 @@ public sealed class NetworkService
             if (!restore.IsSuccess)
             {
                 failures++;
+                continue;
+            }
+
+            var actual = await GetCurrentMtuAsync(parts[0], ct).ConfigureAwait(false);
+            if (actual.IsSuccess && actual.Value == mtu)
+            {
+                restored++;
+            }
+            else
+            {
+                _logger.Warn($"NET | MTU restore verify failed | {parts[0]}: expected {mtu}, got {(actual.IsSuccess ? actual.Value.ToString() ?? "-" : actual.Message)}");
+                failures++;
             }
         }
 
         if (failures > 0)
         {
-            return Result.Failure("MTU восстановлен не полностью; бэкап сохранён.");
+            return Result.Failure(
+                $"MTU восстановлен не полностью (восстановлено {restored}, ошибок {failures}); бэкап сохранён.");
         }
 
         // Удаление бэкапа — необязательный хвост: не роняет успешную операцию.
@@ -251,7 +297,7 @@ public sealed class NetworkService
             _logger.Warn("NET | MTU backup cleanup failed: " + exception.Message);
         }
 
-        return Result.Success("MTU восстановлены из бэкапа.");
+        return Result.Success($"MTU восстановлены из бэкапа ({restored}).");
     }
 
     // Только чтение: null — значение (или ключ Psched) отсутствует.
@@ -382,10 +428,13 @@ public sealed class NetworkService
         var backupFile = NetBiosBackupFile;
         try
         {
+            // Снимок до изменений: и источник бэкапа, и значения для отката при
+            // частичном отказе (M-05).
+            var snapshot = QueryNetBiosAdapters();
             if (!File.Exists(backupFile))
             {
                 var snapshots = new List<string>();
-                foreach (var adapter in QueryNetBiosAdapters())
+                foreach (var adapter in snapshot)
                 {
                     snapshots.Add($"{adapter.Index}\t{adapter.Options}");
                 }
@@ -397,7 +446,11 @@ public sealed class NetworkService
 
             var failures = 0;
             var count = 0;
-            foreach (var adapter in QueryNetBiosAdapters())
+            // Успешно изменённые адаптеры: при ошибке на одном из последующих
+            // возвращаются к исходному режиму, иначе Failure оставлял бы смесь
+            // новых и старых режимов по интерфейсам.
+            var changed = new List<(uint Index, int OriginalOptions)>();
+            foreach (var adapter in snapshot)
             {
                 count++;
                 ct.ThrowIfCancellationRequested();
@@ -412,11 +465,34 @@ public sealed class NetworkService
                     failures++;
                     _logger.Warn($"NET | NetBIOS {adapter.Index} rc={returnValue}");
                 }
+                else
+                {
+                    changed.Add((adapter.Index, adapter.Options));
+                }
             }
 
             if (count == 0 || failures > 0)
             {
-                return Result.Failure("NetBIOS: один или несколько интерфейсов не изменены.");
+                foreach (var (index, originalOptions) in changed)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        using var adapterObject = new ManagementObject(
+                            $@"\\.\root\cimv2:Win32_NetworkAdapterConfiguration.Index={index}");
+                        using var inParams = adapterObject.GetMethodParameters("SetTcpipNetbios");
+                        inParams["TcpipNetbiosOptions"] = originalOptions;
+                        using var outParams = adapterObject.InvokeMethod("SetTcpipNetbios", inParams, null);
+                        var restored = Convert.ToInt32(outParams?["ReturnValue"] ?? -1);
+                        _logger.Warn($"NET | NetBIOS rollback | index={index} mode={originalOptions} rc={restored}");
+                    }
+                    catch (Exception rollbackException)
+                    {
+                        _logger.Error($"NET | NetBIOS rollback failed | index={index} | {rollbackException.Message}");
+                    }
+                }
+
+                return Result.Failure("NetBIOS: один или несколько интерфейсов не изменены; изменённые интерфейсы откатаны.");
             }
 
             var verify = QueryNetBiosAdapters().Count(a => a.Options == mode);
@@ -461,6 +537,10 @@ public sealed class NetworkService
             var adapters = QueryNetBiosAdapters().ToDictionary(a => a.Index);
             var failures = 0;
             var restored = 0;
+            // Адаптеры из бэкапа, которых сейчас нет: молча пропустить нельзя —
+            // «всё восстановлено» при нулевом restored было ложным успехом
+            // (аудит restore-операций).
+            var missingTargets = 0;
             foreach (var line in File.ReadAllLines(backupFile))
             {
                 ct.ThrowIfCancellationRequested();
@@ -476,6 +556,7 @@ public sealed class NetworkService
 
                 if (!adapters.TryGetValue(index, out var adapter))
                 {
+                    missingTargets++;
                     continue;
                 }
 
@@ -498,16 +579,32 @@ public sealed class NetworkService
 
             if (failures > 0)
             {
-                return Result.Failure("NetBIOS не восстановлен; бэкап сохранён.");
+                return Result.Failure(
+                    $"NetBIOS восстановлен не полностью (восстановлено {restored}, ошибок {failures}, не найдено {missingTargets}); бэкап сохранён.");
+            }
+
+            if (restored == 0 && missingTargets > 0)
+            {
+                // Ни один адаптер из бэкапа не найден: состояние не восстановлено —
+                // не успех, бэкап сохраняется (адаптер может появиться позже).
+                return Result.Failure($"Адаптеры из бэкапа NetBIOS не найдены ({missingTargets}); бэкап сохранён.");
             }
 
             if (restored == 0)
             {
-                return Result.Success("Бэкап NetBIOS пуст — восстанавливать нечего (адаптеры не найдены).");
+                return Result.Success("Бэкап NetBIOS пуст — восстанавливать нечего.");
+            }
+
+            if (missingTargets > 0)
+            {
+                // Часть адаптеров не найдена: восстановленное состояние неполное,
+                // бэкап сохраняется до полного восстановления.
+                return Result.Failure(
+                    $"NetBIOS восстановлен частично (восстановлено {restored}, не найдено {missingTargets}); бэкап сохранён.");
             }
 
             File.Delete(backupFile);
-            return Result.Success("NetBIOS восстановлен из бэкапа.");
+            return Result.Success($"NetBIOS восстановлен из бэкапа ({restored}).");
         }
         catch (OperationCanceledException)
         {
@@ -624,7 +721,14 @@ public sealed class NetworkService
             .ToList();
         if (failures.Count > 0)
         {
-            return Result.Failure("Профиль применён частично: " + string.Join("; ", failures));
+            // M-04: «Профиль применён частично» с активными изменениями — недопустимое
+            // состояние. TCP-глобал и QoS возвращаются к исходным значениям из бэкапа,
+            // пока путь отката известен; пользователь получает Failure без остаточных
+            // изменений.
+            var tcpRollback = await RestoreTcpGlobalAsync(ct).ConfigureAwait(false);
+            var qosRollback = RestoreQosOverride();
+            _logger.Warn($"NET | gaming profile rollback | tcp={tcpRollback.Message} qos={(qosRollback.IsSuccess ? "ok" : qosRollback.Message)}");
+            return Result.Failure("Профиль не применён, изменения откатаны: " + string.Join("; ", failures));
         }
 
         _logger.Info("NET | gaming profile applied");
@@ -731,7 +835,13 @@ public sealed class NetworkService
             Directory.CreateDirectory(BackupDirectory);
             var line = $"{interfaceAlias}\t{current.Value!.ToString(CultureInfo.InvariantCulture)}";
             var existing = File.Exists(MtuBackupFile) ? File.ReadAllLines(MtuBackupFile).ToList() : [];
-            if (!existing.Contains(line))
+            // Бэкап хранит ИСХОДНОЕ значение адаптера: если для алиаса уже есть
+            // строка, новая не дописывается (аудит rollback-контракта: раньше
+            // повторная смена MTU дописывала строку, restore применял строки по
+            // порядку — «последняя выигрывает» — и исходное значение терялось).
+            var alreadyBackedUp = existing.Any(existingLine =>
+                existingLine.Split('\t', 2)[0].Equals(interfaceAlias, StringComparison.OrdinalIgnoreCase));
+            if (!alreadyBackedUp)
             {
                 existing.Add(line);
                 File.WriteAllLines(MtuBackupFile, existing);

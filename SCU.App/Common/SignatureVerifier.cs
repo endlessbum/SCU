@@ -42,8 +42,9 @@ public static class SignatureVerifier
 
         // 1. Целостность и доверие: WinVerifyTrust одновременно проверяет Authenticode
         // и то, что хэш подписи соответствует текущему содержимому PE. Если провайдер
-        // недоступен, доверенная проверка невозможна — fail-closed.
-        var trust = VerifyFileTrust(path);
+        // недоступен, доверенная проверка невозможна — fail-closed. Проверка отзыва
+        // всей цепочки включена (аудит): отозванный сертификат не проходит.
+        var trust = VerifyFileTrust(path, WtdRevokeWholeChain);
         if (!trust.IsSuccess)
         {
             return Result.Failure($"Проверка подписи не пройдена: {trust.Message}", 4);
@@ -67,12 +68,15 @@ public static class SignatureVerifier
 
         using (certificate)
         {
-            var subject = certificate.Subject;
+            // Аудит: substring-проверка Subject допускала слишком широкое
+            // сопоставление — сверяем имя подписанта и организацию точно.
+            // X509NameType не даёт поле O, поэтому организация разбирается из DN.
             var simpleName = certificate.GetNameInfo(X509NameType.SimpleName, false);
-            if (!subject.Contains("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)
-                && !simpleName.Contains("Microsoft Corporation", StringComparison.OrdinalIgnoreCase))
+            const string expectedPublisher = "Microsoft Corporation";
+            if (!string.Equals(simpleName, expectedPublisher, StringComparison.Ordinal)
+                && !string.Equals(GetSubjectOrganization(certificate), expectedPublisher, StringComparison.Ordinal))
             {
-                return Result.Failure($"Издатель не Microsoft: {subject}", 5);
+                return Result.Failure($"Издатель не Microsoft: {certificate.Subject}", 5);
             }
 
             // WinVerifyTrust уже подтвердил Authenticode, хэш и доверенную цепочку.
@@ -80,10 +84,47 @@ public static class SignatureVerifier
         }
     }
 
+    // Поле O из Subject DN: X509NameType его не отдаёт, разбираем пары "K=V",
+    // разделённые запятыми вне кавычек (значения с запятыми заключаются в кавычки).
+    private static string? GetSubjectOrganization(X509Certificate2 certificate)
+    {
+        var subject = certificate.Subject;
+        var current = new System.Text.StringBuilder();
+        var inQuotes = false;
+        for (var i = 0; i <= subject.Length; i++)
+        {
+            if (i == subject.Length || (subject[i] == ',' && !inQuotes))
+            {
+                var part = current.ToString().Trim();
+                if (part.Length > 2 && part.StartsWith("O=", StringComparison.OrdinalIgnoreCase))
+                {
+                    return part[2..].Trim().Trim('"');
+                }
+
+                current.Clear();
+                if (i == subject.Length)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (subject[i] == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+
+            current.Append(subject[i]);
+        }
+
+        return null;
+    }
+
     // Публичная обёртка WinVerifyTrust для pin-проверок собственных бинарей
     // (ScannerCore): подтверждает Authenticode И совпадение хэша подписи с текущим
     // содержимым PE — сертификат, скопированный в подменённый файл, не пройдёт.
-    public static Result VerifyAuthenticodeIntegrity(string path) => VerifyFileTrust(path);
+    public static Result VerifyAuthenticodeIntegrity(string path) => VerifyFileTrust(path, WtdRevokeNone);
 
     // Коды "подпись валидна, но корень не в доверенных": это единственные
     // отказы WinVerifyTrust, допустимые для пиннутого собственного бинаря.
@@ -107,7 +148,9 @@ public static class SignatureVerifier
     // self-signed с валидным дайджестом.
     public static Result VerifyPinnedBinaryIntegrity(string path)
     {
-        var trust = VerifyFileTrust(path);
+        // WtdRevokeNone осознанно (см. VerifyFileTrust): self-signed бинарь не
+        // имеет CA для проверки отзыва — целостность держится на digest + pin.
+        var trust = VerifyFileTrust(path, WtdRevokeNone);
         if (trust.IsSuccess)
         {
             return trust;
@@ -122,7 +165,12 @@ public static class SignatureVerifier
     }
 
     // Authenticode-проверка файла: 0 — подпись действительна и хэш совпадает.
-    private static Result VerifyFileTrust(string path)
+    // revocationChecks — осознанная политика (аудит): путь VerifyMicrosoftSigned
+    // требует проверки отзыва всей цепочки (отозванный сертификат Microsoft —
+    // fail-closed); пин-проверка собственных self-signed бинарей проверку отзыва
+    // не включает — у self-signed нет CA, чей список отзыва можно проверить,
+    // целостность там держится на digest + thumbprint у вызывающего кода.
+    private static Result VerifyFileTrust(string path, uint revocationChecks)
     {
         try
         {
@@ -138,7 +186,7 @@ public static class SignatureVerifier
             {
                 cbStruct = Marshal.SizeOf<WINTRUST_DATA>(),
                 dwUIChoice = WtdUiNone,
-                fdwRevocationChecks = WtdRevokeNone,
+                fdwRevocationChecks = revocationChecks,
                 dwUnionChoice = WtdChoiceFile,
                 dwStateAction = WtdStateActionVerify
             };
@@ -179,6 +227,7 @@ public static class SignatureVerifier
 
     private const uint WtdUiNone = 2;
     private const uint WtdRevokeNone = 0;
+    private const uint WtdRevokeWholeChain = 1;
     private const uint WtdChoiceFile = 1;
     private const uint WtdStateActionVerify = 1;
     private const uint WtdStateActionClose = 2;

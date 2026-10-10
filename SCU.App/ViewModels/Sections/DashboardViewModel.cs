@@ -25,6 +25,7 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
     private CancellationTokenSource? _batchCts;
 
     private readonly CleanupViewModel _cleanup;
+    private readonly AppCacheViewModel _appCache;
     private readonly PrivacyViewModel _privacy;
     private readonly ServicesViewModel _services;
     private readonly TasksViewModel _tasks;
@@ -37,7 +38,7 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
     private readonly UpdateViewModel _update;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanRunBatch))]
+    [NotifyPropertyChangedFor(nameof(CanRunBatch), nameof(CanToggleRows))]
     private bool _isRunning;
 
     // Состояние большого выключателя: ON запускает пакет, после завершения
@@ -106,6 +107,7 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
         HistoryStore history,
         BatchStateStore stateStore,
         CleanupViewModel cleanup,
+        AppCacheViewModel appCache,
         PrivacyViewModel privacy,
         ServicesViewModel services,
         TasksViewModel tasks,
@@ -121,6 +123,7 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
         _history = history;
         _stateStore = stateStore;
         _cleanup = cleanup;
+        _appCache = appCache;
         _privacy = privacy;
         _services = services;
         _tasks = tasks;
@@ -156,6 +159,12 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
     internal Func<int, bool> SectionLoaded { get; set; } = _ => true;
 
     public bool CanRunBatch => !IsRunning && Rows.Any(row => row.IsIncluded);
+
+    // Тумблеры строк списка блокируются только на время выполнения пакета:
+    // выключение последнего активного тумблера гасит большой выключатель
+    // (CanRunBatch), но не строки — иначе опустошённый список нельзя
+    // было бы снова пополнить.
+    public bool CanToggleRows => !IsRunning;
 
     public string ReadOnlyHint =>
         IsAdmin ? string.Empty : L.T("Нужны права администратора — применение пакета недоступно.");
@@ -325,9 +334,11 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
 
     private bool _rerunRequested;
 
-    // Отмена пакета: пользователем (тумблер в OFF) или уходом с раздела
-    // (MainViewModel.CancelOngoingFor). Гасит CTS пакета и операцию раздела,
-    // чья утилита выполняется прямо сейчас.
+    // Отмена пакета: только тумблером в OFF на «Главной» (аудит: комментарий
+    // раньше ссылался на несуществующий MainViewModel.CancelOngoingFor — уход
+    // с раздела пакет НЕ отменяет, фоновые операции продолжаются по общей
+    // политике приложения). Гасит CTS пакета и операцию раздела, чья утилита
+    // выполняется прямо сейчас.
     public void CancelOngoing()
     {
         if (!IsRunning)
@@ -350,6 +361,7 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
         switch (section)
         {
             case 3: _cleanup.CancelOngoing(); break;
+            case 26: _appCache.CancelOngoing(); break;
             case 5: _privacy.CancelOngoing(); break;
             case 6: _services.CancelOngoing(); break;
             case 8: _power.CancelOngoing(); break;
@@ -585,6 +597,7 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
         var utilities = new List<BatchUtility>();
 
         utilities.AddRange(BuildCleanup());
+        utilities.AddRange(BuildAppCache());
         utilities.AddRange(BuildPrivacy());
         utilities.AddRange(BuildServices());
         utilities.AddRange(BuildTasks());
@@ -603,10 +616,13 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
             utility.OriginalSection = utility.Section;
         }
 
-        // Список на «Главной» (переключатель быстрой очистки): только утилиты,
+        // Список на «Главной» (переключатель быстрой очистки): утилиты,
         // со временем накапливающие мусор — раздел «Очистка» (Корзина, Temp,
-        // кэши браузеров и обновлений Windows).
-        var listUtilities = utilities.Where(u => u.Section == 3).ToList();
+        // кэши браузеров и обновлений Windows), «Кэш приложений» и «Очистка DNS»
+        // из карточки DNS раздела «Сеть» (кэш резолвера тоже копится со временем).
+        var listUtilities = utilities
+            .Where(u => u.Section is 3 or 26 || u.Id == "net_dns_flush")
+            .ToList();
 
         // Дефолтный набор, пока пользователь не собрал свой.
         // Чтение batch.json из конструктора убрано: сохранённый набор применяется
@@ -723,6 +739,9 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
         Utility(3, "clean_recyclebin", "S_CleanupRecycleBin",
             () => RunAsync(_cleanup.CleanRecycleBinCommand, () => _cleanup.StatusText),
             keywords: "очист корзин recycle bin clean"),
+        Utility(3, "clean_downloads", "S_CleanupDownloads",
+            () => RunAsync(_cleanup.CleanDownloadsCommand, () => _cleanup.StatusText),
+            keywords: "загрузк download downloads файлы clean"),
         Utility(3, "clean_temp", "S_CleanupTemp",
             () => RunAsync(_cleanup.CleanTempCommand, () => _cleanup.StatusText),
             keywords: "temp временн очист clean prefetch"),
@@ -732,6 +751,13 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
         Utility(3, "clean_update_cache", "S_CleanupUpdateCache",
             () => RunAsync(_cleanup.CleanUpdateCacheCommand, () => _cleanup.StatusText),
             keywords: "обновл update softwaredistribution кэш cache"),
+    ];
+
+    private List<BatchUtility> BuildAppCache() =>
+    [
+        Utility(26, "appcache_clean", "S_AppCacheCardTitle",
+            () => RunAsync(_appCache.CleanAllCommand, () => _appCache.StatusText),
+            keywords: "кэш приложен app cache временн temp clean"),
     ];
 
     private List<BatchUtility> BuildPrivacy()
@@ -918,6 +944,11 @@ public partial class DashboardViewModel : ObservableObject, ISectionOperationCan
                 needsApply: () => _network.ActiveNetBiosKey != "dhcp"),
             Utility(9, "net_netbios_flush", "S_NetNetBiosFlush",
                 () => RunAsync(_network.FlushNetBiosCacheCommand, () => _network.StatusText)),
+            // Кнопка «Очистить» карточки DNS (ipconfig /flushdns): входит в список
+            // пакетной очистки «Главной» (см. фильтр в BuildUtilities).
+            Utility(9, "net_dns_flush", "S_BatchDnsFlush",
+                () => RunAsync(_network.FlushDnsCommand, () => _network.StatusText),
+                keywords: "dns кэш resolver резолвер домен flush"),
         ];
     }
 

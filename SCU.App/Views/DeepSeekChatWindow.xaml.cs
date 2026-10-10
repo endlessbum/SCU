@@ -23,6 +23,8 @@ public partial class DeepSeekChatWindow : Window
     public DeepSeekChatWindow()
     {
         InitializeComponent();
+        // Появление окна: fade + подъём корня (единый паттерн ConfirmDialog/OnboardingWindow).
+        Loaded += (_, _) => SCU.Common.UiAnimations.AppearWindow(this);
         DataContextChanged += OnWindowDataContextChanged;
         ThemeManager.AccentChanged += OnAccentChanged;
         ThemeManager.ThemeApplied += OnThemeApplied;

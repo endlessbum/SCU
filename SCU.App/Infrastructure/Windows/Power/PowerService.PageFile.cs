@@ -30,6 +30,7 @@ public sealed partial class PowerService
                 using var systems = computerSystemClass.GetInstances();
                 using var system = systems.OfType<ManagementObject>().First();
                 var automatic = (bool)system["AutomaticManagedPagefile"];
+                var automaticDisabledByUs = false;
 
                 // Backup должен существовать ДО любого изменения системы.
                 var backup = BackupPageFileSettings(automatic);
@@ -42,11 +43,59 @@ public sealed partial class PowerService
                 {
                     system["AutomaticManagedPagefile"] = false;
                     system.Put();
+                    automaticDisabledByUs = true;
                     _logger.Info("PAGEFILE | automatic management disabled");
                 }
                 else
                 {
                     _logger.Info("PAGEFILE | automatic management already off");
+                }
+
+                // Откат (аудит): если после отключения автоуправления любой шаг
+                // сорвался — возвращаем автоуправление, иначе система остаётся
+                // в промежуточном состоянии «авто выключено, размер не задан».
+                // M-06: одного автоуправления мало — предыдущие итерации могли уже
+                // перезаписать размеры pagefile, они восстанавливаются из снимка
+                // PagingFiles, снятого до первого изменения.
+                const string memoryManagementKey =
+                    @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management";
+                string[]? originalPagingFiles;
+                using (var snapshotKey = Registry.LocalMachine.OpenSubKey(memoryManagementKey))
+                {
+                    originalPagingFiles = snapshotKey?.GetValue("PagingFiles") as string[];
+                }
+
+                Result RestoreAutomaticAndFail(string message)
+                {
+                    if (automaticDisabledByUs)
+                    {
+                        try
+                        {
+                            system["AutomaticManagedPagefile"] = true;
+                            system.Put();
+                            _logger.Warn("PAGEFILE | rollback | automatic management restored");
+                        }
+                        catch (Exception rollbackException)
+                        {
+                            _logger.Error("PAGEFILE | rollback failed | " + rollbackException.Message);
+                        }
+                    }
+
+                    if (originalPagingFiles is not null)
+                    {
+                        try
+                        {
+                            using var key = Registry.LocalMachine.OpenSubKey(memoryManagementKey, writable: true);
+                            key?.SetValue("PagingFiles", originalPagingFiles, RegistryValueKind.MultiString);
+                            _logger.Warn("PAGEFILE | rollback | PagingFiles restored to original sizes");
+                        }
+                        catch (Exception rollbackException)
+                        {
+                            _logger.Error("PAGEFILE | PagingFiles rollback failed | " + rollbackException.Message);
+                        }
+                    }
+
+                    return Result.Failure(message);
                 }
 
                 // Системный диск вместо жёстко вшитого C: — на системах с Windows на другом томе
@@ -64,7 +113,7 @@ public sealed partial class PowerService
                         @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", writable: true);
                     if (key is null)
                     {
-                        return Result.Failure("Не удалось открыть раздел реестра для настройки файла подкачки.");
+                        return RestoreAutomaticAndFail("Не удалось открыть раздел реестра для настройки файла подкачки.");
                     }
 
                     var expected = $"{defaultPageFile} {sizeMb} {sizeMb}";
@@ -72,7 +121,7 @@ public sealed partial class PowerService
                     var actual = key.GetValue("PagingFiles") as string[] ?? [];
                     if (!actual.Contains(expected, StringComparer.OrdinalIgnoreCase))
                     {
-                        return Result.Failure("Настройка файла подкачки не подтвердилась чтением реестра.");
+                        return RestoreAutomaticAndFail("Настройка файла подкачки не подтвердилась чтением реестра.");
                     }
                 }
                 else
@@ -101,7 +150,7 @@ public sealed partial class PowerService
                             var actualMaximum = Convert.ToInt32(memory["MaximumSize"] ?? 0, CultureInfo.InvariantCulture);
                             if (actualInitial != sizeMb || actualMaximum != sizeMb)
                             {
-                                return Result.Failure($"Размер pagefile {existingName} не подтвердился после записи.");
+                                return RestoreAutomaticAndFail($"Размер pagefile {existingName} не подтвердился после записи.");
                             }
                         }
                     }
@@ -156,8 +205,15 @@ public sealed partial class PowerService
                 "SCU", "backup", "power");
             Directory.CreateDirectory(dir);
 
-            var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
+            // M-09: разрешение секунды недостаточно — два изменения в пределах
+            // одной секунды перезаписали бы первый бэкап. Миллисекунды + защитный
+            // суффикс гарантируют уникальное имя.
+            var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmssfff", CultureInfo.InvariantCulture);
             var backupFile = Path.Combine(dir, $"pagefile_backup_{stamp}.json");
+            for (var suffix = 0; File.Exists(backupFile) && suffix < 1000; suffix++)
+            {
+                backupFile = Path.Combine(dir, $"pagefile_backup_{stamp}_{suffix}.json");
+            }
 
             var pagefileEntries = new List<object>();
             foreach (var entry in pagingFiles)
@@ -337,7 +393,23 @@ public sealed partial class PowerService
                 system.Get();
                 var now = (bool)system["AutomaticManagedPagefile"];
                 if (!now)
-                    return Result.Failure("Не удалось включить System Managed pagefile (проверка после записи).");
+                {
+                    // M-07: Windows не подтвердила включение — Failure без отката
+                    // оставлял бы полуприменённую системную настройку. Возвращаем
+                    // исходное значение (автоуправление было выключено), best-effort.
+                    try
+                    {
+                        system["AutomaticManagedPagefile"] = automatic;
+                        system.Put();
+                        _logger.Warn("PAGEFILE | system managed rollback | original value restored");
+                    }
+                    catch (Exception rollbackException)
+                    {
+                        _logger.Error("PAGEFILE | system managed rollback failed | " + rollbackException.Message);
+                    }
+
+                    return Result.Failure("Не удалось включить System Managed pagefile (проверка после записи не прошла; исходное значение восстановлено).");
+                }
 
                 _logger.Info("PAGEFILE | system managed enabled");
                 return Result.Success("Управление файлом подкачки передано Windows. Вступит в силу после перезагрузки.");

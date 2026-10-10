@@ -68,7 +68,19 @@
                         </Style>
                     </Control.Style>
                 </Control>
-                <Button Content="{DynamicResource S_Apply}" Click="OnRunClick" />
+                <!-- Пока скрипт выполняется, кнопка отключена: повторный клик
+                     запускал бы второй процесс с правами SCU. -->
+                <Button Content="{DynamicResource S_Apply}" Click="OnRunClick">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                    <Setter Property="IsEnabled" Value="False" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
             </StackPanel>
         </Grid>
     </Border>
