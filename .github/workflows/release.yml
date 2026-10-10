@@ -46,7 +46,10 @@ jobs:
 
       - name: Build ScannerCore (cmake)
         run: |
-          cmake -S SecurityScanner -B SecurityScanner/build -A x64
+          # Тестовая фаза собирается С хуками (SCU_TEST_*): часть интеграционных
+          # тестов ими управляется. Production-фаза после тестов пересобирается
+          # без них (см. шаг Rebuild ScannerCore without test hooks).
+          cmake -S SecurityScanner -B SecurityScanner/build -A x64 -DSCU_ENABLE_TEST_HOOKS=ON
           cmake --build SecurityScanner/build --config Release
         shell: pwsh
 
@@ -70,6 +73,18 @@ jobs:
 
       - name: Run tests (unit + integration)
         run: dotnet test SCU.Tests/SCU.Tests.csproj -v n --nologo --logger trx
+        shell: pwsh
+
+      - name: Rebuild ScannerCore without test hooks
+        run: |
+          # Production-бинарник подписывается и уезжает в релиз — тест-хуки
+          # (SCU_TEST_CANCEL_AFTER / SCU_TEST_RUN_KEY) обязаны быть вырезаны
+          # (аудит: hook через переменную окружения = DoS анти-малвари без прав
+          # администратора). Полный пересбор гарантирует, что релизится ровно
+          # hooks-free бинарник, а не тестовая сборка.
+          cmake -S SecurityScanner -B SecurityScanner/build -A x64 -DSCU_ENABLE_TEST_HOOKS=OFF
+          cmake --build SecurityScanner/build --config Release --clean-first
+          if (-not (Test-Path SecurityScanner/out/Release/ScannerCore.exe)) { Write-Host "::error::ScannerCore не пересобран"; exit 1 }
         shell: pwsh
 
       - name: Build app (publish)
