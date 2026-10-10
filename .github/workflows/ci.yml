@@ -139,16 +139,16 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # Сканер нужен ОБЕИМ ногам: unit — из-за CopyScannerCore (жёсткая ошибка
+      # MSBuild при отсутствии SecurityScanner/out/Release/ScannerCore.exe в
+      # ProjectReference-сборке SCU.App), integration — ещё и для прогона.
+      # Путь — именно SecurityScanner/out/Release: там его ждут и MSBuild-таргет,
+      # и FindScannerCore при обходе вверх от бин-каталога тестов.
       - name: Download ScannerCore artifact
-        if: matrix.suite == 'integration'
         uses: actions/download-artifact@v4
         with:
           name: scanner-core
-          path: .
-
-      # ScannerCore.exe и scanner-sha256.txt оказываются в корне репозитория:
-      # FindScannerCore находит бинарник через binCandidate при обходе вверх от
-      # бин-каталога тестов.
+          path: SecurityScanner/out/Release
 
       # Сид базы рядом со ScannerCore (корень репозитория): corrupted-db тест
       # требует наличия hashes.txt; update-пути пишут в каталог рядом с exe.
