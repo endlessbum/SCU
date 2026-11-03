@@ -1,4 +1,4 @@
-﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
@@ -20,6 +20,14 @@
     <sys:String x:Key="S_Section03_Desc">Recycle Bin, temp, browsers and system cleanup</sys:String>
     <sys:String x:Key="S_Section26_Title">App Cache</sys:String>
     <sys:String x:Key="S_Section26_Desc">Temporary data of installed applications</sys:String>
+    <!-- Section 27 "Windows Defender": sub-tab of the "Privacy and protection" group -->
+    <sys:String x:Key="S_Section27_Title">Windows Defender</sys:String>
+    <sys:String x:Key="S_Section27_Desc">Fully disable or enable Defender at the system level</sys:String>
+    <sys:String x:Key="S_DefenderCardTitle">Windows Defender</sys:String>
+    <sys:String x:Key="S_DefenderCardDesc">SCU.ps1 script: DisableAntiSpyware policy and the WinDefend, WdNisSvc, SecurityHealthService services.</sys:String>
+    <sys:String x:Key="S_DefenderToggleTip">Toggles Windows Defender. Service states are backed up before disabling.</sys:String>
+    <sys:String x:Key="S_DefenderNote">Disabling does not remove Defender: the same switch restores the policy and services from the backup (or factory defaults).</sys:String>
+    <sys:String x:Key="I_DefenderCard">Windows Defender switch: applies the DisableAntiSpyware policy, disables real-time monitoring and sets the WinDefend, WdNisSvc, WdNisDrv, WdFilter, WdBoot and SecurityHealthService services to "Disabled". Enabling restores the original service states from the backup; a reboot may be required to fully restore the WdFilter/WdBoot drivers.</sys:String>
     <sys:String x:Key="S_Section04_Title">Bloatware Removal</sys:String>
     <sys:String x:Key="S_Section04_Desc">AppX and other optional components</sys:String>
     <sys:String x:Key="S_Section05_Title">Privacy and Telemetry</sys:String>
@@ -136,9 +144,14 @@
 
 
     <sys:String x:Key="S_SettingsLanguage">Interface language</sys:String>
-    <sys:String x:Key="S_SettingsLanguageDesc">Applied immediately. On first install the setup wizard language is used.</sys:String>
+    <sys:String x:Key="S_SettingsLanguageDesc">Applied immediately. Some messages may stay in the previous language until the app is restarted.</sys:String>
     <sys:String x:Key="S_LangRu">Русский</sys:String>
     <sys:String x:Key="S_LangEn">English</sys:String>
+
+    <sys:String x:Key="S_SettingsCloseBehavior">Window closing</sys:String>
+    <sys:String x:Key="S_SettingsCloseBehaviorDesc">What happens when the main window is closed: exit the app or minimize it to the notification area.</sys:String>
+    <sys:String x:Key="S_CloseBehaviorExit">Exit SCU</sys:String>
+    <sys:String x:Key="S_CloseBehaviorTray">Minimize to tray</sys:String>
 
     <sys:String x:Key="S_SettingsFooter">Settings are saved to %AppData%\SCU\settings.json and applied at the next launch.</sys:String>
 
@@ -216,6 +229,10 @@
     <sys:String x:Key="S_NetNetBiosDisable">Disable (mode 2)</sys:String>
     <sys:String x:Key="S_NetNetBiosDhcp">Via DHCP (mode 0)</sys:String>
     <sys:String x:Key="S_NetNetBiosFlush">Flush cache (nbtstat -R / -RR)</sys:String>
+    <sys:String x:Key="S_NetNduTitle">NDU service (traffic statistics)</sys:String>
+    <sys:String x:Key="S_NetNduDesc">Disables data usage statistics collection: the «Data usage» screen and traffic limits will stop updating.</sys:String>
+    <sys:String x:Key="S_NetNduDisable">Disable</sys:String>
+    <sys:String x:Key="S_NetNduEnable">Enable</sys:String>
     <!-- "Flush DNS" entry title in the Dashboard batch cleanup list -->
     <sys:String x:Key="S_BatchDnsFlush">Flush DNS cache</sys:String>
     <!-- "Downloads cleanup path" card in Settings -->
@@ -279,6 +296,7 @@
     <sys:String x:Key="I_AppCacheScanScope">Cache is only read from data located on the system drive.</sys:String>
     <sys:String x:Key="S_Cancel">Cancel</sys:String>
     <sys:String x:Key="S_Clean">Clean up</sys:String>
+    <sys:String x:Key="S_CleanAll">Clean all</sys:String>
     <sys:String x:Key="S_ColIndex">#</sys:String>
     <sys:String x:Key="S_BloatDesc">The list is fixed (as in Utilities.bat): the scan shows actual presence. Store and Edge are marked as irreversible. Removal goes through SCU.ps1 with re-verification.</sys:String>
     <sys:String x:Key="S_ServicesDesc">The list matches SVCLIST from Utilities.bat. Backup and restore go through SCU.ps1. The toggle enables/disables the service via the .NET API, after a backup.</sys:String>
@@ -364,6 +382,24 @@
     <sys:String x:Key="S_EmptyStateStartup">No startup apps</sys:String>
     <!-- Input: footnote for asterisked cards (mouse acceleration, sticky keys) -->
     <sys:String x:Key="S_InputAsteriskNote">* Enabling disables the setting</sys:String>
+
+    <!-- Input: "Keyboard layout translator" card (Punto Switcher-like autocorrection) -->
+    <sys:String x:Key="S_LayoutTranslatorTitle">Keyboard layout translator</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorDesc">Automatically detects text typed in the wrong keyboard layout (Russian text with English letters and vice versa) and corrects the last word at a delimiter. Corrects only words with high language confidence; correct text is left unchanged.</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorInfo">Works only while SCU is running and the card is enabled. Corrects a word after Space, Enter or punctuation. Recognized password fields are skipped; absolute input protection is not guaranteed.</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorOn">Keyboard layout translator enabled</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorOff">Keyboard layout translator disabled</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorConfirm">Enable automatic keyboard layout translation?\nThe program will intercept keystrokes in the active window and correct words typed in the wrong layout. Correct text is not changed, recognized password fields are skipped.</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorHotKeyLabel">Manual conversion hotkey</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorHotKeyPause">Pause</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorHotKeyCtrlAltP">Ctrl+Alt+P</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorHotKeyHelp">Pause converts the last word; Shift+Pause converts selected text.</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorToastLabel">Show a notification after automatic correction</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorExceptionsLabel">Automatic-correction exceptions</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorExceptionPlaceholder">Enter a word, domain, or token</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorAddException">Add</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorRemoveException">Remove exception</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorEnable">Enable</sys:String>
 <sys:String x:Key="S_PrivacyAsteriskNote">* Enabling disables the setting</sys:String>
 
     <!-- ===================== Dashboard: one-click apply switch ===================== -->
@@ -491,6 +527,7 @@
     <sys:String x:Key="I_NetQosRestore">Restores the original QoS value from the backup.</sys:String>
     <sys:String x:Key="I_NetNetBiosMode">Switches NetBIOS over TCP/IP on all interfaces: «Disable» turns the protocol off (usually safe on modern networks), «Via DHCP» returns the automatic mode. Tip: usually enabled on workplace networks; change it only if you understand SMB and network services.</sys:String>
     <sys:String x:Key="I_NetNetBiosFlush">Flushes the NetBIOS name cache (nbtstat -R) and re-registers names (nbtstat -RR). Safe; helps after the network environment changes.</sys:String>
+    <sys:String x:Key="I_NetNduToggle">NDU (Network Data Usage) is the traffic bookkeeping service: it feeds the «Settings → Network &amp; Internet → Data usage» screen and traffic limits on metered connections. «Disable» writes Start=4 (Disabled) and stops the running instance; a well-known tweak due to this service's history of memory leaks and disk load. «Enable» restores the startup type from the backup (or the factory Automatic when there is none). Tip: disable it only if you never use data usage statistics.</sys:String>
 
     <sys:String x:Key="I_MaintDoCache">Deletes the Delivery Optimization cache — copies of Windows updates the system shares with other PCs on the network. The updates themselves are not removed.</sys:String>
     <sys:String x:Key="I_MaintDumpsWer">Deletes memory dumps and the Windows Error Reporting queue. Diagnostic information from a crash (BSOD) will no longer be recoverable.</sys:String>
@@ -586,6 +623,7 @@
     <sys:String x:Key="S_TS_Cancel">Cancel</sys:String>
     <sys:String x:Key="S_TS_LastRun">Last check:</sys:String>
     <sys:String x:Key="S_TS_Skip">Skip</sys:String>
+    <sys:String x:Key="S_TS_SkipAll">Skip all</sys:String>
     <sys:String x:Key="S_TS_SkipHint">The state will no longer count toward the summary and cards</sys:String>
     <sys:String x:Key="S_TS_Restore">Restore</sys:String>
     <sys:String x:Key="S_TS_EmptyState">Diagnostics have not been run yet.&#x0a;Press «Check system» to collect the Windows state.</sys:String>
@@ -638,6 +676,7 @@
     <sys:String x:Key="S_OnboardingOpen">Show tour</sys:String>
     <sys:String x:Key="S_MenuEditorNewTitle">Name:</sys:String>
     <sys:String x:Key="S_MenuEditorNewGroup">Tab group</sys:String>
+    <sys:String x:Key="S_MenuEditorNewGroupHint">Name of the new group (you can type your own)</sys:String>
     <sys:String x:Key="S_MenuEditorAdd">Add</sys:String>
     <sys:String x:Key="S_MenuEditorVisibility">Show in menu</sys:String>
     <sys:String x:Key="S_MenuEditorMove">Move to group</sys:String>

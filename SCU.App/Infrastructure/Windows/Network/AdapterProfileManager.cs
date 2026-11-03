@@ -253,25 +253,29 @@ foreach ($adapter in $adapters) {
                 return Result.Success("Физические сетевые адаптеры не найдены.");
             }
 
-            if (failed > 0 || verifyFailed > 0)
+            if (failed > 0 || verifyFailed > 0 || adapterFailures > 0)
             {
-                // M-03: часть значений применилась, часть — нет. Успешный бэкап
-                // снимался ДО первой правки, поэтому автоматический откат
+                // M-03 + SCU-01: часть значений применилась, часть — нет. Ошибки
+                // чтения тоже входят в откат: чтение свойств очередного адаптера
+                // могло сломаться ПОСЛЕ того, как предыдущие уже изменены и
+                // перезапущены, — это то же несогласованное состояние. Успешный
+                // бэкап снимался ДО первой правки, поэтому автоматический откат
                 // возвращает все адаптеры к исходному состоянию; Failure больше
-                // не оставляет смесь новых и старых значений. Ошибка перезапуска
-                // (restartsFailed) откат не требует: значения применены и
-                // проверены, несогласованного состояния нет.
+                // не оставляет смесь новых и старых значений.
                 var rollback = await RestoreAdapterProfileAsync(ct).ConfigureAwait(false);
                 var rollbackNote = rollback.IsSuccess
                     ? "изменённые значения откатаны к исходным"
                     : "АВТООТКАТ НЕ УДАЛСЯ (" + rollback.Message + "); откатите профиль кнопкой «Откатить»";
-                _logger.Warn($"NET | adapter profile partial apply | changed={changed} failed={failed} verifyFailed={verifyFailed} | {rollbackNote}");
+                _logger.Warn($"NET | adapter profile partial apply | changed={changed} failed={failed} verifyFailed={verifyFailed} adapterFailures={adapterFailures} | {rollbackNote}");
                 return Result.Failure(
                     $"Обработано адаптеров: {adapters}; изменено: {changed}; пропущено: {skipped}; ошибок настройки: {failed}; ошибок проверки: {verifyFailed}; ошибок чтения: {adapterFailures}; ошибок перезапуска: {restartsFailed}. {rollbackNote}.");
             }
 
-            if (adapterFailures > 0 || restartsFailed > 0)
+            if (restartsFailed > 0)
             {
+                // Ошибка перезапуска откат не требует (SCU-01: раньше делила ветку
+                // с ошибками чтения): значения применены и проверены, несогласованного
+                // состояния нет.
                 return Result.Failure(
                     $"Обработано адаптеров: {adapters}; изменено: {changed}; пропущено: {skipped}; ошибок чтения: {adapterFailures}; ошибок перезапуска: {restartsFailed}.");
             }
@@ -290,12 +294,96 @@ foreach ($adapter in $adapters) {
     }
 
     // Бэкап расширенных свойств физических адаптеров ДО применения профиля.
-    // Фильтр строк "ADAPTER|<адаптер>|<keyword>|<значение|->" из вывода backup-скрипта.
-    internal static IReadOnlyList<string> SelectBackupLines(string output)
-        => output
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(line => line.StartsWith("ADAPTER|", StringComparison.Ordinal))
-            .ToList();
+    // Разбор вывода backup-скрипта (SCU-01): строки "ADAPTER|<адаптер>|<keyword>|<значение|->",
+    // ошибки "BACKUP_FAIL|<адаптер>|<причина>" и итог "BACKUP_TOTAL|<всего>|<успешно>".
+    // Раньше фильтр оставлял только ADAPTER|, сообщения BACKUP_FAIL терялись, и
+    // неполный бэкап сохранялся как успешный — для части адаптеров откат был бы
+    // невозможен.
+    internal sealed record AdapterBackupParse(
+        IReadOnlyList<string> AdapterLines,
+        IReadOnlyList<string> FailedAdapterNames,
+        int ExpectedAdapters,
+        int OkAdapters);
+
+    internal static AdapterBackupParse ParseBackupOutput(string output)
+    {
+        var adapterLines = new List<string>();
+        var failedNames = new List<string>();
+        var expected = -1;
+        var ok = -1;
+        foreach (var raw in output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (raw.StartsWith("ADAPTER|", StringComparison.Ordinal))
+            {
+                adapterLines.Add(raw);
+            }
+            else if (raw.StartsWith("BACKUP_FAIL|", StringComparison.Ordinal))
+            {
+                var parts = raw.Split('|');
+                failedNames.Add(parts.Length > 1 && parts[1].Trim().Length > 0 ? parts[1].Trim() : "?");
+            }
+            else if (raw == "NO_ADAPTERS")
+            {
+                expected = 0;
+                ok = 0;
+            }
+            else if (raw.StartsWith("BACKUP_TOTAL|", StringComparison.Ordinal))
+            {
+                var parts = raw.Split('|');
+                if (parts.Length >= 3
+                    && int.TryParse(parts[1], out var parsedExpected)
+                    && int.TryParse(parts[2], out var parsedOk))
+                {
+                    expected = parsedExpected;
+                    ok = parsedOk;
+                }
+            }
+        }
+
+        return new AdapterBackupParse(adapterLines, failedNames, expected, ok);
+    }
+
+    private static string BackupAdapterName(string adapterLine)
+    {
+        var parts = adapterLine.Split('|');
+        return parts.Length > 1 ? parts[1] : string.Empty;
+    }
+
+    // null — бэкап полный, применение профиля разрешено (SCU-01); иначе — причина
+    // неполноты. Полнота сверяется по фактическим строкам: каждый адаптер из
+    // BACKUP_TOTAL обязан быть представлен хотя бы одной строкой ADAPTER|.
+    internal static string? ValidateBackupOutput(AdapterBackupParse parse)
+    {
+        if (parse.ExpectedAdapters < 0)
+        {
+            return "скрипт не сообщил итоговое число адаптеров (BACKUP_TOTAL отсутствует).";
+        }
+
+        if (parse.ExpectedAdapters == 0
+            && parse.AdapterLines.Count == 0
+            && parse.FailedAdapterNames.Count == 0)
+        {
+            // Адаптеров нет — резервировать нечего, это не неполнота.
+            return null;
+        }
+
+        if (parse.FailedAdapterNames.Count > 0)
+        {
+            return "не удалось прочитать свойства адаптеров: " + string.Join(", ", parse.FailedAdapterNames) + ".";
+        }
+
+        var distinctAdapters = parse.AdapterLines
+            .Select(BackupAdapterName)
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        if (distinctAdapters != parse.ExpectedAdapters)
+        {
+            return $"свойства прочитаны для {distinctAdapters} из {parse.ExpectedAdapters} адаптеров.";
+        }
+
+        return null;
+    }
 
     internal const string AdapterProfileBackupScript = """
 $ErrorActionPreference = 'Stop'
@@ -323,6 +411,8 @@ if ($adapters.Count -eq 0) {
     exit 0
 }
 
+$total = $adapters.Count
+$ok = 0
 foreach ($adapter in $adapters) {
     $name = [string]$adapter.Name
     try {
@@ -333,6 +423,7 @@ foreach ($adapter in $adapters) {
         continue
     }
 
+    $ok++
     foreach ($key in $keys) {
         $property = $props | Where-Object { $_.RegistryKeyword -eq $key } | Select-Object -First 1
         if ($null -ne $property) {
@@ -352,6 +443,9 @@ foreach ($adapter in $adapters) {
         Write-Output ("ADAPTER|{0}|{1}|{2}" -f $name, $rateProperty.RegistryKeyword, [string]$rateProperty.RegistryValue)
     }
 }
+
+# Итог для C# (SCU-01): без него C# не отличал полный бэкап от частичного.
+Write-Output ("BACKUP_TOTAL|{0}|{1}" -f $total, $ok)
 """;
 
     // Выгрузка бэкапа профиля: PS печатает строки "ADAPTER|<имя>|<keyword>|<значение|->"
@@ -364,7 +458,17 @@ foreach ($adapter in $adapters) {
         {
             if (File.Exists(AdapterProfileBackupFile))
             {
-                return Result.Success("Бэкап уже существует.");
+                // Повторное применение бэкап не перезаписывает: в нём значения ДО
+                // первой правки. Но и повреждённый существующий принимать нельзя —
+                // откат по нему не покроет все адаптеры.
+                var existing = File.ReadAllLines(AdapterProfileBackupFile);
+                if (existing.Any(line => line.StartsWith("ADAPTER|", StringComparison.Ordinal)))
+                {
+                    return Result.Success("Бэкап уже существует.");
+                }
+
+                return Result.Failure(
+                    "Существующий бэкап профиля повреждён (нет строк ADAPTER|). Удалите его вручную или выполните «Откатить».");
             }
 
             var result = await _runner
@@ -379,16 +483,27 @@ foreach ($adapter in $adapters) {
                 return Result.Failure("Не удалось выгрузить текущие свойства адаптеров: " + result.Message, result.Code);
             }
 
-            var lines = SelectBackupLines(result.Value ?? string.Empty);
-            if (lines.Count == 0)
+            var parse = ParseBackupOutput(result.Value ?? string.Empty);
+            if (parse.ExpectedAdapters == 0
+                && parse.AdapterLines.Count == 0
+                && parse.FailedAdapterNames.Count == 0)
             {
                 // Адаптеров нет — резервировать нечего; применение профиля само сообщит об этом.
                 return Result.Success("Физические сетевые адаптеры не найдены.");
             }
 
+            // SCU-01: неполный бэкап не сохраняется и применение не разрешает —
+            // для адаптеров, чьи свойства прочитать не удалось, откат был бы невозможен.
+            var invalidReason = ValidateBackupOutput(parse);
+            if (invalidReason is not null)
+            {
+                _logger.Warn("NET | adapter profile backup incomplete | " + invalidReason);
+                return Result.Failure("Бэкап неполный — применение профиля отменено: " + invalidReason);
+            }
+
             Directory.CreateDirectory(BackupDirectory);
-            File.WriteAllLines(AdapterProfileBackupFile, lines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-            _logger.Info($"NET | adapter profile backup | {lines.Count} строк");
+            File.WriteAllLines(AdapterProfileBackupFile, parse.AdapterLines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            _logger.Info($"NET | adapter profile backup | {parse.AdapterLines.Count} строк | адаптеров {parse.ExpectedAdapters}");
             return Result.Success("Бэкап сохранён.");
         }
         catch (OperationCanceledException)

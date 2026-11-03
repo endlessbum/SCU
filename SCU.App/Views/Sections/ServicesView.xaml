@@ -47,12 +47,18 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                                <StackPanel Orientation="Horizontal">
+                                <!-- TrimmingTitlePanel вместо Grid (*:Auto): ⓘ прижат к
+                                     фактическому концу названия, как во всём проекте;
+                                     длинное имя службы обрезается, а глиф остаётся
+                                     видимым (аудит п. 17: StackPanel ломал обрезку,
+                                     Grid уводил ⓘ от названия). -->
+                                <controls:TrimmingTitlePanel>
                                     <TextBlock Style="{StaticResource RowHeaderText}"
                                                TextTrimming="CharacterEllipsis"
                                                Text="{Binding DisplayName}" />
-                                    <controls:InfoGlyph VerticalAlignment="Center" InfoText="{Binding ToolTipText}" />
-                                </StackPanel>
+                                    <controls:InfoGlyph VerticalAlignment="Center"
+                                                        InfoText="{Binding ToolTipText}" />
+                                </controls:TrimmingTitlePanel>
                                 <TextBlock Style="{StaticResource RowActionText}"
                                            Text="{Binding Name}" />
                                 <TextBlock Style="{StaticResource RowActionText}"

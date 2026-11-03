@@ -50,7 +50,8 @@
                             Content="&#xE710;"
                             Command="{Binding NewChatCommand}"
                             ToolTip="{DynamicResource S_DeepSeekNewChat}"
-                            ToolTipService.InitialShowDelay="300" />
+                            ToolTipService.InitialShowDelay="300" 
+                     AutomationProperties.Name="{DynamicResource S_DeepSeekNewChat}"/>
                 </Grid>
                 <ListBox Grid.Row="1"
                          x:Name="SessionsList"
@@ -86,7 +87,8 @@
                                     Command="{Binding DataContext.DeleteSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                     CommandParameter="{Binding}"
                                     ToolTip="{DynamicResource S_DeepSeekDeleteChat}"
-                                    ToolTipService.InitialShowDelay="300" />
+                                    ToolTipService.InitialShowDelay="300" 
+                     AutomationProperties.Name="{DynamicResource S_DeepSeekDeleteChat}"/>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -189,7 +191,11 @@
                              ToolTip="{DynamicResource S_DeepSeekInputHint}"
                              Text="{Binding InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                         <TextBox.Style>
-                            <Style TargetType="TextBox">
+                            <!-- BasedOn на неявный стиль TextBox (аудит, п. 16):
+                                 локальный Style полностью заменял стиль из
+                                 Themes/Controls.xaml, и в тёмной теме поле ввода
+                                 выглядело стандартным белым прямоугольником. -->
+                            <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
                                 <Style.Triggers>
                                     <!-- Ввод блокируется на время генерации — как в SCU AI -->
                                     <DataTrigger Binding="{Binding IsWaiting}" Value="True">

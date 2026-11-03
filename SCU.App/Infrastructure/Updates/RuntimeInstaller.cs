@@ -20,6 +20,10 @@ public sealed class RuntimeInstaller
     private static readonly IReadOnlyList<RuntimeComponentDefinition> Definitions =
     [
         // DirectX End-User Runtime штатного тихого удаления не имеет — UninstallArgs пуст.
+        // ProductName у dxwebsetup дженерик («Microsoft Windows Operating System») —
+        // сверять не по чему, поэтому пинним SHA-256 официального дистрибутива
+        // (FileVersion 9.29.1974.0, download.microsoft.com). Сравнение в VerifyDefinition
+        // регистронезависимое (OrdinalIgnoreCase), как и для остальных компонентов.
         new RuntimeComponentDefinition(
             "directx",
             "DirectX",
@@ -27,7 +31,8 @@ public sealed class RuntimeInstaller
             "https://download.microsoft.com/download/1/7/1/1718CCC4-6315-4D8E-9543-8E28A4E18C4C/dxwebsetup.exe",
             "dxwebsetup.exe",
             ["/Q"],
-            null),
+            null,
+            Sha256Allowlist: ["2cf71d098c608c56e07f4655855a886c3102553f648df88458df616b26fd612f"]),
         new RuntimeComponentDefinition(
             "vc-x64",
             "Visual C++ Redistributable x64",
@@ -449,6 +454,25 @@ public sealed class RuntimeInstaller
 
     // П. 19 аудита: артефакт должен соответствовать определению — ожидаемое
     // имя файла, имя продукта и (если задан) allowlist SHA-256. Fail-closed.
+    // ForTest — тот же путь без скачивания (юнит-тесты на имя/ProductName/allowlist).
+    internal Result VerifyDefinitionForTest(
+        string installerPath,
+        string expectedFileName,
+        string? expectedProductNameContains = null,
+        string[]? sha256Allowlist = null) =>
+        VerifyDefinition(
+            new RuntimeComponentDefinition(
+                "test",
+                "Test",
+                "desc",
+                "https://example.invalid/" + expectedFileName,
+                expectedFileName,
+                ["/Q"],
+                null,
+                expectedProductNameContains,
+                sha256Allowlist),
+            installerPath);
+
     private Result VerifyDefinition(RuntimeComponentDefinition definition, string installerPath)
     {
         var name = Path.GetFileName(installerPath);

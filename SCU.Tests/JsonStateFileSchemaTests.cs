@@ -13,7 +13,7 @@ public sealed class JsonStateFileSchemaTests : IDisposable
 
     public JsonStateFileSchemaTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        _directory = TestScratch.NewDir();
         Directory.CreateDirectory(_directory);
     }
 
@@ -95,5 +95,61 @@ public sealed class JsonStateFileSchemaTests : IDisposable
         var saved = await CreateStore().ClearAsync();
 
         Assert.True(saved);
+    }
+
+    // ===================== Сбой I/O ≠ повреждение (аудит, п. 10) =====================
+
+    // Занятый файл (антивирус, другой процесс) — это не повреждение: файл не
+    // переименовывается в *.corrupt-*, прежние записи не теряются.
+    [Fact]
+    public async Task LockedFile_LoadAll_KeepsFileAndReturnsKnownItems()
+    {
+        await File.WriteAllTextAsync(FilePath, """{"Version": 1, "Items": ["a", "b"]}""");
+
+        var store = CreateStore();
+        Assert.Equal(["a", "b"], await store.LoadAllAsync());
+
+        // Блокируем файл: чтение падает с IOException.
+        using var lockStream = new FileStream(
+            FilePath, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var items = await store.LoadAllAsync();
+
+        Assert.Equal(["a", "b"], items);
+        Assert.True(File.Exists(FilePath));
+        Assert.Empty(Directory.GetFiles(_directory, "state.json.corrupt-*"));
+    }
+
+    // При сбое чтения запись не выполняется: иначе в файл попала бы только
+    // новая запись, а прежняя история пропала бы навсегда.
+    [Fact]
+    public async Task LockedFile_Append_DoesNotOverwriteFile()
+    {
+        var original = """{"Version": 1, "Items": ["a"]}""";
+        await File.WriteAllTextAsync(FilePath, original);
+
+        var store = CreateStore();
+        using (new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var saved = await store.AppendAsync("b");
+
+            Assert.False(saved);
+        }
+
+        Assert.Equal(original, await File.ReadAllTextAsync(FilePath));
+    }
+
+    // Настоящее повреждение (битый JSON) — по-прежнему уводится в *.corrupt-*,
+    // но исходный файл не перезаписывается следующей записью.
+    [Fact]
+    public async Task CorruptedJson_MovesFileToCorrupt_AndKeepsData()
+    {
+        await File.WriteAllTextAsync(FilePath, "{ not json");
+
+        var store = CreateStore();
+        var items = await store.LoadAllAsync();
+
+        Assert.Empty(items);
+        Assert.Single(Directory.GetFiles(_directory, "state.json.corrupt-*"));
     }
 }

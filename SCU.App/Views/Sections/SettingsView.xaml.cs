@@ -14,22 +14,52 @@ public partial class SettingsView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        // Раздел кэшируется в MainWindow._sectionViews и выгружается из дерева
+        // при уходе с раздела и при закрытии окна: без пары Loaded/Unloaded
+        // подписки оставались бы на MainViewModel и после его Dispose. Loaded
+        // возвращает подписки при повторном открытии раздела.
+        Loaded += OnViewLoaded;
+        Unloaded += OnViewUnloaded;
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (e.OldValue is MainViewModel oldMain)
+        Unsubscribe(e.OldValue as MainViewModel);
+        Subscribe(e.NewValue as MainViewModel);
+    }
+
+    // Идемпотентна (сначала отписка): DataContextChanged и Loaded приходят
+    // по очереди с одним и тем же MainViewModel — без защиты событие висело бы
+    // дважды и окно мастера открывалось бы повторно.
+    private void Subscribe(MainViewModel? main)
+    {
+        if (main is null)
         {
-            oldMain.ScriptPlacementRequested -= OnScriptPlacementRequested;
-            oldMain.InstalledScriptsRequested -= OnInstalledScriptsRequested;
+            return;
         }
 
-        if (e.NewValue is MainViewModel newMain)
-        {
-            newMain.ScriptPlacementRequested += OnScriptPlacementRequested;
-            newMain.InstalledScriptsRequested += OnInstalledScriptsRequested;
-        }
+        main.ScriptPlacementRequested -= OnScriptPlacementRequested;
+        main.ScriptPlacementRequested += OnScriptPlacementRequested;
+        main.InstalledScriptsRequested -= OnInstalledScriptsRequested;
+        main.InstalledScriptsRequested += OnInstalledScriptsRequested;
     }
+
+    // Отписка от текущего DataContext: view уходит из визуального дерева
+    // (смена раздела или закрытие окна) и не должна догонять события VM.
+    private void Unsubscribe(MainViewModel? main)
+    {
+        if (main is null)
+        {
+            return;
+        }
+
+        main.ScriptPlacementRequested -= OnScriptPlacementRequested;
+        main.InstalledScriptsRequested -= OnInstalledScriptsRequested;
+    }
+
+    private void OnViewLoaded(object sender, RoutedEventArgs e) => Subscribe(ViewModel);
+
+    private void OnViewUnloaded(object sender, RoutedEventArgs e) => Unsubscribe(ViewModel);
 
     // Скрипт прошёл проверку — мастер размещения карточки.
     private void OnScriptPlacementRequested(string sourcePath)

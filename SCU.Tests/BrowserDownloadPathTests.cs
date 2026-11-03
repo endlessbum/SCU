@@ -9,7 +9,7 @@ public sealed class BrowserDownloadPathTests
 {
     private static string TempDownloadFolder()
     {
-        var folder = Path.Combine(Path.GetTempPath(), "SCU.Tests", "dl-" + Guid.NewGuid().ToString("N"));
+        var folder = TestScratch.NewDir("dl");
         Directory.CreateDirectory(folder);
         return folder;
     }

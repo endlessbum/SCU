@@ -39,6 +39,11 @@
                     Content="{DynamicResource S_Refresh}"
                     Command="{Binding RefreshCommand}"
                     ToolTipService.ShowOnDisabled="True" />
+            <Button DockPanel.Dock="Left"
+                    Margin="8,0,0,0"
+                    Content="{DynamicResource S_CleanAll}"
+                    Command="{Binding CleanAllCommand}"
+                    ToolTipService.ShowOnDisabled="True" />
         </DockPanel>
 
         <!-- Карточка операции: название слева, справа объём и кнопка «Очистить» -->

@@ -6,10 +6,12 @@ artifacts/
 build/
 out/
 sbom/
+Compressor/
 
 # Приложения
 .zcode/
 .kiro/
+.workbuddy-ai/
 .zcodeignore
 
 # C++ промежуточные артефакты

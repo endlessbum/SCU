@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.ComponentModel;
 using System.Windows.Data;
@@ -185,6 +185,29 @@ public partial class TroubleshootingViewModel : ObservableObject, IDisposable, I
         UpdateSummary();
         StatusText = L.T("Состояние «{0}» скрыто — вернуть можно в списке пропущенных.", finding.Title);
     }
+
+    [RelayCommand(CanExecute = nameof(CanSkipAll))]
+    private void SkipAll()
+    {
+        var toSkip = Findings.Where(finding => !finding.IsSkipped).ToList();
+        if (toSkip.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var finding in toSkip)
+        {
+            finding.IsSkipped = true;
+            _skippedIds.Add(finding.Id);
+            _logger.Info("TROUBLESHOOT | SKIP | " + finding.Id);
+        }
+
+        RefreshFindingViews();
+        UpdateSummary();
+        StatusText = L.T("Пропущено состояний: {0}.", toSkip.Count);
+    }
+
+    private bool CanSkipAll() => Findings.Any(finding => !finding.IsSkipped);
 
     [RelayCommand]
     private void Restore(DiagnosticFinding? finding)

@@ -108,9 +108,39 @@ std::wstring DirectoryOf(const std::wstring& path)
 {
     const size_t slash = path.find_last_of(L'\\');
     if (slash == std::wstring::npos) {
-        return path;
+        // Аудит: путь без разделителя возвращался как есть — «каталогом»
+        // объявлялся сам путь. Пустой результат честнее: вызывающие
+        // (database.cpp ctor и др.) трактуют его fail-closed (БД/компонент
+        // просто не загружается), подложных путей не возникает.
+        return {};
     }
     return path.substr(0, slash);
+}
+
+DWORD CreateDirectoryRecursiveNoReparse(const std::wstring& path)
+{
+    if (CreateDirectoryW(path.c_str(), nullptr)) {
+        return ERROR_SUCCESS;
+    }
+
+    const DWORD error = GetLastError();
+    if (error != ERROR_ALREADY_EXISTS) {
+        return error;
+    }
+
+    // Существующий путь обязан быть обычным каталогом: junction/symlink на нём
+    // означает, что кто-то подготовил цель для записи с правами сканера
+    // (fail-closed). Перенесено из archive_scanner.cpp (анонимный namespace)
+    // в общий хелпер — используется и DatabasePackage::Apply (аудит: каталоги
+    // базы в user-writable portable-установке).
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES
+        || (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0
+        || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+        return ERROR_ACCESS_DENIED; // существующий путь не является обычным каталогом
+    }
+
+    return ERROR_SUCCESS;
 }
 
 } // namespace scan

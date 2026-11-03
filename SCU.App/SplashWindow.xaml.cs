@@ -65,17 +65,26 @@ public partial class SplashWindow : Window
 
         async void Run()
         {
-            if (delay is { } pause)
+            // Защита от async void: необработанное исключение здесь роняло бы
+            // приложение. Заставка — чистая презентация (Task.Delay/анимация/Close),
+            // падать нечему осмысленному — глотаем тихо (в тон TaskRunner.RunAndForget).
+            try
             {
-                await Task.Delay(pause).ConfigureAwait(true);
-            }
+                if (delay is { } pause)
+                {
+                    await Task.Delay(pause).ConfigureAwait(true);
+                }
 
-            var fade = new DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.6))
+                var fade = new DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.6))
+                {
+                    FillBehavior = FillBehavior.Stop
+                };
+                fade.Completed += (_, _) => Close();
+                BeginAnimation(OpacityProperty, fade);
+            }
+            catch
             {
-                FillBehavior = FillBehavior.Stop
-            };
-            fade.Completed += (_, _) => Close();
-            BeginAnimation(OpacityProperty, fade);
+            }
         }
 
         Run();

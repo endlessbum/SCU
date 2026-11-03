@@ -333,7 +333,7 @@ public partial class TasksViewModel : ObservableObject, IDisposable, ISectionOpe
         StatusText = L.T("Бэкап сохранён: {0}", path);
         _logger.Info("TASKS | backup ok | file=" + path);
         // П.2: хранятся только MaxFilesPerDirectory свежих бэкапов, старые удаляются.
-        BackupRetention.Enforce(directory, _logger);
+        BackupRetention.Enforce(directory, _logger, BackupRetention.BackupRoot);
         return true;
     }
 

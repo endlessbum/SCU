@@ -48,9 +48,15 @@ public sealed class InstalledApp : INotifyPropertyChanged
     // фактический размер папки установки вычислить нельзя (нет/битый путь).
     public long? EstimatedSizeKb { get; init; }
 
-    // Дата установки (InstallDate из реестра, у части установщиков отсутствует
-    // или нестандартна — тогда null); для сортировки по дате.
+    // Дата установки (InstallDate из реестра); у части установщиков отсутствует,
+    // у части записана нестандартно — тогда null, а факт сбоя разбора хранится
+    // в InstallDateUnparsed. Основа сортировки по дате.
     public DateTime? InstallDate { get; init; }
+
+    // Значение InstallDate в реестре есть, но распознать его не удалось —
+    // отличает сбой разбора от отсутствующей даты, чтобы он не маскировался
+    // под «даты нет». На сортировку влияет как отсутствие (см. SortApps).
+    public bool InstallDateUnparsed { get; init; }
 
     // Вычисленный размер в байтах (фактический или оценочный) — числовая
     // основа сортировки по объёму; текстовый вид живёт в SizeText.
@@ -182,6 +188,11 @@ public sealed class InstalledAppsService
                         continue;
                     }
 
+                    // ParseInstallDate возвращает null и для отсутствующей даты,
+                    // и для нераспознанной; здесь эти случаи различаются, чтобы
+                    // сбой разбора не маскировался под «даты нет».
+                    var installDateRaw = (subKey!.GetValue("InstallDate") as string)?.Trim();
+                    var installDate = ParseInstallDate(installDateRaw);
                     var entry = new InstalledApp
                     {
                         DisplayName = displayName.Trim(),
@@ -194,7 +205,9 @@ public sealed class InstalledAppsService
                         EstimatedSizeKb = subKey.GetValue("EstimatedSize") is int estimatedKb && estimatedKb > 0
                             ? estimatedKb
                             : null,
-                        InstallDate = ParseInstallDate((subKey.GetValue("InstallDate") as string)?.Trim()),
+                        InstallDate = installDate,
+                        // Значение в реестре есть, распознать его не удалось.
+                        InstallDateUnparsed = installDateRaw is not null && installDate is null,
                         UninstallString = NormalizeUninstallString(
                             (subKey.GetValue("QuietUninstallString") as string)?.Trim()
                             ?? (subKey.GetValue("UninstallString") as string)?.Trim())
@@ -368,6 +381,11 @@ public sealed class InstalledAppsService
         if (!app.HasUninstaller)
         {
             return Result.Failure("У приложения нет программы удаления.", 1);
+        }
+
+        if (app.Importance == AppImportance.Critical)
+        {
+            return Result.Failure("Компонент официальной сборки Windows удалять нельзя.", 1);
         }
 
         var (fileName, arguments) = SplitCommandLine(app.UninstallString!);
@@ -565,6 +583,11 @@ public sealed class InstalledAppsService
         if (!app.HasUninstaller)
         {
             return Result.Failure("У приложения нет программы удаления.", 1);
+        }
+
+        if (app.Importance == AppImportance.Critical)
+        {
+            return Result.Failure("Компонент официальной сборки Windows удалять нельзя.", 1);
         }
 
         var (fileName, arguments) = SplitCommandLine(app.UninstallString!);

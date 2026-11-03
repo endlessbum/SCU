@@ -1,4 +1,6 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Text;
 using System.Windows;
 using System.Windows.Threading;
@@ -9,6 +11,7 @@ namespace SCU;
 
 public partial class App : Application
 {
+    public static bool RunInBackgroundOnClose { get; set; }
     private Logger? _logger;
 
     // Один экземпляр приложения: два окна SCU одновременно правили бы реестр
@@ -60,26 +63,21 @@ public partial class App : Application
         // работали вопреки выключенному тумблеру).
         Application.Current.Resources["UiAnimationsOn"] = ThemeManager.AnimationsEnabled;
 
-        // Заставка показывается до любой тяжёлой работы: резко, без анимации появления.
-        var splash = new SplashWindow();
-        splash.Show();
-
-        // Прокачка очереди диспетчера до приоритета Loaded: заставка успевает
-        // отрисоваться до того, как UI-поток займёт инициализация окна и данных.
-        Dispatcher.Invoke(() => { }, DispatcherPriority.Loaded);
-
-        // П. 12 аудита: логика старта — Task-based (RunStartupAsync, ошибки
-        // обрабатываются внутри); async void остаётся только тонкой обвязкой
-        // на границе жизненного цикла приложения.
-        _ = RunStartupAsync(e, splash);
+        _ = RunStartupAsync(e, null);
     }
 
     // Заставка → фоновая загрузка данных всех вкладок → показ окна → гашение заставки.
-    private async Task RunStartupAsync(StartupEventArgs e, SplashWindow splash)
+    private async Task RunStartupAsync(StartupEventArgs e, SplashWindow? splash)
     {
         try
         {
             base.OnStartup(e);
+
+            if (splash is null)
+            {
+                splash = new SplashWindow();
+                splash.Show();
+            }
 
             // П. №9 аудита: общий логгер на запуск — все потребители (инструменты
             // AI, QuarantineService, ServiceManager) пишут в один файл вместо
@@ -99,6 +97,24 @@ public partial class App : Application
 
             // Язык интерфейса (settings.json → язык установщика → русский) применяется до создания окна.
             L.SetLanguage(L.LoadLanguage(), notify: false);
+
+            // Единая политика presentation-форматирования (аудит): даты и числа во
+            // всём интерфейсе — одна культура выбранного языка, а не культура ОС
+            // (раньше смешивались InvariantCulture и CurrentCulture, разделители
+            // дробей расходились между разделами). L.Current — это enum, поэтому
+            // культуру подбираем сами: ru→ru-RU, en→en-US.
+            try
+            {
+                var culture = new CultureInfo(L.Current == AppLanguage.En ? "en-US" : "ru-RU");
+                CultureInfo.CurrentCulture = culture;
+                CultureInfo.CurrentUICulture = culture;
+                CultureInfo.DefaultThreadCurrentCulture = culture;
+                CultureInfo.DefaultThreadCurrentUICulture = culture;
+            }
+            catch
+            {
+                // Кривая культура — не повод срывать старт: остаётся системная.
+            }
 
             var isAdmin = Elevation.IsAdmin();
             // Тот же резолвер, что у SCURunner — INIT-лог показывает фактический путь.
@@ -133,13 +149,15 @@ public partial class App : Application
             window.Show();
             splash.CloseAfterFade(TimeSpan.FromSeconds(2));
 
+            // (автовключение переводчика — через InputViewModel.InitializeAsync по предпочтению пользователя)
+
             // Бэнчмарк запускается автоматически при старте, в фоне — стартовые
             // данные разделов уже собраны, окно отзывчиво во время сканирования.
             window.TriggerInitialBenchmark();
         }
         catch (Exception exception)
         {
-            splash.Close();
+            splash?.Close();
             TryLog("STARTUP | " + exception);
             WriteErrorToConsole("STARTUP | " + exception);
             MessageBox.Show(
@@ -297,9 +315,11 @@ public partial class App : Application
     {
         // П. 12 аудита: дозаписываем события истории из фоновой очереди
         // перед выходом — ничего не теряется молча.
+        // Поллинг внутри FlushPendingAsync (Task.Delay) уводим в пул потоков:
+        // UI-поток на это время не блокируется, OnExit всё равно дождётся.
         try
         {
-            SCU.Infrastructure.Storage.HistoryStore.FlushPendingAsync(TimeSpan.FromSeconds(2))
+            Task.Run(() => SCU.Infrastructure.Storage.HistoryStore.FlushPendingAsync(TimeSpan.FromSeconds(2)))
                 .GetAwaiter().GetResult();
         }
         catch

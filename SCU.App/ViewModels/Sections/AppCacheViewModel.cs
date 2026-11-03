@@ -52,6 +52,11 @@ public partial class AppCacheViewModel : ObservableObject, IDisposable, ISection
     // Счётчик запросов: результат устаревшего скана не должен перезаписать свежий.
     private int _measureVersion;
 
+    // Завершение текущего скана: команды ждут его через WaitForScanAsync
+    // (аудит, п. 21) — раньше был бесконечный busy-цикл, и зависший скан
+    // блокировал «Обновить» навсегда.
+    private TaskCompletionSource<bool>? _scanCompletion;
+
     public AppCacheViewModel(
         Logger logger,
         AppCacheService service,
@@ -63,6 +68,23 @@ public partial class AppCacheViewModel : ObservableObject, IDisposable, ISection
         _cleanupService = new FileCleanupService(logger);
         _dialogs = dialogs;
         _history = history;
+        // Статус раздела переводится заново при смене языка (дизайн, п. 9).
+        L.RegisterStatusRefresh(RefreshIdleStatus);
+    }
+
+    // Ключ стартового статуса и показанный перевод: при смене языка надпись
+    // обновляется, если статус раздела всё ещё этот (дизайн, п. 9).
+    private const string IdleStatusKey = "Сбор информации о временных данных приложений…";
+
+    private string _idleStatusShown = L.T(IdleStatusKey);
+
+    private void RefreshIdleStatus()
+    {
+        if (string.Equals(StatusText, _idleStatusShown, StringComparison.Ordinal))
+        {
+            StatusText = L.T(IdleStatusKey);
+            _idleStatusShown = StatusText;
+        }
     }
 
     [ObservableProperty]
@@ -80,6 +102,7 @@ public partial class AppCacheViewModel : ObservableObject, IDisposable, ISection
     // скана — RunExclusiveAsync диспозирует CTS, которым ещё живёт скан.
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CleanAppCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CleanAllCommand))]
     private bool _isScanning;
 
     public ObservableCollection<AppCacheRowViewModel> Apps { get; } = [];
@@ -97,6 +120,13 @@ public partial class AppCacheViewModel : ObservableObject, IDisposable, ISection
             // чистят, обязана дожить до конца операции. Повторный запуск при
             // идущем скане тоже не нужен (первое открытие после старта —
             // стартовый замер ещё идёт, дублировать его нечем и незачем).
+            // Молчаливый выход сбивал пользователя с толку (аудит, п. 21) —
+            // объясняем, что надо дождаться.
+            if (IsBusy)
+            {
+                StatusText = L.T("Дождитесь завершения операции.");
+            }
+
             return;
         }
 
@@ -104,6 +134,7 @@ public partial class AppCacheViewModel : ObservableObject, IDisposable, ISection
         _operationCts?.Dispose();
         _operationCts = new CancellationTokenSource();
         IsScanning = true;
+        _scanCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         StatusText = L.T("Сбор информации о временных данных приложений…");
         try
         {
@@ -144,16 +175,53 @@ public partial class AppCacheViewModel : ObservableObject, IDisposable, ISection
         finally
         {
             IsScanning = false;
+            // Скан завершён: команды, ждущие его, продолжают работу.
+            _scanCompletion?.TrySetResult(true);
+            _scanCompletion = null;
         }
     }
 
-    private bool CanRefresh() => !IsBusy && !IsScanning;
+    // Ожидание завершения скана с таймаутом: зависший скан не должен
+    // блокировать команду навсегда (аудит, п. 21).
+    private async Task WaitForScanAsync()
+    {
+        var completion = _scanCompletion;
+        if (completion is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await completion.Task.WaitAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(true);
+        }
+        catch (TimeoutException)
+        {
+            _logger.Warn("APPCACHE | scan wait timeout");
+            StatusText = L.T("Скан не завершился — повторите позже.");
+        }
+    }
+
+    // Кнопка «Обновить» недоступна во время очистки (идёт операция с общим CTS).
+    private bool CanRefresh() => !IsBusy;
 
     // Кнопка «Обновить»: тот же скан, что и при старте/открытии вкладки.
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
     {
         _logger.Info("APPCACHE | manual refresh");
+        if (IsBusy)
+        {
+            StatusText = L.T("Дождитесь завершения операции.");
+            return;
+        }
+
+        if (IsScanning)
+        {
+            _operationCts?.Cancel();
+            await WaitForScanAsync().ConfigureAwait(true);
+        }
+
         await ActivateAsync().ConfigureAwait(true);
     }
 
@@ -223,6 +291,8 @@ public partial class AppCacheViewModel : ObservableObject, IDisposable, ISection
                 if (remaining <= 0)
                 {
                     Apps.Remove(row);
+                    // Список изменился — пакетная очистка зависит от его состава.
+                    CleanAllCommand.NotifyCanExecuteChanged();
                     if (Apps.Count == 0)
                     {
                         StatusText = L.T("Кэш приложений не обнаружен.");
@@ -250,11 +320,24 @@ public partial class AppCacheViewModel : ObservableObject, IDisposable, ISection
 
     // Пакетная очистка всего найденного кэша (большой выключатель «Главной»):
     // одно подтверждение, цели всех карточек одной операцией.
+    // Кнопка активна, когда есть что чистить и не идёт другая операция.
     private bool CanCleanAll() => !IsBusy && !IsScanning && Apps.Count > 0;
 
     [RelayCommand(CanExecute = nameof(CanCleanAll))]
     private async Task CleanAllAsync()
     {
+        if (IsBusy)
+        {
+            StatusText = L.T("Дождитесь завершения операции.");
+            return;
+        }
+
+        if (IsScanning)
+        {
+            _operationCts?.Cancel();
+            await WaitForScanAsync().ConfigureAwait(true);
+        }
+
         if (IsBusy || Apps.Count == 0)
         {
             return;
@@ -322,6 +405,9 @@ public partial class AppCacheViewModel : ObservableObject, IDisposable, ISection
             {
                 StatusText = L.T("Кэш приложений не обнаружен.");
             }
+
+            // Состав списка изменился — пакетная очистка зависит от него.
+            CleanAllCommand.NotifyCanExecuteChanged();
         }).ConfigureAwait(true);
     }
 
@@ -332,6 +418,7 @@ public partial class AppCacheViewModel : ObservableObject, IDisposable, ISection
     public void Dispose()
     {
         _operationCts?.Cancel();
+        L.UnregisterStatusRefresh(RefreshIdleStatus);
     }
 
     // Тот же контракт, что CleanupViewModel.RunExclusiveAsync: гвард повторного

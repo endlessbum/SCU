@@ -26,6 +26,7 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
     [NotifyCanExecuteChangedFor(nameof(CleanTempCommand))]
     [NotifyCanExecuteChangedFor(nameof(CleanBrowsersCommand))]
     [NotifyCanExecuteChangedFor(nameof(CleanUpdateCacheCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CleanAllCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     private bool _isBusy;
@@ -83,6 +84,23 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
         _history = history;
         IsAdmin = Elevation.IsAdmin();
         IsSCUAvailable = runner.IsAvailable;
+        // Статус раздела переводится заново при смене языка (дизайн, п. 9).
+        L.RegisterStatusRefresh(RefreshIdleStatus);
+    }
+
+    // Ключ «ничего не выполнялось» и показанный перевод: при смене языка
+    // надпись обновляется, если статус раздела всё ещё этот (дизайн, п. 9).
+    private const string IdleStatusKey = "Выберите операцию очистки.";
+
+    private string _idleStatusShown = L.T(IdleStatusKey);
+
+    private void RefreshIdleStatus()
+    {
+        if (string.Equals(StatusText, _idleStatusShown, StringComparison.Ordinal))
+        {
+            StatusText = L.T(IdleStatusKey);
+            _idleStatusShown = StatusText;
+        }
     }
 
     [ObservableProperty]
@@ -109,7 +127,7 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanClean))]
+    [RelayCommand(CanExecute = nameof(CanCleanViaScu))]
     private async Task CleanRecycleBinAsync()
     {
         if (!Confirm(L.T("Очистка корзины"), L.T("Безвозвратно очистить корзину на всех дисках?"), L.T("Очистить")))
@@ -359,6 +377,183 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
         }).ConfigureAwait(true);
     }
 
+    [RelayCommand(CanExecute = nameof(CanCleanViaScu))]
+    private async Task CleanAllAsync()
+    {
+        if (!Confirm(L.T("Очистить всё"),
+                L.T("Безвозвратно удалить данные во всех целях очистки (корзина, Downloads, Temp, кэши, кэш обновлений)?"),
+                L.T("Очистить")))
+        {
+            return;
+        }
+
+        await RunExclusiveAsync("очистка всего", async ct =>
+        {
+            StatusText = L.T("Очистка всего выполняется…");
+            _logger.Info("CLEAN | all | start");
+
+            var recycleNote = L.T("Корзина: не выполнено.");
+            var cleaned = L.T("Очистка не выполнена.");
+            var cancelled = false;
+            var backupFile = string.Empty;
+            var backupAttempted = false;
+            var backupOk = false;
+            var servicesRestored = true;
+
+            // Цели по группам — итог показывается отдельной строкой на каждую
+            // группу (дизайн, п. 10), а не общим счётчиком.
+            var downloadsTargets = FileCleanupService.GetDownloadsTargets();
+            var tempTargets = FileCleanupService.GetTempTargets();
+            var browserTargets = FileCleanupService.GetBrowserCacheTargets();
+            var updateTargets = FileCleanupService.GetUpdateCacheTargets();
+
+            try
+            {
+                // Корзина очищается не файловым сервисом: EmptyRecycleBin — команда SCU.
+                // Результат проверяется отдельно, иначе при сбое пользователь видел бы
+                // общий успех, хотя корзина осталась нетронутой.
+                StatusText = L.T("Очистка корзины…");
+                IsMeasuringRecycleBin = true;
+                var recycleResult = await _runner.RunAsync("EmptyRecycleBin", null, null, ct).ConfigureAwait(true);
+                IsMeasuringRecycleBin = false;
+
+                // rc=1 — «частичный сбой»: корзина очищена, отдельные системные
+                // элементы ($RECYCLE.BIN, занятые файлы) пропущены. Это не ошибка.
+                recycleNote = recycleResult.Code switch
+                {
+                    0 => L.T("Корзина: очищена."),
+                    1 => L.T("Корзина: очищена частично (занятые элементы пропущены)."),
+                    _ => L.T("Корзина: не выполнено (код {0}): {1}", recycleResult.Code, recycleResult.Message)
+                };
+                if (recycleResult.Code is not (0 or 1))
+                {
+                    _logger.Error($"CLEAN | all | recycle rc={recycleResult.Code} | {recycleResult.Message}");
+                }
+
+                // Кэш обновлений очищается только при остановленных службах, а службы
+                // останавливаются только после успешного бэкапа их состояния: без
+                // бэкапа восстановить исходные настройки будет нечем.
+                backupFile = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "SCU", "backup", "services", "wu_backup.txt");
+                Directory.CreateDirectory(Path.GetDirectoryName(backupFile)!);
+
+                StatusText = L.T("Сохранение состояния служб обновления…");
+                backupAttempted = true;
+                var backup = await _runner.RunAsync(
+                    "ServicesBackup",
+                    new Dictionary<string, string?> { ["OutFile"] = backupFile, ["Services"] = UpdateServicesCsv },
+                    null,
+                    ct).ConfigureAwait(true);
+                backupOk = backup.IsSuccess && File.Exists(backupFile);
+                if (!backupOk)
+                {
+                    // Не отменяем всю очистку: остальные цели от служб не зависят.
+                    _logger.Error($"CLEAN | all | services backup rc={backup.Code} | {backup.Message}");
+                }
+                else
+                {
+                    StatusText = L.T("Остановка служб обновления…");
+                    foreach (var serviceName in UpdateServicesCsv.Split(','))
+                    {
+                        var stopResult = await _serviceManager.StopAsync(serviceName, ct).ConfigureAwait(true);
+                        _logger.Info("CLEAN | all | " + stopResult.Message);
+                    }
+                }
+
+                var targets = new List<CleanupTarget>();
+                targets.AddRange(downloadsTargets);
+                targets.AddRange(tempTargets);
+                targets.AddRange(browserTargets);
+                targets.AddRange(updateTargets);
+
+                IsMeasuringDownloads = IsMeasuringTemp = IsMeasuringBrowsers = IsMeasuringUpdateCache = true;
+                var progress = new Progress<string>(line => StatusText = L.S(line));
+                var result = await _cleanupService.CleanAsync(targets, progress, ct).ConfigureAwait(true);
+                cleaned = FormatCleanupResult(result);
+
+                // Отдельная строка на каждую группу целей (дизайн, п. 10): общий
+                // счётчик скрывал, какая именно цель не вычистилась.
+                if (result.IsSuccess && result.Value is { } items)
+                {
+                    cleaned = string.Join(
+                        "\n",
+                        FormatCategoryResult(items, downloadsTargets, L.T("Загрузки")),
+                        FormatCategoryResult(items, tempTargets, L.T("Temp")),
+                        FormatCategoryResult(items, browserTargets, L.T("Кэш браузеров")),
+                        FormatCategoryResult(items, updateTargets, L.T("Кэш обновлений")));
+                }
+
+                if (result.IsSuccess && result.Value is { Count: > 0 })
+                {
+                    var bytesFreed = result.Value.Where(item => item.Existed).Sum(item => item.BytesDeleted);
+                    _history.Enqueue(new HistoryEvent(
+                        DateTime.Now,
+                        L.T("Очистка"),
+                        L.T("Все цели"),
+                        HistoryEvent.StatusOk,
+                        recycleNote + " " + cleaned,
+                        bytesFreed));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Отмену обрабатываем сами: ниже нужно восстановить службы и погасить
+                // спиннеры, а RunExclusiveAsync лишь выставил бы общий статус отмены.
+                cancelled = true;
+                _logger.Warn("CANCEL | cleanup all");
+            }
+            finally
+            {
+                // Спиннеры измерения гасятся при любом исходе (отмена, исключение):
+                // иначе индикаторы карточек остаются включёнными навсегда.
+                IsMeasuringRecycleBin = IsMeasuringDownloads = IsMeasuringTemp =
+                    IsMeasuringBrowsers = IsMeasuringUpdateCache = false;
+
+                // Восстановление служб — с токеном без отмены и раньше выставления
+                // итогового статуса, чтобы пользователь увидел его результат.
+                if (backupOk)
+                {
+                    StatusText = L.T("Восстановление исходного состояния служб…");
+                    var restore = await _runner.RunAsync(
+                        "ServicesRestore",
+                        new Dictionary<string, string?> { ["InFile"] = backupFile },
+                        null,
+                        CancellationToken.None).ConfigureAwait(true);
+                    servicesRestored = restore.IsSuccess;
+                    if (!restore.IsSuccess)
+                    {
+                        _logger.Warn($"CLEAN | all | restore rc={restore.Code} | {restore.Message}");
+                    }
+                    else
+                    {
+                        _logger.Info("CLEAN | all | restore ok");
+                    }
+                }
+
+                // Итог — по целям отдельно: «Очистить всё» не должно выглядеть
+                // успешным, если корзина или службы обновления не сработали.
+                var servicesNote = !backupAttempted
+                    ? string.Empty
+                    : !backupOk
+                        ? L.T("Службы обновления: не выполнено — не удалось сохранить их состояние.")
+                        : servicesRestored
+                            ? L.T("Службы обновлений: состояние восстановлено.")
+                            : L.T("Службы обновлений: часть служб не удалось вернуть — см. лог.");
+                var summary = cancelled
+                    ? L.T("Операция отменена.")
+                    : recycleNote + "\n" + cleaned;
+                StatusText = string.IsNullOrEmpty(servicesNote) ? summary : summary + "\n" + servicesNote;
+            }
+
+            RefreshRecycleBinSize();
+            RefreshDownloadsSize();
+            RefreshTempSize();
+            RefreshBrowsersSize();
+            RefreshUpdateCacheSize();
+        }).ConfigureAwait(true);
+    }
+
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
@@ -375,9 +570,13 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
     public void Dispose()
     {
         _operationCts?.Cancel();
+        L.UnregisterStatusRefresh(RefreshIdleStatus);
     }
 
     private bool CanClean() => !IsBusy && IsAdmin;
+    // Корзина и «Очистить всё» идут через SCU.ps1 — без него кнопки бессмысленны
+    // (см. ReadOnlyHint); очистка Downloads/Temp/кэшей работает и без SCU.
+    private bool CanCleanViaScu() => CanClean() && IsSCUAvailable;
     private bool CanCleanUpdate() => !IsBusy && IsAdmin && IsSCUAvailable;
     private bool CanCancel() => IsBusy;
 
@@ -567,6 +766,34 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
     }
 
     internal static string FormatBytes(long bytes) => HumanSize.Format(bytes);
+
+    // Итог по группе целей (дизайн, п. 10): отдельная строка на каждую группу
+    // («Загрузки», «Temp», кэш браузеров, кэш обновлений). Пустая группа или
+    // сбой показываются прямо («не выполнено»), а не прячутся за общим счётчиком.
+    internal static string FormatCategoryResult(
+        IReadOnlyList<CleanupItemResult> results,
+        IReadOnlyList<CleanupTarget> targets,
+        string label)
+    {
+        var labels = targets.Select(target => target.Label).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var group = results.Where(item => labels.Contains(item.Label)).ToList();
+        if (group.Count == 0)
+        {
+            return L.T("{0}: не выполнено.", label);
+        }
+
+        var deletedFiles = group.Sum(item => item.FilesDeleted);
+        var deletedBytes = group.Sum(item => item.BytesDeleted);
+        var remaining = group.Sum(item => item.FilesBefore - item.FilesDeleted);
+
+        var line = L.T("{0}: удалено файлов: {1} ({2}).", label, deletedFiles, FormatBytes(deletedBytes));
+        if (remaining > 0)
+        {
+            line += L.T(" Осталось занятых: {0}.", remaining);
+        }
+
+        return line;
+    }
 
     private Task RunExclusiveAsync(string title, Func<CancellationToken, Task> action) =>
         SectionOperations.RunExclusiveAsync(title, "CLEAN", () => IsBusy, value => IsBusy = value, () => _operationCts, value => _operationCts = value, value => StatusText = value, _logger, action);}

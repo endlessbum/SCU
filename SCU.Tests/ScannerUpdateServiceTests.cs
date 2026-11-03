@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using Xunit;
 
 namespace SCU.Tests;
@@ -6,9 +8,19 @@ namespace SCU.Tests;
 // HTTPS-загрузчик пакетов базы (п. 30): сетевой http запрещён, loopback
 // разрешён (тесты/локальная раздача), содержимое пишется во временный файл.
 // Suite=Integration: нужны реальные loopback-соединения.
+//
+// Локальные серверы построены на TcpListener, а не HttpListener: http.sys
+// требует URLACL-резервацию на префикс и недоступен в изолированных
+// окружениях (агентские песочницы) — TcpListener работает везде.
 [Trait("Suite", "Integration")]
 public class ScannerUpdateServiceTests
 {
+    public ScannerUpdateServiceTests()
+    {
+        // Песочницы/ритуалы хост-провайдеров режут запись в %TEMP%; пакеты
+        // кладём в тестовый workspace (boевой путь — %TEMP%).
+        ScannerUpdateService.TempRootOverrideForTests = TestScratch.Root;
+    }
     [Fact]
     public async Task DownloadPackage_RejectsRemoteHttp()
     {
@@ -32,7 +44,7 @@ public class ScannerUpdateServiceTests
     public async Task DownloadPackage_DownloadsFromLoopback()
     {
         const string packageBytes = "PK-scu-test-package";
-        using var server = new LocalHttpServer(packageBytes);
+        using var server = LoopbackHttpServer.Content(packageBytes);
 
         var service = new ScannerUpdateService();
         var result = await service.DownloadPackageAsync(server.Url);
@@ -40,67 +52,6 @@ public class ScannerUpdateServiceTests
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal(packageBytes, await File.ReadAllTextAsync(result.Value!));
         File.Delete(result.Value!);
-    }
-
-    // Минимальный локальный сервер для теста загрузки (loopback).
-    private sealed class LocalHttpServer : IDisposable
-    {
-        private readonly HttpListener _listener;
-
-        public LocalHttpServer(string content)
-        {
-            Content = content;
-            var port = GetFreePort();
-            Url = $"http://127.0.0.1:{port}/package.zip";
-            _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-            _listener.Start();
-            _ = Task.Run(ServeLoop);
-        }
-
-        public string Url { get; }
-
-        private string Content { get; }
-
-        private async Task ServeLoop()
-        {
-            while (_listener.IsListening)
-            {
-                HttpListenerContext context;
-                try
-                {
-                    context = await _listener.GetContextAsync();
-                }
-                catch (HttpListenerException)
-                {
-                    return;
-                }
-                catch (ObjectDisposedException)
-                {
-                    return;
-                }
-
-                var buffer = System.Text.Encoding.UTF8.GetBytes(Content);
-                context.Response.ContentLength64 = buffer.Length;
-                await context.Response.OutputStream.WriteAsync(buffer);
-                context.Response.Close();
-            }
-        }
-
-        private static int GetFreePort()
-        {
-            var socket = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-            socket.Start();
-            var port = ((System.Net.IPEndPoint)socket.LocalEndpoint).Port;
-            socket.Stop();
-            return port;
-        }
-
-        public void Dispose()
-        {
-            _listener.Stop();
-            _listener.Close();
-        }
     }
 
     // П. 8 аудита: redirect обрабатывается вручную — только HTTPS/loopback,
@@ -148,8 +99,9 @@ public class ScannerUpdateServiceTests
     public async Task DownloadPackage_FollowsAllowedLoopbackRedirect()
     {
         const string packageBytes = "PK-scu-redirected-package";
-        using var target = new LocalHttpServer(packageBytes);
-        using var source = new RedirectHttpServer($"http://127.0.0.1:{GetFreeTestPort()}/package.zip", target.Url);
+        using var target = LoopbackHttpServer.Content(packageBytes);
+        var port = GetFreeTestPort();
+        using var source = LoopbackHttpServer.Redirect($"http://127.0.0.1:{port}/package.zip", target.Url);
 
         var service = new ScannerUpdateService();
         var result = await service.DownloadPackageAsync(source.Url);
@@ -162,9 +114,12 @@ public class ScannerUpdateServiceTests
     [Fact]
     public async Task DownloadPackage_RejectsCrossHostRedirect()
     {
-        using var target = new LocalHttpServer("PK-secret");
+        using var target = LoopbackHttpServer.Content("PK-secret");
+        var port = GetFreeTestPort();
         // 127.0.0.1 -> localhost: другой хост — переход запрещён политикой.
-        using var source = new RedirectHttpServer($"http://127.0.0.1:{GetFreeTestPort()}/package.zip", target.Url.Replace("127.0.0.1", "localhost"));
+        using var source = LoopbackHttpServer.Redirect(
+            $"http://127.0.0.1:{port}/package.zip",
+            target.Url.Replace("127.0.0.1", "localhost"));
 
         var service = new ScannerUpdateService();
         var result = await service.DownloadPackageAsync(source.Url);
@@ -175,8 +130,9 @@ public class ScannerUpdateServiceTests
     [Fact]
     public async Task DownloadPackage_RejectsRedirectLoop()
     {
-        var selfUrl = $"http://127.0.0.1:{GetFreeTestPort()}/package.zip";
-        using var source = new RedirectHttpServer(selfUrl, selfUrl);
+        var port = GetFreeTestPort();
+        var selfUrl = $"http://127.0.0.1:{port}/package.zip";
+        using var source = LoopbackHttpServer.Redirect(selfUrl, selfUrl);
 
         var service = new ScannerUpdateService();
         var result = await service.DownloadPackageAsync(source.Url);
@@ -191,8 +147,8 @@ public class ScannerUpdateServiceTests
     public async Task DownloadPackage_TruncatedBody_IsRejected()
     {
         const string packageBytes = "PK-scu-truncated-package-that-ends-early";
-        var declaredLength = System.Text.Encoding.UTF8.GetByteCount(packageBytes) + 4096;
-        using var server = new TruncatingHttpServer(packageBytes, declaredLength);
+        var declaredLength = Encoding.UTF8.GetByteCount(packageBytes) + 4096;
+        using var server = LoopbackHttpServer.Truncated(packageBytes, declaredLength);
 
         var service = new ScannerUpdateService();
         var result = await service.DownloadPackageAsync(server.Url);
@@ -202,104 +158,127 @@ public class ScannerUpdateServiceTests
 
     private static int GetFreeTestPort()
     {
-        var socket = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        var socket = new TcpListener(IPAddress.Loopback, 0);
         socket.Start();
-        var port = ((System.Net.IPEndPoint)socket.LocalEndpoint).Port;
+        var port = ((IPEndPoint)socket.LocalEndpoint).Port;
         socket.Stop();
         return port;
     }
 
-    // Локальный сервер, всегда отвечающий 302 на заданный Location.
-    private sealed class RedirectHttpServer : IDisposable
+    // Минимальный локальный HTTP-сервер на TcpListener (loopback). Обрабатывает
+    // подключения последовательно до Dispose: достаточно для синхронного
+    // сценария «запрос → одна-две переадресации → тело».
+    private sealed class LoopbackHttpServer : IDisposable
     {
-        private readonly HttpListener _listener;
+        private enum Mode { Body, Redirect, Truncated }
 
-        public RedirectHttpServer(string url, string location)
+        private readonly TcpListener _listener;
+        private readonly CancellationTokenSource _stop = new();
+        private readonly Mode _mode;
+        private readonly byte[] _body;
+        private readonly long? _declaredLength;
+        private readonly string? _location;
+
+        private LoopbackHttpServer(Mode mode, byte[] body, long? declaredLength, string? location, int? port)
         {
-            Url = url;
-            _listener = new HttpListener();
-            _listener.Prefixes.Add(url[..url.LastIndexOf('/')] + "/");
+            _mode = mode;
+            _body = body;
+            _declaredLength = declaredLength;
+            _location = location;
+            _listener = new TcpListener(IPAddress.Loopback, port ?? 0);
             _listener.Start();
-            _ = Task.Run(async () =>
+            Url = $"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/package.zip";
+            _ = Task.Run(AcceptLoopAsync);
+        }
+
+        public static LoopbackHttpServer Content(string body) =>
+            new(Mode.Body, Encoding.UTF8.GetBytes(body), null, null, null);
+
+        public static LoopbackHttpServer Truncated(string body, long declaredLength) =>
+            new(Mode.Truncated, Encoding.UTF8.GetBytes(body), declaredLength, null, null);
+
+        public static LoopbackHttpServer Redirect(string url, string location) =>
+            new(Mode.Redirect, [], null, location, new Uri(url).Port) { Url = url };
+
+        public string Url { get; private set; } = string.Empty;
+
+        private async Task AcceptLoopAsync()
+        {
+            while (!_stop.IsCancellationRequested)
             {
-                while (_listener.IsListening)
-                {
-                    HttpListenerContext context;
-                    try
-                    {
-                        context = await _listener.GetContextAsync();
-                    }
-                    catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException)
-                    {
-                        return;
-                    }
-
-                    context.Response.Redirect(location);
-                    context.Response.Close();
-                }
-            });
-        }
-
-        public string Url { get; }
-
-        public void Dispose()
-        {
-            _listener.Stop();
-            _listener.Close();
-        }
-    }
-
-    // Сервер, обещающий ContentLength64 больше, чем реально отдаёт, и рвущий
-    // соединение после тела — имитация оборванной загрузки пакета.
-    private sealed class TruncatingHttpServer : IDisposable
-    {
-        private readonly HttpListener _listener;
-
-        public TruncatingHttpServer(string content, long declaredLength)
-        {
-            Content = content;
-            DeclaredLength = declaredLength;
-            var port = GetFreeTestPort();
-            Url = $"http://127.0.0.1:{port}/package.zip";
-            _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-            _listener.Start();
-            _ = Task.Run(ServeLoop);
-        }
-
-        public string Url { get; }
-
-        private string Content { get; }
-
-        private long DeclaredLength { get; }
-
-        private async Task ServeLoop()
-        {
-            while (_listener.IsListening)
-            {
-                HttpListenerContext context;
+                Socket client;
                 try
                 {
-                    context = await _listener.GetContextAsync();
+                    client = await _listener.AcceptSocketAsync(_stop.Token);
                 }
-                catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException)
+                catch (Exception)
                 {
+                    // listener остановлен (Dispose) — конец цикла.
                     return;
                 }
 
-                context.Response.ContentLength64 = DeclaredLength;
-                var buffer = System.Text.Encoding.UTF8.GetBytes(Content);
-                await context.Response.OutputStream.WriteAsync(buffer);
-                // Content-Length обещал больше — соединение рвётся здесь; формат
-                // ответа нарушен, HttpClient обязан сообщить об ошибке.
-                context.Response.Abort();
+                using (client)
+                {
+                    try
+                    {
+                        await RespondAsync(client);
+                    }
+                    catch (Exception)
+                    {
+                        // Клиент мог прервать соединение — не важно для теста.
+                    }
+                }
             }
+        }
+
+        private async Task RespondAsync(Socket client)
+        {
+            await using var stream = new NetworkStream(client, ownsSocket: false);
+            var readBuffer = new byte[4096];
+#pragma warning disable CA2022 // достаточно первого непустого чтения: уверяемся, что заголовок запроса дошёл
+            await stream.ReadAsync(readBuffer, _stop.Token);
+#pragma warning restore CA2022
+
+            switch (_mode)
+            {
+                case Mode.Body:
+                {
+                    var head = Encoding.ASCII.GetBytes(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " +
+                        _body.Length + "\r\nConnection: close\r\n\r\n");
+                    await stream.WriteAsync(head, _stop.Token);
+                    await stream.WriteAsync(_body, _stop.Token);
+                    break;
+                }
+                case Mode.Redirect:
+                {
+                    var head = Encoding.ASCII.GetBytes(
+                        "HTTP/1.1 302 Found\r\nLocation: " + _location +
+                        "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    await stream.WriteAsync(head, _stop.Token);
+                    break;
+                }
+                case Mode.Truncated:
+                {
+                    // Content-Length обещает лишние байты, реально отдаём только
+                    // тело и закрываем соединение: клиент должен сообщить о
+                    // недокачанном пакете, а не принять урезанный файл.
+                    var head = Encoding.ASCII.GetBytes(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " +
+                        _declaredLength!.Value + "\r\nConnection: close\r\n\r\n");
+                    await stream.WriteAsync(head, _stop.Token);
+                    await stream.WriteAsync(_body, _stop.Token);
+                    break;
+                }
+            }
+
+            client.Shutdown(SocketShutdown.Send);
         }
 
         public void Dispose()
         {
+            _stop.Cancel();
             _listener.Stop();
-            _listener.Close();
         }
     }
 }

@@ -32,7 +32,19 @@ public partial class StartupViewModel : ObservableObject, IDisposable, ISectionO
 
     public async Task InitializeAsync()
     {
-        HasRestoreManifest = await TaskRunner.RunBlocking(() => File.Exists(GetManifestPath())).ConfigureAwait(true);
+        // Таймаут 2 с (аудит): File.Exists по недоступному сетевому пути висит
+        // десятками секунд — без лимита замораживалась заставка на старте.
+        // Нет ответа — считаем манифест отсутствующим; заблокированный Task.Run
+        // поток освободится сам, результат он вернёт в никуда.
+        try
+        {
+            HasRestoreManifest = await TaskRunner.RunBlocking(() => File.Exists(GetManifestPath()))
+                .WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(true);
+        }
+        catch (TimeoutException)
+        {
+            HasRestoreManifest = false;
+        }
     }
 
     [ObservableProperty]

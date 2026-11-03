@@ -842,11 +842,24 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void RemoveBookmark(string? url)
     {
-        if (url is not null)
+        if (url is null)
         {
-            _bookmarkService.Remove(url);
-            OnPropertyChanged(nameof(BookmarkEntries));
+            return;
         }
+
+        // Подтверждение удаления (дизайн, п. 4): закладка удаляется без
+        // возможности отмены, а в списке рядом есть история с тем же адресом.
+        if (!_dialogs.Ask(
+                L.T("Удалить закладку"),
+                L.T("Удалить закладку?\n{0}", url),
+                L.T("Удалить")))
+        {
+            return;
+        }
+
+        _bookmarkService.Remove(url);
+        OnPropertyChanged(nameof(BookmarkEntries));
+        StatusText = L.T("Закладка удалена.");
     }
 
     // ===================== История =====================
@@ -868,6 +881,34 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         _historyService.Clear();
         OnPropertyChanged(nameof(HistoryEntries));
         StatusText = L.T("История браузера очищена.");
+    }
+
+    // Удаление записи истории (дизайн, п. 4): действие необратимо, поэтому
+    // спрашиваем подтверждение — раньше кнопка удаляла запись молча, а в
+    // истории была привязана команда удаления закладки (аудит, п. 6).
+    [RelayCommand]
+    private void RemoveHistory(string? url)
+    {
+        if (url is null)
+        {
+            return;
+        }
+
+        if (!_dialogs.Ask(
+                L.T("Удалить из истории"),
+                L.T("Удалить запись истории?\n{0}", url),
+                L.T("Удалить")))
+        {
+            return;
+        }
+
+        if (!_historyService.Remove(url))
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(HistoryEntries));
+        StatusText = L.T("Запись истории удалена.");
     }
 
     // ===================== Загрузки =====================
@@ -1123,9 +1164,12 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
 
         if (_scannerViewModel is null || !_scannerViewModel.IsScannerReady)
         {
-            item.ScanResult = L.T("встроенная проверка недоступна");
-            _logger.Warn("BROWSER | download scan skipped | ScannerCore unavailable");
-            _downloadsService.AddOrUpdate(item);
+            await RunOnUiThreadAsync(() =>
+            {
+                item.ScanResult = L.T("встроенная проверка недоступна");
+                _logger.Warn("BROWSER | download scan skipped | ScannerCore unavailable");
+                _downloadsService.AddOrUpdate(item);
+            }).ConfigureAwait(false);
             return;
         }
 
@@ -1133,56 +1177,91 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         try
         {
             // Под общим gate раздела «Сканер»: авто-скан не стартует параллельно
-            // с ручным сканом или установкой пакета базы.
-            var result = await _scannerViewModel.RunFileScanAsync(item.FilePath, _scanDownloadsCts.Token).ConfigureAwait(true);
-            if (!result.IsSuccess || result.Value is null)
-            {
-                // Ошибка проверки ≠ чистый результат: состояние «Ошибка», а не «Завершено».
-                item.ScanResult = L.T("ошибка проверки");
-                _logger.Warn("BROWSER | download scan failed | " + result.Message);
-                item.StateKey = BrowserDownloadItem.StateError;
-                _downloadsService.AddOrUpdate(item);
-                return;
-            }
+            // с ручным сканом или установкой пакета базы. Аудит, п. 3: скан
+            // ожидается с ConfigureAwait(false) — Dispose синхронно ждёт эту задачу
+            // до 3 с, и продолжение с захваченным UI-контекстом дедлокило бы
+            // ожидание до таймаута, оставляя загрузку в «проверке».
+            var result = await _scannerViewModel
+                .RunFileScanAsync(item.FilePath, _scanDownloadsCts.Token)
+                .ConfigureAwait(false);
 
-            // Ветвление по единому Outcome (аудит п. 2/15.3): Partial больше не
-            // прикидывается чистым результатом «угроз не обнаружено».
-            var scanResult = result.Value;
-            switch (scanResult.Outcome)
-            {
-                case ScanOutcome.Threats:
-                    item.ScanResult = L.T("обнаружено угроз: {0}", scanResult.Detections.Count);
-                    item.StateKey = BrowserDownloadItem.StateThreat;
-                    StatusText = L.T("В скачанном файле {0} обнаружены угрозы. Файл не запускался.", item.FileName);
-                    AppNotificationCenter.Instance.Push(
-                        L.T("Сканер: угрозы в загрузке"),
-                        L.T("В файле {0} обнаружены угрозы ({1}). Файл не запускался.", item.FileName, scanResult.Detections.Count),
-                        AppNotificationKind.Danger);
-                    break;
-
-                case ScanOutcome.Partial:
-                    item.ScanResult = L.T("проверено не полностью");
-                    item.StateKey = BrowserDownloadItem.StatePartial;
-                    break;
-
-                case ScanOutcome.Cancelled:
-                    item.ScanResult = L.T("проверка прервана");
-                    item.StateKey = BrowserDownloadItem.StateError;
-                    break;
-
-                default:
-                    item.ScanResult = L.T("угроз не обнаружено");
-                    item.StateKey = BrowserDownloadItem.StateCompleted;
-                    break;
-            }
-            _logger.Info($"BROWSER | download scan | {Path.GetFileName(item.FilePath)} | outcome={scanResult.Outcome} | detections={scanResult.Detections.Count}");
+            // Применение исхода — на UI-потоке: состояние загрузки и StatusText —
+            // UI-состояние, а последовательные вызовы AddOrUpdate двух почти
+            // одновременных сканов не должны работать по одному List параллельно.
+            // В тестах диспетчера нет — продолжение выполняется в текущем контексте.
+            await RunOnUiThreadAsync(() => ApplyScanOutcome(item, result)).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
-            item.ScanResult = L.T("ошибка проверки");
-            item.StateKey = BrowserDownloadItem.StateError;
             _logger.Error("BROWSER | download scan error | " + exception);
+            await RunOnUiThreadAsync(() =>
+            {
+                item.ScanResult = L.T("ошибка проверки");
+                item.StateKey = BrowserDownloadItem.StateError;
+                _downloadsService.AddOrUpdate(item);
+            }).ConfigureAwait(false);
         }
+    }
+
+    // Действие на UI-потоке, если диспетчер есть (в тестах его нет — там тело
+    // выполняется сразу, в текущем контексте).
+    private static Task RunOnUiThreadAsync(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        return dispatcher.InvokeAsync(action).Task;
+    }
+
+    // Исход скана: состояние элемента, статус, уведомление и persist (№3) —
+    // итоговый StateKey попадает в downloads.json.
+    private void ApplyScanOutcome(BrowserDownloadItem item, Result<ScanResultDto> result)
+    {
+        if (!result.IsSuccess || result.Value is null)
+        {
+            // Ошибка проверки ≠ чистый результат: состояние «Ошибка», а не «Завершено».
+            item.ScanResult = L.T("ошибка проверки");
+            _logger.Warn("BROWSER | download scan failed | " + result.Message);
+            item.StateKey = BrowserDownloadItem.StateError;
+            _downloadsService.AddOrUpdate(item);
+            return;
+        }
+
+        // Ветвление по единому Outcome (аудит п. 2/15.3): Partial больше не
+        // прикидывается чистым результатом «угроз не обнаружено».
+        var scanResult = result.Value;
+        switch (scanResult.Outcome)
+        {
+            case ScanOutcome.Threats:
+                item.ScanResult = L.T("обнаружено угроз: {0}", scanResult.Detections.Count);
+                item.StateKey = BrowserDownloadItem.StateThreat;
+                StatusText = L.T("В скачанном файле {0} обнаружены угрозы. Файл не запускался.", item.FileName);
+                AppNotificationCenter.Instance.Push(
+                    L.T("Сканер: угрозы в загрузке"),
+                    L.T("В файле {0} обнаружены угрозы ({1}). Файл не запускался.", item.FileName, scanResult.Detections.Count),
+                    AppNotificationKind.Danger);
+                break;
+
+            case ScanOutcome.Partial:
+                item.ScanResult = L.T("проверено не полностью");
+                item.StateKey = BrowserDownloadItem.StatePartial;
+                break;
+
+            case ScanOutcome.Cancelled:
+                item.ScanResult = L.T("проверка прервана");
+                item.StateKey = BrowserDownloadItem.StateError;
+                break;
+
+            default:
+                item.ScanResult = L.T("угроз не обнаружено");
+                item.StateKey = BrowserDownloadItem.StateCompleted;
+                break;
+        }
+        _logger.Info($"BROWSER | download scan | {Path.GetFileName(item.FilePath)} | outcome={scanResult.Outcome} | detections={scanResult.Detections.Count}");
 
         // Финальный persist: итоговое состояние (Threat/Error/...) попадает в
         // downloads.json — перезапуск больше не показывает «Completed».
@@ -1328,13 +1407,14 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        var cleared = true;
-        foreach (var host in hosts)
-        {
-            cleared &= await host.ClearBrowsingDataAsync(kinds).ConfigureAwait(true);
-        }
-
-        return cleared;
+        // Библиотечный путь (аудит, п. 3): продолжение выполняется вне UI-потока —
+        // и синхронная очистка из Dispose (ClearBrowsingDataBlocking), и await из
+        // CloseBrowserAsync не дедлокят диспетчер. Хосты независимы — чистим и
+        // ждём параллельно, а не последовательно.
+        var results = await Task.WhenAll(
+                hosts.Select(host => host.ClearBrowsingDataAsync(kinds)))
+            .ConfigureAwait(false);
+        return results.All(static cleared => cleared);
     }
 
     // ===================== Окно браузера =====================
@@ -1433,10 +1513,11 @@ public partial class BrowserViewModel : ObservableObject, IDisposable
         | (Settings.ClearCookiesOnExit ? CoreWebView2BrowsingDataKinds.Cookies : 0)
         | (Settings.ClearCacheOnExit ? CoreWebView2BrowsingDataKinds.DiskCache : 0);
 
-    // Синхронное ожидание очистки на пути закрытия окна/выхода: продолжение после
-    // await в BrowserTabHost.ClearBrowsingDataAsync выполняется вне UI-потока
-    // (ConfigureAwait(false)), поэтому Wait не deadlock'ит UI; лимит — закрытие
-    // не должно зависать на очистке. Best-effort: сбой фиксируется в журнале.
+    // Синхронное ожидание очистки только на пути Dispose (аудит, п. 3): оно
+    // безопасно, пока ClearBrowsingDataAsync продолжается вне UI-потока
+    // (ConfigureAwait(false)) — раньше внутри был ConfigureAwait(true), и внешний
+    // Wait с UI-потока дедлокил цепочку до 5-секундного таймаута, обрезая очистку.
+    // Асинхронный путь закрытия окна (CloseBrowserAsync) диспетчер не блокирует.
     private void ClearBrowsingDataBlocking(CoreWebView2BrowsingDataKinds kinds)
     {
         try

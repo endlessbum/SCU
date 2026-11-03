@@ -14,7 +14,7 @@ public sealed class HistoryStoreFlushTests : IDisposable
 
     public HistoryStoreFlushTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        _directory = TestScratch.NewDir();
         Directory.CreateDirectory(_directory);
     }
 

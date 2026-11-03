@@ -21,7 +21,7 @@ public sealed class PinGlyphTests : IDisposable
 
     public PinGlyphTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        _directory = TestScratch.NewDir();
         Directory.CreateDirectory(_directory);
         Reset();
     }

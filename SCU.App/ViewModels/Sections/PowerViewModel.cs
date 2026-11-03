@@ -105,6 +105,7 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
     private string _lastAccessStateBadge = string.Empty;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ClearCpuLimitsCommand))]
     private string _cpuLimitsText = string.Empty;
 
     /// <summary>Формат бейджа: Unknown→?, PendingReboot→*, Mixed→≠, иначе пусто.</summary>
@@ -294,6 +295,36 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
         }
     }
 
+    // Фактическое значение таймаута диска (дизайн, п. 11): тумблер сам по себе
+    // не показывает, сколько минут (или секунд) реально выставлено в схеме.
+    private string _diskIdleValueText = string.Empty;
+
+    public string DiskIdleValueText
+    {
+        get => _diskIdleValueText;
+        private set
+        {
+            if (_diskIdleValueText == value)
+            {
+                return;
+            }
+
+            _diskIdleValueText = value;
+            OnPropertyChanged(nameof(DiskIdleValueText));
+        }
+    }
+
+    // Формат фактического значения: минуты и секунды (или «запрещено»).
+    internal static string FormatDiskIdleValue(int seconds)
+    {
+        if (seconds <= 0)
+        {
+            return L.T("Отключение запрещено (0 с)");
+        }
+
+        return L.T("{0} мин ({1} с)", seconds / 60, seconds);
+    }
+
     // ===================== Подписи тумблеров (п.28) =====================
     // Постоянное описание функции — НЕ зависит от ON/OFF и НЕ содержит
     // «Включить:» / «Отключить:». Текст из словаря строк XAML.
@@ -345,6 +376,11 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
         IsAdmin ? string.Empty : L.T("Нужны права администратора — изменение параметров питания недоступно.");
 
     private bool CanModify() => !IsBusy && IsAdmin;
+
+    private bool CanClearCpuLimits() =>
+        CanModify() &&
+        (!CpuLimitsText.Contains("numproc - не задано", StringComparison.OrdinalIgnoreCase) ||
+         !CpuLimitsText.Contains("truncatememory - не задано", StringComparison.OrdinalIgnoreCase));
     private bool CanRefresh() => !IsBusy;
     private bool CanCancel() => IsBusy;
 
@@ -445,6 +481,12 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
             if (diskIdle.IsSuccess && diskIdle.Value >= 0)
             {
                 DiskIdleDisabled = diskIdle.Value == PowerService.DiskIdleDisabledSeconds;
+                // Фактические значения AC и DC показываются рядом с тумблером
+                // (дизайн, п. 11) — оба, а не только тумблер.
+                var dc = await _powerService.GetDiskIdleDcTimeoutAsync(ct).ConfigureAwait(true);
+                DiskIdleValueText = dc.IsSuccess && dc.Value >= 0
+                    ? L.T("AC: {0} · DC: {1}", FormatDiskIdleValue(diskIdle.Value), FormatDiskIdleValue(dc.Value))
+                    : L.T("AC: {0}", FormatDiskIdleValue(diskIdle.Value));
             }
             else
             {
@@ -582,10 +624,30 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
                 if (readback.IsSuccess && readback.Value >= 0)
                 {
                     DiskIdleDisabled = readback.Value == PowerService.DiskIdleDisabledSeconds;
+                    var dcReadback = await _powerService.GetDiskIdleDcTimeoutAsync(ct).ConfigureAwait(true);
+                    DiskIdleValueText = dcReadback.IsSuccess && dcReadback.Value >= 0
+                        ? L.T("AC: {0} · DC: {1}", FormatDiskIdleValue(readback.Value), FormatDiskIdleValue(dcReadback.Value))
+                        : L.T("AC: {0}", FormatDiskIdleValue(readback.Value));
                 }
-                StatusText = result.IsSuccess
-                    ? L.S(result.Message)
-                    : L.T("Ошибка (код {0}): {1}", result.Code, result.Message);
+
+                // Windows могла вернуть другое значение — сообщаем явно, а не
+                // молча показываем тумблер (дизайн, п. 11).
+                var expected = disable
+                    ? PowerService.DiskIdleDisabledSeconds
+                    : PowerService.DiskIdleDefaultSeconds;
+                if (readback.IsSuccess && readback.Value >= 0 && readback.Value != expected)
+                {
+                    StatusText = L.T(
+                        "Задано {0}, но Windows вернула {1}.",
+                        FormatDiskIdleValue(expected),
+                        FormatDiskIdleValue(readback.Value));
+                }
+                else
+                {
+                    StatusText = result.IsSuccess
+                        ? L.S(result.Message)
+                        : L.T("Ошибка (код {0}): {1}", result.Code, result.Message);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -817,8 +879,10 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
         }
 
         // Читаем фактическое состояние ДО диалога: multi-pagefile + crash dump.
+        // Пояснения — отдельными ключами перевода (аудит, п. 18): иначе
+        // английский диалог заканчивался русскими фразами.
         var current = await _powerService.GetPageFileStateAsync().ConfigureAwait(true);
-        var volumesLine = "системный том";
+        var volumesLine = L.T("системный том");
         var multiNote = "";
         var crashNote = "";
         if (current.IsSuccess && current.Value is not null)
@@ -829,14 +893,14 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
                 volumesLine = string.Join(", ", pf.Entries.Select(e => e.Path));
                 if (pf.Entries.Count > 1)
                 {
-                    multiNote = "\n\nНа системе несколько файлов подкачки. Размер будет применён ко ВСЕМ перечисленным томам.";
+                    multiNote = "\n\n" + L.T("На системе несколько файлов подкачки. Размер будет применён ко ВСЕМ перечисленным томам.");
                 }
             }
 
             if (pf.CrashDumpMayRequirePagefile)
             {
-                crashNote = "\n\n" + (pf.CrashDumpSummary ?? "Дамп памяти")
-                    + "\nУменьшение файла подкачки может повлиять на возможность создания дампа памяти после BSOD.";
+                crashNote = "\n\n" + (pf.CrashDumpSummary ?? L.T("Дамп памяти"))
+                    + "\n" + L.T("Уменьшение файла подкачки может повлиять на возможность создания дампа памяти после BSOD.");
             }
         }
 
@@ -892,7 +956,7 @@ public partial class PowerViewModel : ObservableObject, IDisposable, ISectionOpe
         }).ConfigureAwait(true);
     }
 
-    [RelayCommand(CanExecute = nameof(CanModify))]
+    [RelayCommand(CanExecute = nameof(CanClearCpuLimits))]
     private async Task ClearCpuLimitsAsync()
     {
         if (!_dialogs.ConfirmChange(new DestructiveChange(

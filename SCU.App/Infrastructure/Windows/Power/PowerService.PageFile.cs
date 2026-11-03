@@ -17,7 +17,7 @@ public sealed partial class PowerService
     {
         if (sizeMb is < 16 or > 262144)
         {
-            return Result.Failure("Размер файла подкачки должен быть в диапазоне 16..262144 МБ.");
+            return Result.Failure(L.T("Размер файла подкачки должен быть в диапазоне 16..262144 МБ."));
         }
 
         try
@@ -113,7 +113,7 @@ public sealed partial class PowerService
                         @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", writable: true);
                     if (key is null)
                     {
-                        return RestoreAutomaticAndFail("Не удалось открыть раздел реестра для настройки файла подкачки.");
+                        return RestoreAutomaticAndFail(L.T("Не удалось открыть раздел реестра для настройки файла подкачки."));
                     }
 
                     var expected = $"{defaultPageFile} {sizeMb} {sizeMb}";
@@ -121,7 +121,7 @@ public sealed partial class PowerService
                     var actual = key.GetValue("PagingFiles") as string[] ?? [];
                     if (!actual.Contains(expected, StringComparer.OrdinalIgnoreCase))
                     {
-                        return RestoreAutomaticAndFail("Настройка файла подкачки не подтвердилась чтением реестра.");
+                        return RestoreAutomaticAndFail(L.T("Настройка файла подкачки не подтвердилась чтением реестра."));
                     }
                 }
                 else
@@ -157,22 +157,26 @@ public sealed partial class PowerService
 
                     var affected = string.Join(", ", affectedPaths);
                     var crash = ReadCrashDumpInfo();
+                    // Пробел — вне L.T: ведущий пробел в ключе ломал точный поиск
+                    // по словарю (аудит, п. 18, как в DefenderViewModel).
                     var crashNote = crash.MayRequirePagefile
-                        ? " Внимание: текущая конфигурация дампа памяти может требовать достаточный pagefile."
+                        ? " " + L.T("Внимание: текущая конфигурация дампа памяти может требовать достаточный pagefile.")
                         : "";
                     _logger.Info($"PAGEFILE | set {sizeMb} MB | files={affectedPaths.Count} | affected={affected}");
                     return Result.Success(
-                        $"Файл подкачки: {sizeMb} МБ на томах: {affected}. Вступит в силу после перезагрузки.{crashNote}");
+                        L.T("Файл подкачки: {0} МБ на томах: {1}. Вступит в силу после перезагрузки.", sizeMb, affected)
+                        + crashNote);
                 }
 
                 {
                     var crash = ReadCrashDumpInfo();
                     var crashNote = crash.MayRequirePagefile
-                        ? " Внимание: текущая конфигурация дампа памяти может требовать достаточный pagefile."
+                        ? " " + L.T("Внимание: текущая конфигурация дампа памяти может требовать достаточный pagefile.")
                         : "";
                     _logger.Info($"PAGEFILE | set {sizeMb} MB | registry path={defaultPageFile}");
                     return Result.Success(
-                        $"Файл подкачки: {sizeMb} МБ ({defaultPageFile}). Вступит в силу после перезагрузки.{crashNote}");
+                        L.T("Файл подкачки: {0} МБ ({1}). Вступит в силу после перезагрузки.", sizeMb, defaultPageFile)
+                        + crashNote);
                 }
             }, ct).ConfigureAwait(false);
         }
@@ -196,7 +200,7 @@ public sealed partial class PowerService
                 @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management");
             if (key is null)
             {
-                return Result.Failure("Не удалось открыть раздел реестра для резервирования файла подкачки.");
+                return Result.Failure(L.T("Не удалось открыть раздел реестра для резервирования файла подкачки."));
             }
 
             var pagingFiles = key.GetValue("PagingFiles") as string[] ?? [];
@@ -252,16 +256,16 @@ public sealed partial class PowerService
 
             if (!File.Exists(backupFile))
             {
-                return Result.Failure("Бэкап файла подкачки не был создан.");
+                return Result.Failure(L.T("Бэкап файла подкачки не был создан."));
             }
 
             _logger.Info("PAGEFILE | backup -> " + backupFile);
-            return Result.Success("Бэкап сохранён: " + Path.GetFileName(backupFile));
+            return Result.Success(L.T("Бэкап сохранён: {0}", Path.GetFileName(backupFile)));
         }
         catch (Exception exception)
         {
             _logger.Error("PAGEFILE | backup failed | " + exception);
-            return Result.Failure("Не удалось сохранить бэкап файла подкачки: " + exception.Message);
+            return Result.Failure(L.T("Не удалось сохранить бэкап файла подкачки: {0}", exception.Message));
         }
     }
 
@@ -342,24 +346,29 @@ public sealed partial class PowerService
             var dumpFile = key?.GetValue("DumpFile") as string;
             // 1 = Complete memory dump, 2 = Kernel memory dump — зависят от pagefile.
             var mayRequire = enabled is 1 or 2;
+            // Вид дампа и сводка — через L.T (аудит, п. 18): сводка попадает в
+            // диалог изменения pagefile и в PageFileSummaryText напрямую, без
+            // повторного перевода, поэтому ключи обязаны быть в EN-словаре.
             var kind = enabled switch
             {
-                0 => "нет",
-                1 => "полный (Complete)",
-                2 => "ядра (Kernel)",
-                3 => "малый (Small)",
-                7 => "автоматический (Automatic)",
-                _ => $"код {enabled}"
+                0 => L.T("отключён"),
+                1 => L.T("полный (Complete)"),
+                2 => L.T("ядра (Kernel)"),
+                3 => L.T("малый (Small)"),
+                7 => L.T("автоматический (Automatic)"),
+                _ => L.T("код {0}", enabled)
             };
             return new CrashDumpInfo(
                 enabled,
                 dumpFile,
                 mayRequire,
-                $"Дамп памяти: {kind}" + (string.IsNullOrEmpty(dumpFile) ? "" : $", файл: {dumpFile}"));
+                string.IsNullOrEmpty(dumpFile)
+                    ? L.T("Дамп памяти: {0}", kind)
+                    : L.T("Дамп памяти: {0}, файл: {1}", kind, dumpFile));
         }
         catch
         {
-            return new CrashDumpInfo(0, null, false, "Дамп памяти: не удалось прочитать");
+            return new CrashDumpInfo(0, null, false, L.T("Дамп памяти: не удалось прочитать"));
         }
     }
 
@@ -384,7 +393,7 @@ public sealed partial class PowerService
                     return backup;
 
                 if (automatic)
-                    return Result.Success("Файл подкачки уже управляется Windows.");
+                    return Result.Success(L.T("Файл подкачки уже управляется Windows."));
 
                 system["AutomaticManagedPagefile"] = true;
                 system.Put();
@@ -408,11 +417,11 @@ public sealed partial class PowerService
                         _logger.Error("PAGEFILE | system managed rollback failed | " + rollbackException.Message);
                     }
 
-                    return Result.Failure("Не удалось включить System Managed pagefile (проверка после записи не прошла; исходное значение восстановлено).");
+                    return Result.Failure(L.T("Не удалось включить System Managed pagefile (проверка после записи не прошла; исходное значение восстановлено)."));
                 }
 
                 _logger.Info("PAGEFILE | system managed enabled");
-                return Result.Success("Управление файлом подкачки передано Windows. Вступит в силу после перезагрузки.");
+                return Result.Success(L.T("Управление файлом подкачки передано Windows. Вступит в силу после перезагрузки."));
             }, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -421,7 +430,7 @@ public sealed partial class PowerService
         }
         catch (Exception exception)
         {
-            return Result.Failure("Не удалось включить System Managed pagefile: " + exception.Message);
+            return Result.Failure(L.T("Не удалось включить System Managed pagefile: {0}", exception.Message));
         }
     }
 }

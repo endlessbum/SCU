@@ -1,11 +1,27 @@
+using SCU.Common;
 using Xunit;
 
 namespace SCU.Tests;
 
 // IsPaused/GetPauseInfoText читают живой реестр (HKLM), поэтому тесты — инварианты
 // согласованности, не зависящие от состояния машины: реестр не мутируем.
+// PauseUpdates(days) вне [1,35] — чистая валидация без записи в реестр.
 public class UpdateServicePauseTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(36)]
+    [InlineData(100)]
+    public void PauseUpdates_OutOfRangeDays_FailsWithoutTouchingRegistry(int days)
+    {
+        var service = new UpdateService(Logger.CreateForCurrentRun(), new RegistryHelper(Logger.CreateForCurrentRun()));
+        var result = service.PauseUpdates(days);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("1 до 35", result.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void IsPaused_AgreesWithPauseInfoText()
     {

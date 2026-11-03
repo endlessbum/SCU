@@ -52,7 +52,69 @@ public sealed class UserScriptStore
 
     public string ScriptsDirectory => _directory;
 
-    public string ScriptPath(UserScriptData data) => Path.Combine(_directory, data.Id + data.Extension);
+    // Путь файла скрипта — только внутри каталога скриптов (аудит, п. 13).
+    // Id приходит из scripts.json (файл в %AppData% можно подменить), и без
+    // проверки «Id + расширение» путь мог уйти за пределы каталога — а запуск
+    // такого файла идёт с правами SCU.
+    public string ScriptPath(UserScriptData data) =>
+        TryGetScriptPath(data, out var path) ? path : Path.Combine(_directory, "invalid");
+
+    // Идентификатор скрипта — имя файла: без разделителей пути, «..» и «:».
+    public static bool IsValidScriptId(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return false;
+        }
+
+        if (id.Contains(Path.DirectorySeparatorChar)
+            || id.Contains(Path.AltDirectorySeparatorChar)
+            || id.Contains(':')
+            || id.Contains(".."))
+        {
+            return false;
+        }
+
+        if (Path.IsPathRooted(id))
+        {
+            return false;
+        }
+
+        return id.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+    }
+
+    // Канонический путь файла скрипта; false — идентификатор недопустим либо
+    // путь вышел за пределы каталога скриптов (например, расширение карточки
+    // оказалось частью пути).
+    public bool TryGetScriptPath(UserScriptData data, out string path)
+    {
+        path = string.Empty;
+        if (data is null || !IsValidScriptId(data.Id))
+        {
+            _logger.Warn("USCRIPT | invalid script id | " + (data?.Id ?? "<null>"));
+            return false;
+        }
+
+        try
+        {
+            var root = Path.GetFullPath(_directory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var candidate = Path.GetFullPath(Path.Combine(_directory, data.Id + data.Extension));
+            if (!candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Warn("USCRIPT | script path outside store | " + data.Id);
+                return false;
+            }
+
+            path = candidate;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("USCRIPT | script path resolve failed | " + exception.Message);
+            return false;
+        }
+    }
 
     public List<UserScriptData> Load()
     {
@@ -98,6 +160,11 @@ public sealed class UserScriptStore
     public UserScriptData Import(string sourcePath, int sectionNumber, string title,
         string comment, string tooltip, string id)
     {
+        if (!IsValidScriptId(id))
+        {
+            throw new ArgumentException("Недопустимый идентификатор скрипта.", nameof(id));
+        }
+
         Directory.CreateDirectory(_directory);
         var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
         var data = new UserScriptData
@@ -109,8 +176,13 @@ public sealed class UserScriptStore
             Extension = extension,
             SectionNumber = sectionNumber,
         };
-        File.Copy(sourcePath, ScriptPath(data), overwrite: true);
-        data.Sha256 = ComputeSha256(ScriptPath(data)) ?? string.Empty;
+        if (!TryGetScriptPath(data, out var target))
+        {
+            throw new ArgumentException("Недопустимый путь скрипта.", nameof(sourcePath));
+        }
+
+        File.Copy(sourcePath, target, overwrite: true);
+        data.Sha256 = ComputeSha256(target) ?? string.Empty;
         return data;
     }
 
@@ -126,7 +198,11 @@ public sealed class UserScriptStore
         // Раньше data.Sha256 мутировался до Move: сбой Move оставлял scripts.json
         // с новым SHA против старого файла — скрипт навсегда блокировался
         // проверкой целостности, а in-memory объект был изменён при return false.
-        var target = ScriptPath(data);
+        if (!TryGetScriptPath(data, out var target))
+        {
+            return false;
+        }
+
         var temp = target + ".new";
         var backup = target + ".old";
         var oldSha = data.Sha256;
@@ -236,11 +312,16 @@ public sealed class UserScriptStore
     // scripts.json в этом случае убирать нельзя, иначе файл останется сиротой.
     public bool Delete(UserScriptData data)
     {
+        if (!TryGetScriptPath(data, out var target))
+        {
+            return false;
+        }
+
         try
         {
-            if (File.Exists(ScriptPath(data)))
+            if (File.Exists(target))
             {
-                File.Delete(ScriptPath(data));
+                File.Delete(target);
             }
 
             return true;
@@ -352,49 +433,70 @@ public sealed class UserScriptStore
     // (администратор). Расхождение хэша — запуск отменяется (fail-closed).
     public async Task<(int ExitCode, string Output)> RunAsync(UserScriptData data, CancellationToken ct = default)
     {
-        var path = ScriptPath(data);
+        // Путь вне каталога скриптов — запуск запрещён (аудит, п. 13): карточка
+        // пришла из scripts.json, который можно подменить.
+        if (!TryGetScriptPath(data, out var path))
+        {
+            _logger.Error("USCRIPT | run refused | invalid path | " + data.Id);
+            return (-1, L.T("Путь к скрипту недопустим — запуск отменён."));
+        }
 
-        var actualSha = ComputeSha256(path);
-        if (actualSha is null)
+        // Копия + хэш одним проходом (аудит): хэшируются ровно те байты, что
+        // будут запущены. Раньше оригинал хэшировался и запускался двумя
+        // отдельными операциями — подмена файла между ними обходила проверку
+        // целостности (эксклюзивный хэндл на время хэширования не вариант:
+        // powershell сам должен открыть файл на чтение).
+        var copy = CopyWithSha256(path, data.Extension);
+        if (copy is null)
         {
             _logger.Warn("USCRIPT | integrity | unreadable | " + data.Id);
             return (-1, L.T("Файл скрипта не найден или не читается — запуск отменён."));
         }
 
-        if (string.IsNullOrEmpty(data.Sha256))
-        {
-            // Legacy-карточка без эталона: текущее состояние на диске становится
-            // эталоном (TOFU). Сохранение списка делает вызывающая сторона.
-            data.Sha256 = actualSha;
-            _logger.Warn("USCRIPT | integrity | hash fixed on first run | " + data.Id);
-        }
-        else if (!string.Equals(actualSha, data.Sha256, StringComparison.OrdinalIgnoreCase))
-        {
-            _logger.Error("USCRIPT | integrity | modified after import | " + data.Id);
-            return (-1, L.T("Файл скрипта изменён после добавления — запуск отменён."));
-        }
-
-        var (fileName, arguments) = data.Extension.Equals(".ps1", StringComparison.OrdinalIgnoreCase)
-            ? (SystemTool.Path("powershell.exe"), new List<string>
-               {
-                   "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path,
-               })
-            : (SystemTool.Path("cmd.exe"), new List<string> { "/d", "/c", path });
-
-        // Таймаут (аудит): TimeoutException из RunCaptureAsync превращается в
-        // честный статус карточки, а не в необработанное исключение.
+        (string runPath, string actualSha) = copy.Value;
         try
         {
-            var result = await RunCaptureAsync(fileName, arguments, ct).ConfigureAwait(false);
-            var tail = result.Output.Length > 600
-                ? "…" + result.Output[^600..]
-                : result.Output;
-            return (result.ExitCode, tail.Trim());
+            if (string.IsNullOrEmpty(data.Sha256))
+            {
+                // Legacy-карточка без эталона: текущее состояние на диске становится
+                // эталоном (TOFU). Сохранение списка делает вызывающая сторона.
+                data.Sha256 = actualSha;
+                _logger.Warn("USCRIPT | integrity | hash fixed on first run | " + data.Id);
+            }
+            else if (!string.Equals(actualSha, data.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Error("USCRIPT | integrity | modified after import | " + data.Id);
+                return (-1, L.T("Файл скрипта изменён после добавления — запуск отменён."));
+            }
+
+            var (fileName, arguments) = data.Extension.Equals(".ps1", StringComparison.OrdinalIgnoreCase)
+                ? (SystemTool.Path("powershell.exe"), new List<string>
+                   {
+                       "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", runPath,
+                   })
+                : (SystemTool.Path("cmd.exe"), new List<string> { "/d", "/c", runPath });
+
+            // Таймаут (аудит): TimeoutException из RunCaptureAsync превращается в
+            // честный статус карточки, а не в необработанное исключение.
+            try
+            {
+                var result = await RunCaptureAsync(fileName, arguments, ct).ConfigureAwait(false);
+                var tail = result.Output.Length > 600
+                    ? "…" + result.Output[^600..]
+                    : result.Output;
+                return (result.ExitCode, tail.Trim());
+            }
+            catch (TimeoutException exception)
+            {
+                _logger.Warn("USCRIPT | run timeout | " + data.Id + " | " + exception.Message);
+                return (-1, L.T(exception.Message));
+            }
         }
-        catch (TimeoutException exception)
+        finally
         {
-            _logger.Warn("USCRIPT | run timeout | " + data.Id + " | " + exception.Message);
-            return (-1, L.T(exception.Message));
+            // Временная копия удаляется при любом исходе: после запуска она
+            // больше не нужна, эталонный SHA-256 уже зафиксирован по её байтам.
+            try { File.Delete(runPath); } catch { /* занят процессом или уже удалён */ }
         }
     }
 
@@ -409,6 +511,44 @@ public sealed class UserScriptStore
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
             or System.Security.SecurityException)
         {
+            return null;
+        }
+    }
+
+    // Копия исходника во временный файл + SHA-256 копируемых байт одним
+    // проходом (аудит): гарантирует, что проверенный хэш принадлежит именно
+    // запущенному файлу — подмена оригинала после хэширования не влияет.
+    // Расширение сохраняется: запуск идёт через «powershell -File <путь>» /
+    // «cmd /c <путь>» и без него не распознает сценарий. null — исходник не
+    // читается или копию создать не удалось (запуск отменяется, fail-closed).
+    private static (string TempPath, string Sha256)? CopyWithSha256(string sourcePath, string extension)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + extension);
+        try
+        {
+            // FileShare.Read у исходника: powershell/cmd сами откроют файл на
+            // чтение — эксклюзивный хэндл сломал бы последующий запуск.
+            using var source = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var target = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            using var hash = System.Security.Cryptography.SHA256.Create();
+            var buffer = new byte[64 * 1024];
+            int read;
+            while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                hash.TransformBlock(buffer, 0, read, null, 0);
+                target.Write(buffer, 0, read);
+            }
+
+            hash.TransformFinalBlock(buffer, 0, 0);
+            target.Flush();
+            return (tempPath, Convert.ToHexString(hash.Hash!));
+        }
+        catch (Exception)
+        {
+            // Частичная копия — мусор: удаляем и отменяем запуск. Ловим всё:
+            // здесь возможны и IOException, и нечитаемое расширение в имени,
+            // а любой сбой копии должен означать отказ от запуска.
+            try { File.Delete(tempPath); } catch { /* мог не создаться */ }
             return null;
         }
     }

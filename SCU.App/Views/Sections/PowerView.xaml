@@ -160,6 +160,11 @@
                                        Text="{DynamicResource S_PowerDiskIdleTitle}" />
                             <TextBlock Style="{StaticResource RowActionText}"
                                        Text="{DynamicResource S_PowerDiskIdleDesc}" />
+                            <!-- Фактическое значение таймаута (дизайн, п. 11):
+                                 тумблер показывает только «включено/выключено». -->
+                            <TextBlock Style="{StaticResource RowActionText}"
+                                       Margin="0,2,0,0"
+                                       Text="{Binding DiskIdleValueText}" />
                         </StackPanel>
                         <ToggleButton Grid.Column="1"
                                       VerticalAlignment="Center"

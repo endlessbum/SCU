@@ -31,6 +31,18 @@ public partial class MainWindow : Window
             "initial benchmark");
     }
 
+    private void OnWindowClosing(object? sender, CancelEventArgs e)
+    {
+        // Поведение при закрытии — явный выбор пользователя (дизайн, п. 2):
+        // «Закрывать SCU» или «Сворачивать в трей». Раньше фоновый режим
+        // включался скрытно вместе с переводчиком раскладки.
+        if (App.RunInBackgroundOnClose)
+        {
+            e.Cancel = true;
+            WindowState = WindowState.Minimized;
+        }
+    }
+
     // Результат TryApplyMica: при недоступном бэкдропе фон окна красится непрозрачным
     // SolidRootBrush — в том числе при каждой смене темы (OnThemeApplied).
     private bool _micaApplied;
@@ -43,15 +55,23 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         Loaded += OnLoaded;
         SourceInitialized += OnSourceInitialized;
+        Closing += OnWindowClosing;
 
         // Блок журнала скрывается тумблером в «Настройках»: меню и контент занимают всю высоту.
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        // Состояние перевода раскладки отражается в подсказке трея (карточка
+        // «Ввод» меняет его и из UI, и из меню трея).
+        _viewModel.Input.PropertyChanged += OnInputPropertyChanged;
         UpdateJournalLayout(_viewModel.ShowLog);
 
         // Стартовая тема из настроек — до подписки, чтобы DWM-хуки не срабатывали до SourceInitialized.
         // Дальнейшие переключения в рантайме синхронизируют тёмный режим DWM с темой.
         ThemeManager.ApplyTheme(_viewModel.ThemeMode);
         ThemeManager.ThemeApplied += OnThemeApplied;
+
+        // Фоновый режим (сворачивание в трей) — по выбору пользователя в
+        // настройках, а не по факту включения переводчика (дизайн, п. 2).
+        App.RunInBackgroundOnClose = ThemeManager.CloseBehavior == AppCloseBehavior.MinimizeToTray;
 
         // Значок окна (панель задач, Alt+Tab) красится цветом иконки (отдельная
         // настройка, не зависящая от акцента); при ApplyTheme выше событие ещё не
@@ -91,6 +111,9 @@ public partial class MainWindow : Window
 
 
         _textSelection = new TextSelectionManager(this);
+
+        // Ресурсы освобождаются только при фактическом закрытии (см. OnClosing/OnClosed).
+        _shutdown = new WindowShutdown(ReleaseResources);
     }
 
     // Подсветка раздела/карточки: Views/Controls/SectionHighlight (п. 13).
@@ -207,6 +230,67 @@ public partial class MainWindow : Window
 
         // Строка заголовка — цветом фона приложения, чтобы не выделялась.
         WindowEffects.ApplyCaptionColor(this, isDark);
+
+        // Иконка в области уведомлений: штатный путь завершить SCU, когда закрытие
+        // окна уходит в фоновый режим (включён перевод раскладки). Ставится на тот же
+        // HWND, что и глобальная горячая клавиша — иконка живёт, пока живёт окно.
+        _trayIcon = new Interop.TrayIcon(
+            source,
+            _logger,
+            new Interop.TrayIconHost(
+                ShowFromTray,
+                DisableTranslatorFromTray,
+                ExitFromTray,
+                () => _viewModel.Input.LayoutTranslatorOn,
+                () => _viewModel.Input.IsBusy
+                    || !_viewModel.Input.SetLayoutTranslatorCommand.CanExecute(false)));
+        _trayIcon.Show();
+    }
+
+    private Interop.TrayIcon? _trayIcon;
+
+    private void OnInputPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ViewModels.Sections.InputViewModel.LayoutTranslatorOn))
+        {
+            _trayIcon?.RefreshState();
+        }
+    }
+
+    // «Показать SCU»: окно поднимается из фонового режима (свёрнутое — разворачивается).
+    private void ShowFromTray()
+    {
+        Show();
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+    }
+
+    // «Выключить переводчик» в трее: останавливает хук без диалогов — включение
+    // перевода раскладки всегда требует явного согласия и делается только из UI.
+    private void DisableTranslatorFromTray()
+    {
+        var command = _viewModel.Input.SetLayoutTranslatorCommand;
+        if (command.CanExecute(false))
+        {
+            command.Execute(false);
+            return;
+        }
+
+        // Операция раздела занята: показываем окно, чтобы пользователь видел состояние.
+        ShowFromTray();
+    }
+
+    // «Выход» в трее. Фоновый режим снимается явно: иначе повторное закрытие
+    // окна снова отменилось бы, и приложение осталось бы висеть в процессе.
+    private void ExitFromTray()
+    {
+        _logger.Info("TRAY | exit requested");
+        App.RunInBackgroundOnClose = false;
+        Close();
     }
 
     private void OnThemeApplied(bool isDark)
@@ -226,6 +310,8 @@ public partial class MainWindow : Window
     {
         RefreshAccentIcons();
         UpdateDesktopShortcutIcons();
+        // Иконка трея — из того же набора окрашенных .ico, что и ярлыки.
+        _trayIcon?.RefreshIcon();
     }
 
     // Значок окна в системном заголовке, на панели задач и в Alt+Tab красится
@@ -381,6 +467,7 @@ public partial class MainWindow : Window
             7 => _viewModel.Startup.RefreshCommand,
             3 => _viewModel.Cleanup.RefreshCommand,
             26 => _viewModel.AppCache.RefreshCommand,
+            27 => _viewModel.Defender.RefreshCommand,
             _ => null,
         };
 
@@ -637,6 +724,8 @@ public partial class MainWindow : Window
             26 => new Views.Sections.AppCacheView { DataContext = viewModel.AppCache },
             4 => new Views.Sections.BloatView { DataContext = viewModel.Bloat },
             5 => new Views.Sections.PrivacyView { DataContext = viewModel.Privacy },
+            // Раздел 27 «Windows Defender» — подвкладка группы «Приватность и защита».
+            27 => new Views.Sections.DefenderView { DataContext = viewModel.Defender },
             6 => new Views.Sections.ServicesView { DataContext = viewModel.Services },
             7 => new Views.Sections.StartupView { DataContext = viewModel.Startup },
             8 => new Views.Sections.PowerView { DataContext = viewModel.Power },
@@ -678,11 +767,36 @@ public partial class MainWindow : Window
         return view;
     }
 
+    // Закрытие главного окна. Порядок обязателен: base.OnClosing(e) поднимает
+    // событие Closing, обработчик которого при включённом переводе раскладки
+    // (App.RunInBackgroundOnClose) отменяет закрытие и сворачивает окно. Пока
+    // e.Cancel не проверен, освобождать ресурсы нельзя — иначе процесс остаётся
+    // жив, но UI, переводчик, подписки и глобальные горячие клавиши уже мертвы,
+    // и повторное закрытие окна снова отменяется (аудит, п. 1).
     protected override void OnClosing(CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        _shutdown.ReleaseIfClosing(e.Cancel);
+    }
+
+    // Страховка: окно, закрытое без прохождения OnClosing (например, завершение
+    // приложения), всё равно освобождает ресурсы — ровно один раз.
+    protected override void OnClosed(EventArgs e)
+    {
+        _shutdown.Release();
+        base.OnClosed(e);
+    }
+
+    private readonly WindowShutdown _shutdown;
+
+    // Освобождение ресурсов окна выполняется один раз и только при фактическом
+    // закрытии: при отмене (фоновый режим) окно возвращается в работу как есть.
+    private void ReleaseResources()
     {
         Loaded -= OnLoaded;
         _viewModel.MenuApplied -= OnMenuApplied;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        _viewModel.Input.PropertyChanged -= OnInputPropertyChanged;
         if (_sectionHighlight is { } highlight)
         {
             _viewModel.SectionHighlightRequested -= highlight.OnSectionHighlightRequested;
@@ -697,10 +811,15 @@ public partial class MainWindow : Window
         }
         ThemeManager.ThemeApplied -= OnThemeApplied;
         ThemeManager.IconAccentChanged -= OnIconAccentChanged;
-        // Flush истории стартует параллельно с закрытием окна: App.OnExit дождётся
-        // его с тем же бюджетом 2 с, но окно к этому моменту уже исчезло с экрана.
-        _ = Task.Run(() => SCU.Infrastructure.Storage.HistoryStore.FlushPendingAsync(TimeSpan.FromSeconds(2)));
+        _trayIcon?.Dispose();
+        _trayIcon = null;
+        // Кэш view разделов держит ссылки на экземпляры view (а через их
+        // DataContext — на подчинённые VM). При закрытии окна он больше не
+        // нужен: обрываем ссылки, чтобы кэш не корневил MainViewModel после
+        // Dispose. Визуалы не выгружаем — окно закрывается целиком. Отдельно
+        // от инвалидации пользовательских вкладок (OnMenuApplied): это очистка
+        // при завершении, а не правка кэша в живом приложении.
+        _sectionViews.Clear();
         _viewModel.Dispose();
-        base.OnClosing(e);
     }
 }

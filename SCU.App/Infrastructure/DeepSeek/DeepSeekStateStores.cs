@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using SCU.Models.DeepSeek;
 
@@ -133,6 +135,11 @@ public sealed class DeepSeekSettingsModel
 
 public sealed class DeepSeekSettingsService : DeepSeekJsonStore
 {
+    // Аудит: API-ключи хранились в settings.json открытым текстом. Шифруем DPAPI
+    // (CurrentUser) — файл читается только под тем же пользователем Windows.
+    // Маркер-префикс отличает шифротекст от значений старого формата.
+    private const string DpapiPrefix = "dpapi:v1:";
+
     public DeepSeekSettingsService(Logger logger, string? filePath = null)
         : base(logger, filePath ?? DeepSeekDataPaths.SettingsFile)
     {
@@ -141,6 +148,7 @@ public sealed class DeepSeekSettingsService : DeepSeekJsonStore
     public DeepSeekSettingsModel Load()
     {
         var settings = Load(new DeepSeekSettingsModel());
+        DecryptKeys(settings);
         // Миграция старого settings.json: единый ключ → слот DeepSeek.
         if (!string.IsNullOrEmpty(settings.ApiKey))
         {
@@ -148,21 +156,94 @@ public sealed class DeepSeekSettingsService : DeepSeekJsonStore
             settings.DeepSeekChatModel = settings.ChatModel;
             settings.ApiKey = string.Empty;
             settings.ChatModel = string.Empty;
-            base.Save(settings);
+            Save(settings);
             Logger.Info("DEEPSEEK | settings migrated to provider format");
         }
 
         return settings;
     }
 
-    // base.: иначе Save(settings) разрешается в саму себя — бесконечная рекурсия.
-    public void Save(DeepSeekSettingsModel settings) => base.Save(settings);
+    // В памяти модель остаётся с открытым ключом (VM читает GetActive()); шифруется
+    // только копия, уходящая в файл. base.: иначе Save(settings) разрешается в саму
+    // себя — бесконечная рекурсия.
+    public void Save(DeepSeekSettingsModel settings)
+    {
+        try
+        {
+            var snapshot = new DeepSeekSettingsModel
+            {
+                ActiveProvider = settings.ActiveProvider,
+                DeepSeekApiKey = Protect(settings.DeepSeekApiKey),
+                DeepSeekChatModel = settings.DeepSeekChatModel,
+                OpenRouterApiKey = Protect(settings.OpenRouterApiKey),
+                OpenRouterChatModel = settings.OpenRouterChatModel,
+                CloudflareApiKey = Protect(settings.CloudflareApiKey),
+                CloudflareAccountId = settings.CloudflareAccountId,
+                CloudflareChatModel = settings.CloudflareChatModel,
+                ApiKey = Protect(settings.ApiKey),
+                ChatModel = settings.ChatModel,
+            };
+            base.Save(snapshot);
+        }
+        catch (Exception exception)
+        {
+            // Контракт store: ошибки сохранения не роняют вызывающий код. Открытый
+            // текст при сбое шифрования на диск не попадает — файл просто не
+            // перезаписывается, ключ остаётся только в памяти.
+            Logger.Warn("DEEPSEEK | key encrypt failed | " + System.IO.Path.GetFileName(Path) + " | " + exception.Message);
+        }
+    }
 
     public void ClearActive(DeepSeekSettingsModel settings)
     {
         settings.SetActive(string.Empty, string.Empty);
-        base.Save(settings);
+        Save(settings);
         Logger.Info("DEEPSEEK | api key removed | provider=" + settings.ActiveProvider);
+    }
+
+    private void DecryptKeys(DeepSeekSettingsModel settings)
+    {
+        settings.DeepSeekApiKey = Unprotect(settings.DeepSeekApiKey);
+        settings.OpenRouterApiKey = Unprotect(settings.OpenRouterApiKey);
+        settings.CloudflareApiKey = Unprotect(settings.CloudflareApiKey);
+        // Ключ старого формата тоже может прийти шифрованным после миграций.
+        settings.ApiKey = Unprotect(settings.ApiKey);
+    }
+
+    private string Protect(string value)
+    {
+        if (string.IsNullOrEmpty(value) || value.StartsWith(DpapiPrefix, StringComparison.Ordinal))
+        {
+            return value;
+        }
+
+        var encrypted = ProtectedData.Protect(
+            Encoding.UTF8.GetBytes(value), null, DataProtectionScope.CurrentUser);
+        return DpapiPrefix + Convert.ToBase64String(encrypted);
+    }
+
+    // Сбой расшифровки → пустая строка (fail-closed): повреждённый шифротекст или
+    // данные другого пользователя не превращаются в мусорный ключ. Без маркера —
+    // значение как есть: settings.json старого формата остаётся читаемым, ключ
+    // зашифруется при следующем сохранении.
+    private string Unprotect(string value)
+    {
+        if (string.IsNullOrEmpty(value) || !value.StartsWith(DpapiPrefix, StringComparison.Ordinal))
+        {
+            return value;
+        }
+
+        try
+        {
+            var encrypted = Convert.FromBase64String(value[DpapiPrefix.Length..]);
+            return Encoding.UTF8.GetString(
+                ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser));
+        }
+        catch (Exception exception)
+        {
+            Logger.Warn("DEEPSEEK | key decrypt failed | " + System.IO.Path.GetFileName(Path) + " | " + exception.Message);
+            return string.Empty;
+        }
     }
 }
 

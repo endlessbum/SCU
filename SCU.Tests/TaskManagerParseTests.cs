@@ -5,7 +5,7 @@ namespace SCU.Tests;
 // Парсер вывода списка запланированных задач (tab-separated: полный путь + состояние).
 public class TaskManagerParseTests : IDisposable
 {
-    private readonly string _path = Path.Combine(Path.GetTempPath(), $"scu_tasks_{Guid.NewGuid():N}.txt");
+    private readonly string _path = TestScratch.NewFile("scu_tasks", ".txt");
 
     public void Dispose()
     {

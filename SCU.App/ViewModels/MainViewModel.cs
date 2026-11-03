@@ -54,6 +54,9 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             new SectionItem(23, "S_Section23_Title", "S_Section23_Desc", "\uE7BA", "S_Group_Cleanup"),
             new SectionItem(5, "S_Section05_Title", "S_Section05_Desc", "\uE72E", "S_Group_Privacy"),
             new SectionItem(13, "S_Section13_Title", "S_Section13_Desc", "\uE72E", "S_Group_Privacy"),
+            // Раздел 27 «Windows Defender»: подвкладка группы «Приватность и
+            // защита» со скриптовым выключением/включением Защитника.
+            new SectionItem(27, "S_Section27_Title", "S_Section27_Desc", "\uEA18", "S_Group_Privacy"),
             new SectionItem(21, "S_Section21_Title", "S_Section21_Desc", "\uEA18", "S_Group_Privacy"),
             new SectionItem(6, "S_Section06_Title", "S_Section06_Desc", "\uE713", "S_Group_System"),
             new SectionItem(19, "S_Section19_Title", "S_Section19_Desc", "\uE71D", "S_Group_System"),
@@ -95,13 +98,21 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         iconAccentMode = ThemeManager.LoadIconAccent();
         ThemeManager.IconAccent = iconAccentMode;
         // Смена темы меняет оттенок пресетов — обновляем квадраты выбора цвета.
-        ThemeManager.ThemeApplied += _ => RefreshAccentChoices();
+        // Именованный метод вместо лямбды: лямбду не отписать в Dispose
+        // (аудит — утечка статических подписок; паттерн парных подписок —
+        // RegisterStatusRefresh/UnregisterStatusRefresh в CleanupViewModel).
+        ThemeManager.ThemeApplied += OnThemeAppliedForAccent;
         // Глобальные горячие клавиши читаются ДО SetTransparency (аудит HIGH):
         // SetTransparency вызывает SaveSettings, сериализующий статический
         // ThemeManager.GlobalHotkeysEnabled — без ранней загрузки дефолтное true
         // затирало сохранённое false ещё до чтения настройки.
         globalHotkeysEnabled = ThemeManager.LoadGlobalHotkeys();
         ThemeManager.GlobalHotkeysEnabled = globalHotkeysEnabled;
+        // Поведение при закрытии окна (дизайн, п. 2) — читается до создания
+        // разделов: фоновый режим больше не включается скрытно вместе с
+        // переводчиком, а только по явному выбору пользователя.
+        closeBehaviorIndex = (int)ThemeManager.LoadCloseBehavior();
+        ThemeManager.CloseBehavior = (AppCloseBehavior)closeBehaviorIndex;
         transparencyMode = ThemeManager.LoadTransparency();
         ThemeManager.SetTransparency(transparencyMode);
 
@@ -136,6 +147,8 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         Tasks = new TasksViewModel(_logger, scuRunner, new TaskManager(scuRunner, _logger), dialogs, history);
         Services = new ServicesViewModel(_logger, scuRunner, new ServiceManager(), history, dialogs);
         Privacy = new PrivacyViewModel(_logger, scuRunner, dialogs);
+        // Раздел 27 «Windows Defender»: общая SCURunner-инфраструктура раздела 5.
+        Defender = new DefenderViewModel(_logger, scuRunner, dialogs);
         var longRunner = new LongProcessRunner(_logger);
         Power = new PowerViewModel(_logger, longRunner, dialogs, history);
         Network = new NetworkViewModel(_logger, dialogs, history);
@@ -356,13 +369,14 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         _sectionInits ??= BuildSectionInits();
         foreach (var pair in _sectionInits)
         {
-            // Драйверы (25) и кэш приложений (26) старту не нужны (аудит
-            // производительности): тяжёлый WMI-запрос Win32_PnPSignedDriver и
-            // обход каталогов установленных программ держали заставку по 2-10+
-            // секунд. Инициализируются лениво при первом открытии вкладки
-            // (EnsureSectionInitialized), объёмы «Кэша приложений» — при каждом
-            // открытии (см. OnCurrentSectionChanged).
-            if (pair.Key is 25 or 26)
+            // Драйверы (25) старту не нужны (аудит производительности): тяжёлый
+            // WMI-запрос Win32_PnPSignedDriver держал заставку по 2-10+ секунд.
+            // Инициализируется лениво при первом открытии вкладки
+            // (EnsureSectionInitialized). Кэш приложений (26) читается при
+            // старте вместе с остальными вкладками: закреплённый выключатель
+            // пакетной очистки приложений зависит от заполненного списка
+            // Apps — без стартового скана он пропускал раздел целиком.
+            if (pair.Key is 25)
             {
                 continue;
             }
@@ -490,7 +504,9 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         [8] = () => ExecuteRefreshAsync(Power.RefreshCommand),
         [9] = () => ExecuteRefreshAsync(Network.RefreshCommand),
         [10] = () => ExecuteRefreshAsync(Ui.RefreshCommand),
-        [11] = () => ExecuteRefreshAsync(Input.RefreshCommand),
+        // Раздел 11 сам читает состояние переключателей и восстанавливает
+        // сохранённые настройки переводчика до возможного запуска глобального хука.
+        [11] = async () => await Input.InitializeAsync().ConfigureAwait(true),
         [12] = () => ExecuteRefreshAsync(Maintenance.RefreshCommand),
         [13] = () => ExecuteRefreshAsync(Security.RefreshCommand),
         [15] = async () =>
@@ -499,12 +515,16 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
             await ExecuteRefreshAsync(Tasks.RefreshCommand).ConfigureAwait(true);
         },
         [16] = () => ExecuteRefreshAsync(Update.RefreshCommand),
-        // 25 (Драйверы) и 26 (Кэш приложений): инициализация ленивая — при первом
-        // открытии вкладки (аудит старта: тяжёлый WMI и обход каталогов не держат
-        // заставку). Объёмы кэша при каждом открытии — OnCurrentSectionChanged.
+        // 25 (Драйверы): инициализация ленивая — при первом открытии вкладки
+        // (аудит старта: тяжёлый WMI не держит заставку). 26 (Кэш приложений)
+        // инициализируется при старте вместе с остальными: выключатель пакетной
+        // очистки на «Главной» требует заполненного списка Apps. Объёмы кэша
+        // при каждом открытии вкладки — OnCurrentSectionChanged.
         [25] = () => ExecuteRefreshAsync(Drivers.RefreshCommand),
         [19] = () => ExecuteRefreshAsync(Apps.RefreshCommand),
         [26] = () => ExecuteRefreshAsync(AppCache.RefreshCommand),
+        // 27 (Windows Defender): дешёвое чтение реестра — на старте вместе с другими.
+        [27] = () => ExecuteRefreshAsync(Defender.RefreshCommand),
     };
 
     // Хвост ленивой инициализации. Успех — пересчёт «К применению» на «Главной»:
@@ -572,6 +592,8 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
     public ServicesViewModel Services { get; }
 
     public PrivacyViewModel Privacy { get; }
+
+    public DefenderViewModel Defender { get; }
 
     public PowerViewModel Power { get; }
 
@@ -664,6 +686,10 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         OnPropertyChanged(nameof(IconAccentBrush));
     }
 
+    // Обработчик ThemeManager.ThemeApplied (Action<bool>): метод назван явно,
+    // чтобы была возможность отписаться в Dispose — см. подписку в конструкторе.
+    private void OnThemeAppliedForAccent(bool isDark) => RefreshAccentChoices();
+
     // Цвета для «квадратика» акцента: все пресеты, КРОМЕ текущего —
     // установленный цвет не дублируется в палитре выбора.
     public IReadOnlyList<AccentChoice> AccentChoices => BuildAccentChoices(AccentMode);
@@ -725,6 +751,21 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         set => Language = (AppLanguage)value;
     }
 
+    // Поведение при закрытии главного окна (дизайн, п. 2): 0 = «Закрывать SCU»,
+    // 1 = «Сворачивать в трей». Выбор сохраняется в settings.json и сразу
+    // применяется — фоновый режим включает/выключает пользователь, а не
+    // переводчик раскладки.
+    [ObservableProperty]
+    private int closeBehaviorIndex;
+
+    partial void OnCloseBehaviorIndexChanged(int value)
+    {
+        var behavior = value == 1 ? AppCloseBehavior.MinimizeToTray : AppCloseBehavior.Exit;
+        ThemeManager.CloseBehavior = behavior;
+        ThemeManager.SaveSettings(ThemeMode, AccentMode, Language, ShowLog, UacConfirmations, closeBehavior: behavior);
+        App.RunInBackgroundOnClose = behavior == AppCloseBehavior.MinimizeToTray;
+    }
+
     [ObservableProperty]
     private bool showLog = ThemeManager.LoadShowLog();
 
@@ -744,7 +785,7 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         [1] = Info, [2] = Components, [4] = Bloat, [5] = Privacy, [6] = Services,
         [7] = Startup, [8] = Power, [9] = Network, [10] = Ui, [11] = Input,
         [12] = Maintenance, [13] = Security, [15] = Tasks, [16] = Update, [19] = Apps,
-        [23] = Troubleshooting, [25] = Drivers, [26] = AppCache,
+        [23] = Troubleshooting, [25] = Drivers, [26] = AppCache, [27] = Defender,
     };
 
     // Делегаты чтения IsBusy кэшируются один раз на тип (аудит производительности):
@@ -796,6 +837,14 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
 
     partial void OnUacConfirmationsChanged(bool value)
     {
+        // Аудит: реэнтрантность отката. При отказе в диалоге ниже выполняется
+        // UacConfirmations = true — повторный вход в этот же обработчик.
+        // Если состояние уже совпадает с тумблером (эхо отката), делать нечего.
+        if (value == SecurityPrompts.Enabled)
+        {
+            return;
+        }
+
         if (!value && !_dialogs.Ask(
                 L.T("UAC"),
                 L.T("Отключить подтверждения рисковых действий?\nОперации будут выполняться сразу, без окна подтверждения."),
@@ -1151,6 +1200,12 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
 
     public void Dispose()
     {
+        // Отписки в паре с подписками конструктора (аудит): статические события
+        // L.LanguageChanged/ThemeManager.ThemeApplied держали бы VM живой и после
+        // закрытия окна — повторные срабатывания могли бы обновить мёртвый UI.
+        L.LanguageChanged -= RefreshStatusTexts;
+        ThemeManager.ThemeApplied -= OnThemeAppliedForAccent;
+        L.LanguageChanged -= RefreshHotkeyTexts;
         _logger.LineWritten -= OnLogLineWritten;
         // Таймер журнала останавливается: без этого после закрытия окна
         // FlushLogBuffer продолжал бы писать в LogLines по тикам.
@@ -1167,6 +1222,7 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         Cleanup.Dispose();
         AppCache.Dispose();
         Privacy.Dispose();
+        Defender.Dispose();
         Power.Dispose();
         Network.Dispose();
         Ui.Dispose();

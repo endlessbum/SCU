@@ -261,7 +261,11 @@ public partial class UIViewModel : ObservableObject, IDisposable, ISectionOperat
         await RunExclusiveAsync("перезапуск проводника", async ct =>
         {
             StatusText = L.T("Перезапуск проводника…");
-            var result = await TaskRunner.RunBlocking(_uiService.RestartExplorer, ct).ConfigureAwait(true);
+            // Ожидание теперь внутри асинхронного RestartExplorerAsync (Task.Delay
+            // вместо Thread.Sleep). Проверка токена после операции — прежний
+            // контракт RunBlocking: результат отменённой операции не меняет статус.
+            var result = await _uiService.RestartExplorerAsync().ConfigureAwait(true);
+            ct.ThrowIfCancellationRequested();
             StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
         }).ConfigureAwait(true);
     }
@@ -280,7 +284,8 @@ public partial class UIViewModel : ObservableObject, IDisposable, ISectionOperat
         await RunExclusiveAsync("очистка панели задач", async ct =>
         {
             StatusText = L.T("Очистка панели задач…");
-            var result = await TaskRunner.RunBlocking(_uiService.ClearTaskbar, ct).ConfigureAwait(true);
+            var result = await _uiService.ClearTaskbarAsync().ConfigureAwait(true);
+            ct.ThrowIfCancellationRequested();
             StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
         }).ConfigureAwait(true);
     }
@@ -299,7 +304,8 @@ public partial class UIViewModel : ObservableObject, IDisposable, ISectionOperat
         await RunExclusiveAsync("восстановление панели задач", async ct =>
         {
             StatusText = L.T("Восстановление панели задач…");
-            var result = await TaskRunner.RunBlocking(_uiService.RestoreTaskbar, ct).ConfigureAwait(true);
+            var result = await _uiService.RestoreTaskbarAsync().ConfigureAwait(true);
+            ct.ThrowIfCancellationRequested();
             StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
         }).ConfigureAwait(true);
     }

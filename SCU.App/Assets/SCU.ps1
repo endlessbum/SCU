@@ -179,7 +179,7 @@ switch ($Action.ToLowerInvariant()) {
             if ($stateOk) { $ok++; Write-Line ("OK  : $svc restored") }
         }
         Write-Line ("DONE: ok= $ok fail= $fail warn= $warn")
-        if ($fail -gt 0 -or $warn -gt 0) { Finish-Action 1 'completed' }
+        if ($fail -gt 0) { Finish-Action 1 'completed' }
         Finish-Action 0 'completed'
     }
 
@@ -391,7 +391,9 @@ switch ($Action.ToLowerInvariant()) {
             $val = $key.GetValue('State')
             if ($val -isnot [int]) { throw ('StartupTask State not found: ' + $name + '\' + $taskId) }
             $entry = [pscustomobject]@{ type = 'reg'; hive = 'HKCU'; subkey = $sub; name = 'State'; kind = $kind; value = $val; src = $src }
-            $applyStep = { New-ItemProperty -Path $psPath -Name 'State' -Value 1 -PropertyType DWord -Force -ErrorAction Stop | Out-Null; Write-Line ('OK: startup task disabled: ' + $name + '\' + $taskId) }
+            # $psPath собирается из имени пакета из списка автозагрузки — LiteralPath,
+            # чтобы '[' и другие wildcard-символы не трактовались как маска пути.
+            $applyStep = { New-ItemProperty -LiteralPath $psPath -Name 'State' -Value 1 -PropertyType DWord -Force -ErrorAction Stop | Out-Null; Write-Line ('OK: startup task disabled: ' + $name + '\' + $taskId) }
         }
         else {
             try {
@@ -442,8 +444,11 @@ switch ($Action.ToLowerInvariant()) {
         foreach ($e in $items) {
             $itemOk = $false
             try {
+                # Путь и имя значения берутся из манифеста бэкапа — пишем через
+                # -LiteralPath: wildcard-символы ([ ]) в подключе не должны
+                # трактоваться как маска пути.
                 if ($e.type -eq 'reg') {$psPath = $e.hive + ':\' +$e.subkey
-                    if (-not (Test-Path -LiteralPath $psPath)) { New-Item -Path $psPath -Force -ErrorAction Stop | Out-Null }$pt = 'String'
+                    if (-not (Test-Path -LiteralPath $psPath)) { New-Item -LiteralPath $psPath -Force -ErrorAction Stop | Out-Null }$pt = 'String'
                     switch ($e.kind) {
                         'String' { $pt = 'String' }
                         'ExpandString' { $pt = 'ExpandString' }
@@ -458,7 +463,7 @@ switch ($Action.ToLowerInvariant()) {
                     elseif ($pt -eq 'DWord') { $v = [int]$v }
                     elseif ($pt -eq 'QWord') { $v = [long]$v }
                     else { $v = [string]$v }
-                    New-ItemProperty -Path $psPath -Name $e.name -Value $v -PropertyType $pt -Force -ErrorAction Stop | Out-Null
+                    New-ItemProperty -LiteralPath $psPath -Name $e.name -Value $v -PropertyType $pt -Force -ErrorAction Stop | Out-Null
                     Write-Line ('OK  : ' + $e.src + ': ' +$e.name); $itemOk = $true
                 } elseif ($e.type -eq 'file') {
                     if (-not (Test-Path -LiteralPath $e.stored)) { throw 'backup file missing' }
@@ -607,6 +612,158 @@ switch ($Action.ToLowerInvariant()) {
         
         if ($verifyInstalled.Count -eq 0 -and $provOk -and $verifyProv.Count -eq 0 -and $err -eq 0) { Write-Line 'RESULT=ABSENT'; Finish-Action 0 'completed' }
         Finish-Action 1 'completed'
+    }
+
+    # Защитник Windows: полное системное отключение. Состав:
+    # 1) бэкап стартовых значений служб в OutFile (обязателен для выключателя
+    #    карточки «Защитник Windows» — включение восстанавливает из него);
+    # 2) политика DisableAntiSpyware + Real-Time Protection (SCU.ps1 снимает
+    #    ровно их — синхронно с defenderenable);
+    # 3) Start=4 в реестре служб: sc.exe config для защищённых служб
+    #    (WinDefend и др.) возвращает Access denied, поэтому пишем напрямую;
+    # 4) остановка процессов MsMpEng/NisSrv — иначе реальная защита работает
+    #    до перезапуска службы.
+    # Политика DisableAntiSpyware на новых сборках игнорируется — системное
+    # отключение обеспечивают Start=4 и остановка процессов.
+    'defenderdisable' {
+        $svcList = @('WinDefend', 'WdNisSvc', 'WdNisDrv', 'WdFilter', 'WdBoot', 'SecurityHealthService')
+
+        $fail = 0
+        $res = New-Object System.Collections.Generic.List[string]
+        foreach ($svc in $svcList) {
+            $key = "HKLM:\SYSTEM\CurrentControlSet\Services\$svc"
+            if (-not (Test-Path -LiteralPath $key)) { $res.Add("$svc|MISSING"); Write-Line ("MISS: " + $svc); continue }
+            try {
+                $start = [string](Get-ItemProperty -LiteralPath $key -Name Start -ErrorAction Stop).Start
+                $res.Add("$svc|$start")
+                Write-Line ("BACKUP: " + $svc + " Start=" + $start)
+            } catch {
+                $res.Add("$svc|MISSING")
+                Write-Line ("WARN : " + $svc + " backup: " + $_.Exception.Message)
+            }
+        }
+        # Аудит: без записанного бэкапа отключение запрещено — прерываем ДО
+        # любых записей в реестр (раньше при сбое записи ставили Start=4 без
+        # восстанавливаемого снимка).
+        if (-not $OutFile) {
+            Write-Line 'ERR : backup path is not set — aborting, Defender not touched'
+            Finish-Action 1 'failed'
+        }
+        try {
+            $dir = Split-Path -Parent $OutFile
+            if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop | Out-Null }
+            Write-TextFile $OutFile $res
+        } catch {
+            # Бэкап не записан — включение из бэкапа будет невозможно: честный
+            # сбой до любых изменений состояния Defender.
+            Write-Line ('ERR : backup write: ' + $_.Exception.Message)
+            Finish-Action 1 'failed'
+        }
+
+        $policyRoot = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender'
+        try {
+            if (-not (Test-Path -LiteralPath $policyRoot)) { New-Item -Path $policyRoot -Force -ErrorAction Stop | Out-Null }
+            New-ItemProperty -Path $policyRoot -Name 'DisableAntiSpyware' -Value 1 -PropertyType DWord -Force -ErrorAction Stop | Out-Null
+            Write-Line 'OK  : policy DisableAntiSpyware=1'
+        } catch { $fail++; Write-Line ('ERR : policy: ' + $_.Exception.Message) }
+
+        $rtp = Join-Path $policyRoot 'Real-Time Protection'
+        try {
+            if (-not (Test-Path -LiteralPath $rtp)) { New-Item -Path $rtp -Force -ErrorAction Stop | Out-Null }
+            foreach ($v in @('DisableRealtimeMonitoring', 'DisableBehaviorMonitoring', 'DisableOnAccessProtection', 'DisableScanOnRealtimeEnable', 'DisableIOAVProtection')) {
+                New-ItemProperty -Path $rtp -Name $v -Value 1 -PropertyType DWord -Force -ErrorAction Stop | Out-Null
+            }
+            Write-Line 'OK  : policy Real-Time Protection'
+        } catch { $fail++; Write-Line ('ERR : real-time policy: ' + $_.Exception.Message) }
+
+        foreach ($svc in $svcList) {
+            $key = "HKLM:\SYSTEM\CurrentControlSet\Services\$svc"
+            if (-not (Test-Path -LiteralPath $key)) { continue }
+            try {
+                Set-ItemProperty -LiteralPath $key -Name Start -Type DWord -Value 4 -Force -ErrorAction Stop
+                Write-Line ('OFF : ' + $svc + ' Start=4')
+            } catch { $fail++; Write-Line ('ERR : ' + $svc + ': ' + $_.Exception.Message) }
+        }
+
+        foreach ($proc in @('MsMpEng', 'NisSrv')) {
+            $running = Get-Process -Name $proc -ErrorAction SilentlyContinue
+            if (-not $running) { Write-Line ('SKIP: ' + $proc + ' not running'); continue }
+            try {
+                $running | Stop-Process -Force -ErrorAction Stop
+                Write-Line ('KILL: ' + $proc)
+            } catch { Write-Line ('WARN: ' + $proc + ': ' + $_.Exception.Message) }
+        }
+
+        if ($fail -gt 0) { Finish-Action 1 'completed' }
+        Finish-Action 0 'completed'
+    }
+
+    # Защитник Windows: включение обратно. Снимается только то, что ставил
+    # defenderdisable; службы восстанавливаются из бэкапа (InFile), а без него
+    # — к заводским стартовым значениям. Драйверы WdFilter/WdBoot полностью
+    # возвращаются только после перезагрузки — код остаётся 0.
+    'defenderenable' {
+        $fail = 0
+        $defaults = @{
+            'WinDefend'            = 2
+            'WdNisSvc'             = 2
+            'WdNisDrv'             = 3
+            'WdFilter'             = 0
+            'WdBoot'               = 0
+            'SecurityHealthService' = 2
+        }
+
+        $startMap = @{}
+        if ($InFile -and (Test-Path -LiteralPath $InFile)) {
+            foreach ($line in (Get-Content -LiteralPath $InFile -Encoding UTF8)) {
+                if (-not $line.Trim()) { continue }
+                $p = $line -split '\|'
+                if ($p.Count -ge 2 -and $p[1] -match '^\d$') { $startMap[$p[0]] = [int]$p[1] }
+            }
+        }
+
+        # Политика: значения защитника снимаем точечно, ключ целиком не удаляем
+        # (там могут быть не связанные с SCU политики).
+        $policyRoot = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender'
+        $rtp = Join-Path $policyRoot 'Real-Time Protection'
+        # При отключении создан ПОДКЛЮЧЬ целиком со SCU-набором значений:
+        # возвращать его к безполитичному состоянию можно удалением ключа.
+        try { Remove-Item -LiteralPath $rtp -Force -ErrorAction SilentlyContinue } catch {}
+        foreach ($v in @('DisableAntiSpyware')) {
+            try { Remove-ItemProperty -Path $policyRoot -Name $v -Force -ErrorAction SilentlyContinue } catch {}
+        }
+        Write-Line 'OK  : policy removed (DisableAntiSpyware, Real-Time Protection)'
+
+        foreach ($svc in $defaults.Keys) {
+            $key = "HKLM:\SYSTEM\CurrentControlSet\Services\$svc"
+            if (-not (Test-Path -LiteralPath $key)) { Write-Line ('MISS: ' + $svc); continue }
+            $target = if ($startMap.ContainsKey($svc)) { $startMap[$svc] } else { $defaults[$svc] }
+            try {
+                Set-ItemProperty -LiteralPath $key -Name Start -Type DWord -Value ([int]$target) -Force -ErrorAction Stop
+                Write-Line ('ON  : ' + $svc + ' Start=' + $target)
+            } catch {
+                $fail++
+                Write-Line ('ERR : ' + $svc + ': ' + $_.Exception.Message)
+            }
+        }
+
+        # Запуск служб best-effort: SCM применяет реестровые значения сразу,
+        # но subsystem может потребовать перезагрузку — ошибку считаем предупреждением.
+        foreach ($svc in @('WinDefend', 'WdNisSvc', 'SecurityHealthService')) {
+            try {
+                $svcObj = Get-Service -Name $svc -ErrorAction SilentlyContinue
+                if (-not $svcObj) { continue }
+                if ($svcObj.StartType -eq [System.ServiceProcess.ServiceStartMode]::Disabled) { continue }
+                if ($svcObj.Status -ne 'Running') {
+                    Start-Service -Name $svc -ErrorAction Stop
+                    Write-Line ('START: ' + $svc)
+                }
+            } catch { Write-Line ('WARN: start ' + $svc + ': ' + $_.Exception.Message) }
+        }
+        Write-Line 'HINT: reboot may be required to fully restore driver services'
+
+        if ($fail -gt 0) { Finish-Action 1 'completed' }
+        Finish-Action 0 'completed'
     }
 
     # Компоненты ставятся приложением напрямую (RuntimeInstaller: скачивание,

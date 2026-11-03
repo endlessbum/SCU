@@ -9,6 +9,17 @@ using SCU.Views.Controls;
 
 namespace SCU.ViewModels;
 
+// Вердикт проверки файла для цветного бейджа (дизайн, п. 3): «Чисто»,
+// «Подозрительно», «Угроза», «Ошибка». None — вердикта нет (обычный файл).
+public enum SafeVerdict
+{
+    None = 0,
+    Clean = 1,
+    Suspicious = 2,
+    Threat = 3,
+    Error = 4,
+}
+
 // Элемент списка в режиме папки.
 public sealed class SafeViewerEntry
 {
@@ -39,6 +50,23 @@ public partial class SafeViewerViewModel : ObservableObject
     [ObservableProperty]
     private string _verdictLine = string.Empty;
 
+    // Вердикт проверки: определяет цвет и подпись крупного бейджа вверху
+    // карточки (дизайн, п. 3) — раньше вердикт был только строкой в шапке.
+    [ObservableProperty]
+    private SafeVerdict _verdictKind;
+
+    // Короткая подпись бейджа: «Чисто» / «Подозрительно» / «Угроза» / «Ошибка».
+    public string VerdictBadgeText => VerdictKind switch
+    {
+        SafeVerdict.Clean => L.T("Чисто"),
+        SafeVerdict.Suspicious => L.T("Подозрительно"),
+        SafeVerdict.Threat => L.T("Угроза"),
+        SafeVerdict.Error => L.T("Ошибка"),
+        _ => string.Empty,
+    };
+
+    partial void OnVerdictKindChanged(SafeVerdict value) => OnPropertyChanged(nameof(VerdictBadgeText));
+
     [ObservableProperty]
     private string _noteText = string.Empty;
 
@@ -63,10 +91,11 @@ public partial class SafeViewerViewModel : ObservableObject
 
     // ---------- Точки входа (файл / папка / универсальный) ----------
 
-    public void OpenFile(string path, string? verdictLine = null, string? note = null)
+    public void OpenFile(string path, string? verdictLine = null, string? note = null, SafeVerdict verdict = SafeVerdict.None)
     {
         IsFolderMode = false;
         VerdictLine = verdictLine ?? string.Empty;
+        VerdictKind = verdict;
         NoteText = note ?? string.Empty;
         _currentFile = path;
         LocationText = path;
@@ -89,6 +118,7 @@ public partial class SafeViewerViewModel : ObservableObject
     {
         IsFolderMode = true;
         VerdictLine = string.Empty;
+        VerdictKind = SafeVerdict.None;
         NavigateTo(path);
     }
 
@@ -327,10 +357,10 @@ public partial class SafeViewerViewModel : ObservableObject
 
     // ---------- Открытие окна ----------
 
-    public static void ShowFile(string path, string? verdictLine = null, string? note = null)
+    public static void ShowFile(string path, string? verdictLine = null, string? note = null, SafeVerdict verdict = SafeVerdict.None)
     {
         var viewModel = new SafeViewerViewModel();
-        viewModel.OpenFile(path, verdictLine, note);
+        viewModel.OpenFile(path, verdictLine, note, verdict);
         Show(viewModel);
     }
 

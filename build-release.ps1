@@ -9,6 +9,7 @@
 param(
     [switch] $SkipInstaller,
     [switch] $SkipSign,
+    [switch] $SkipTest,
     # П. 1 аудита: секреты не хранятся в исходниках. Пароль PFX — только
     # через переменную окружения; отсутствие — не блокирует (PFX в репозиторий
     # не входит, подпись идёт сертификатом из хранилища).
@@ -16,6 +17,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# $PSNativeCommandArgumentPassing = 'Legacy': PowerShell 7+ иначе экранирует
+# аргументы native-команд (cmake/msbuild/ISCC) по-своему, что ломает конвейер.
+$PSNativeCommandArgumentPassing = 'Legacy'
 $root = $PSScriptRoot
 $scannerOut = Join-Path $root 'SecurityScanner\out\Release'
 $thumbprintFile = Join-Path $root 'SecurityScanner\signing\thumbprint.txt'
@@ -68,17 +72,21 @@ if ($signingEnabled) {
     Write-Host "signed: ScannerCore.exe (thumbprint $thumbprint)"
 }
 
-# П. M-04 аудита: релиз не публикуется после регрессии в тестах — тестовый гейт
-# обязателен перед publish (в CI то же делает release.yml, здесь — локальный путь).
-Write-Host '=== 2. dotnet test (Release) ==='
-$testArgs = @('test', (Join-Path $root 'SCU.Tests\SCU.Tests.csproj'), '-c', 'Release', '--nologo')
-if ($SkipSign -and (Test-Path $thumbprintFile)) {
-    # -SkipSign: без подписи пин не вшиваем и в тестовую сборку, иначе
-    # раннер потребует подпись у unsigned ScannerCore.
-    $testArgs += '-p:ScannerForceNoPin=true'
+if (-not $SkipTest) {
+    # П. M-04 аудита: релиз не публикуется после регрессии в тестах — тестовый гейт
+    # обязателен перед publish (в CI то же делает release.yml, здесь — локальный путь).
+    Write-Host '=== 2. dotnet test (Release) ==='
+    $testArgs = @('test', (Join-Path $root 'SCU.Tests\SCU.Tests.csproj'), '-c', 'Release', '--nologo')
+    if ($SkipSign -and (Test-Path $thumbprintFile)) {
+        # -SkipSign: без подписи пин не вшиваем и в тестовую сборку, иначе
+        # раннер потребует подпись у unsigned ScannerCore.
+        $testArgs += '-p:ScannerForceNoPin=true'
+    }
+    dotnet @testArgs
+    if ($LASTEXITCODE -ne 0) { throw 'dotnet test failed' }
+} else {
+    Write-Host '=== 2. dotnet test (Release) пропущен (-SkipTest) ==='
 }
-dotnet @testArgs
-if ($LASTEXITCODE -ne 0) { throw 'dotnet test failed' }
 
 Write-Host '=== 2a. ScannerCore без тест-хуков (production) ==='
 # Релизится ровно hooks-free бинарник: SCU_TEST_CANCEL_AFTER / SCU_TEST_RUN_KEY
@@ -144,6 +152,21 @@ if (Test-Path $payloadPath) {
 }
 Write-Host "version: $binVersionShort"
 
+# SCU-05 (второй аудит): SBOM обязан соответствовать версии собранного
+# приложения — расходящаяся версия ломает привязку состава компонентов к релизу.
+$sbomPath = Join-Path $root 'sbom\bom.json'
+if (Test-Path $sbomPath) {
+    try { $sbom = Get-Content $sbomPath -Raw | ConvertFrom-Json } catch { $sbom = $null }
+    $sbomVersion = $sbom.metadata.component.version
+    if ($sbomVersion -ne $binVersionShort) {
+        throw "sbom version mismatch: binary=$binVersionShort, sbom=$sbomVersion. Обновите sbom/bom.json или сгенерируйте SBOM заново."
+    }
+    Write-Host "sbom: SCU.App@$sbomVersion ok"
+}
+else {
+    throw "sbom missing: sbom/bom.json не найден — выпуск без состава компонентов запрещён."
+}
+
 Write-Host '=== 4. Подпись бинарей ==='
 if ($signingEnabled) {
     $certName = 'SCU Code Signing'
@@ -187,6 +210,16 @@ if (Test-Path (Split-Path $manifestPath)) {
     Write-Host "manifest: $manifestPath ($($entries.Count) files)"
 }
 
+Write-Host '=== 5a. Сборка загрузчика SetupLauncher ==='  # SCU_Install.exe — загрузчик обёртки
+$launcherBuildDir = Join-Path $root 'SetupLauncher\build'
+cmake -S (Join-Path $root 'SetupLauncher') -B $launcherBuildDir -A x64 "-DAPP_SEMVER=$binVersionShort" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'cmake configure SetupLauncher failed' }
+cmake --build $launcherBuildDir --config Release | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'cmake build SetupLauncher failed' }
+$launcherExe = Join-Path $launcherBuildDir 'Release\SCU_Install.exe'
+if (-not (Test-Path $launcherExe)) { throw 'SCU_Install.exe не собран' }
+Write-Host "загрузчик: $launcherExe ($((Get-Item $launcherExe).Length) байт, $((Get-Item $launcherExe).VersionInfo.FileVersion))"
+
 if ($SkipInstaller) {
     Write-Host '=== Installer пропущен (-SkipInstaller) ==='
     Write-Host "publish ready: $publishDir"
@@ -219,17 +252,72 @@ if ($signingEnabled) {
 & $isscc @isccArgs
 if ($LASTEXITCODE -ne 0) { throw 'ISCC failed' }
 
+Write-Host '=== 6a. Упаковка обёртки установщика ==='  # [PE-загрузчик][overlay: payload][трейлер 8 байт LE]
+$launcherExe = Join-Path $root 'SetupLauncher\build\Release\SCU_Install.exe'
+if (-not (Test-Path $launcherExe)) { throw 'Загрузчик не собран (шаг 5a): $launcherExe' }
+$payloadItem = Get-ChildItem (Join-Path $root 'installer') -Filter 'SCU_Setup_*.exe' -File |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $payloadItem) { throw 'payload не найден: installer\SCU_Setup_*.exe' }
+$version = ($payloadItem.BaseName -replace '^SCU_Setup_', '')
+$outPath = Join-Path $root "installer\SCU_Install_$version.exe"
+$launcherBytes = [IO.File]::ReadAllBytes($launcherExe)
+$payloadBytes = [IO.File]::ReadAllBytes($payloadItem.FullName)
+$trailer = [BitConverter]::GetBytes([int64]$payloadBytes.Length)
+$stream = [IO.File]::Create($outPath)
+try {
+    $stream.Write($launcherBytes, 0, $launcherBytes.Length)
+    $stream.Write($payloadBytes, 0, $payloadBytes.Length)
+    $stream.Write($trailer, 0, $trailer.Length)
+}
+finally {
+    $stream.Close()
+}
+# Контроль, как прочитает загрузчик: последние 8 байт -> размер payload
+$all = [IO.File]::ReadAllBytes($outPath)
+$sizeFromTrailer = [BitConverter]::ToInt64($all, $all.Length - 8)
+$offset = $all.Length - 8 - $sizeFromTrailer
+$sha = [Security.Cryptography.SHA256]::Create()
+$extracted = $sha.ComputeHash($all[$offset..($all.Length - 9)])
+$original = $sha.ComputeHash($payloadBytes)
+if ($sizeFromTrailer -ne $payloadBytes.Length) { throw 'трейлер обёртки не совпадает с размером payload' }
+if ([BitConverter]::ToString($extracted) -ne [BitConverter]::ToString($original)) { throw 'payload обёртки не идентичен исходному' }
+Write-Host "обёртка: $outPath ($($all.Length) байт = загрузчик $($launcherBytes.Length) + payload $($payloadBytes.Length) + 8)"
+
+# Аудит, п. 19: пользователь запускает именно обёртку (SCU_Install_*.exe), и
+# она обязана быть подписана сама — подпись вложенного SCU_Setup не защищает
+# внешний загрузчик ни от SmartScreen, ни от подмены. Подпись Authenticode
+# добавляет таблицу сертификатов в конец файла; загрузчик находит трейлер
+# перед ней (SetupLauncher/src/main.cpp, FindTrailerOffset).
+if ($signingEnabled) {
+    & $signtool sign /fd SHA256 /n 'SCU Code Signing' /sha1 $thumbprint $outPath
+    if ($LASTEXITCODE -ne 0) { throw "signtool failed: $outPath" }
+    Write-Host "signed: $outPath (thumbprint $thumbprint)"
+}
+Write-Host "обёртка SHA256: $((Get-FileHash $outPath -Algorithm SHA256).Hash.ToLowerInvariant())"
+
 # Аудит: SHA256SUMS.txt перегенерируется по факту сборки installer'а —
 # иначе манифест расходился с артефактом (исторические версии 2.x при
-# текущей 3.x).
+# текущей 3.x). В манифест входят и payload (SCU_Setup_*.exe), и финальная
+# обёртка (SCU_Install_*.exe) — пользователь скачивает именно её.
 $latestInstaller = Get-ChildItem (Join-Path $root 'installer') -Filter 'SCU_Setup_*.exe' -File |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
+$latestWrapper = Get-ChildItem (Join-Path $root 'installer') -Filter 'SCU_Install_*.exe' -File |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+$checksumEntries = @()
 if ($latestInstaller) {
     $hash = (Get-FileHash $latestInstaller.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $checksumEntries += "$hash *installer/$($latestInstaller.Name)"
+}
+if ($latestWrapper) {
+    $hash = (Get-FileHash $latestWrapper.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $checksumEntries += "$hash *installer/$($latestWrapper.Name)"
+}
+if ($checksumEntries.Count -gt 0) {
     Set-Content -Path (Join-Path $root 'installer\SHA256SUMS.txt') `
-        -Value "$hash *installer/$($latestInstaller.Name)" -NoNewline -Encoding ascii
-    Write-Host "checksums: installer/SHA256SUMS.txt обновлён ($($latestInstaller.Name))"
+        -Value ($checksumEntries -join "`n") -NoNewline -Encoding ascii
+    Write-Host "checksums: installer/SHA256SUMS.txt обновлён ($($checksumEntries.Count) файлов)"
 }
 
 # П. 18 аудита: после сборки/подписи автоматически проверяем подписи
@@ -246,6 +334,11 @@ if ($signingEnabled) {
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
     if ($installers) { $verifyTargets += $installers.FullName }
+    # Аудит, п. 19: проверяется и финальная обёртка — её запускает пользователь.
+    $wrappers = Get-ChildItem (Join-Path $root 'installer') -Filter 'SCU_Install_*.exe' -File |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if ($wrappers) { $verifyTargets += $wrappers.FullName }
     foreach ($path in $verifyTargets) {
         if (-not (Test-Path $path)) { throw "verify: отсутствует $path" }
         # signtool verify не принимает /n (он только у sign); подписанта
@@ -262,3 +355,8 @@ Get-ChildItem (Join-Path $root 'installer') -Filter 'SCU_Setup_*.exe' |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1 |
     ForEach-Object { Write-Host "installer: $($_.FullName)" }
+# Финальная обёртка — то, что скачивает пользователь (аудит, п. 19).
+Get-ChildItem (Join-Path $root 'installer') -Filter 'SCU_Install_*.exe' |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 |
+    ForEach-Object { Write-Host "wrapper:  $($_.FullName)" }

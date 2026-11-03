@@ -40,6 +40,12 @@ internal sealed class JsonStateFile<T>
     // молча теряла бы неизвестные поля (аудит storage, forward-compatibility).
     // Чтение и запись идут под одним файловым семафором.
     private bool _futureSchema;
+    // Последнее успешно прочитанное содержимое: при сбое I/O показываем его,
+    // а не пустой список (аудит storage, п. 10).
+    private List<T>? _lastKnownItems;
+    // Файл не удалось прочитать из-за I/O-сбоя: запись в него пропускается,
+    // иначе в файл попала бы только новая запись, а прежняя история пропала.
+    private bool _readFailed;
 
     public JsonStateFile(Logger logger, string path, int capacity, string label)
         : this(logger, path, capacity, label, null, null)
@@ -89,6 +95,14 @@ internal sealed class JsonStateFile<T>
         try
         {
             var items = await TaskRunner.RunBlocking(ReadList, ct).ConfigureAwait(false);
+            if (_readFailed)
+            {
+                // Файл не прочитан (сбой I/O) — не пишем: перезапись оставила бы
+                // в файле только новую запись, и прежняя история была бы потеряна.
+                _logger.Warn($"{_label} | append skipped: state file is unreadable");
+                return false;
+            }
+
             items.Add(item);
             var trimmed = items.Count > _capacity
                 ? items.Skip(items.Count - _capacity).ToList()
@@ -136,8 +150,14 @@ internal sealed class JsonStateFile<T>
 
     // Повреждённый файл — не ошибка приложения: содержимое теряется, но работоспособность
     // сохраняется (переименование в *.corrupt-<timestamp> сохраняет данные для разбора).
+    //
+    // Аудит, п. 10: повреждением считается только некорректный JSON. Сбой I/O
+    // (файл занят антивирусом, сетевой профиль, нет прав) — это не повреждение:
+    // файл цел, и переименование его в .corrupt-* плюс пустой список стирали
+    // историю — следующая запись писала бы в файл только новую запись.
     private List<T> ReadList()
     {
+        string json;
         try
         {
             if (!File.Exists(_path))
@@ -145,10 +165,24 @@ internal sealed class JsonStateFile<T>
                 // Файла нет (удалён ClearAsync или пользователем): future-schema
                 // режим снимается — писать больше нечего защищать (аудит).
                 _futureSchema = false;
+                _readFailed = false;
+                _lastKnownItems = [];
                 return [];
             }
 
-            var json = File.ReadAllText(_path);
+            json = File.ReadAllText(_path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Временный сбой чтения: файл не трогаем и возвращаем последнее
+            // известное содержимое, чтобы UI не показал пустую историю.
+            _readFailed = true;
+            _logger.Warn($"{_label} | state file read failed: {exception.Message}");
+            return _lastKnownItems ?? [];
+        }
+
+        try
+        {
             List<T>? items;
             try
             {
@@ -177,10 +211,15 @@ internal sealed class JsonStateFile<T>
                 items = JsonSerializer.Deserialize<List<T>>(json);
             }
 
-            return ApplyRetention(items ?? []);
+            var result = ApplyRetention(items ?? []);
+            _readFailed = false;
+            _lastKnownItems = result;
+            return result;
         }
-        catch (Exception exception)
+        catch (JsonException exception)
         {
+            // Настоящее повреждение содержимого: файл уводим в .corrupt-*, чтобы
+            // он не перезаписывался следующей записью и остался для разбора.
             _logger.Warn($"{_label} | state file corrupted: {exception.Message}");
             try
             {
@@ -194,7 +233,17 @@ internal sealed class JsonStateFile<T>
                 _logger.Warn($"{_label} | state file rename failed: {moveException.Message}");
             }
 
+            _readFailed = false;
+            _lastKnownItems = [];
             return [];
+        }
+        catch (Exception exception)
+        {
+            // Прочие сбоя разбора (не JSON) — файл цел: не переименовываем его
+            // и не выдаём пустой список, иначе прежние записи пропали бы.
+            _readFailed = true;
+            _logger.Warn($"{_label} | state file read failed: {exception.Message}");
+            return _lastKnownItems ?? [];
         }
     }
 

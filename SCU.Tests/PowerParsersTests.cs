@@ -99,4 +99,38 @@ public class PowerParsersTests
     {
         Assert.Equal(-1, SCU.Infrastructure.Windows.Power.PowerService.ParseDiskIdleAcIndex("no matching block"));
     }
+
+    // Аудит, п. 4: в реальном выводе powercfg /q перед текущими значениями идут
+    // Minimum/Maximum/Increment. Прежний парсер возвращал первое hex-значение (0 —
+    // «отключение диска запрещено»), из-за чего тумблер «вернуть 20 минут» не работал.
+    [Fact]
+    public void ParseDiskIdleAcIndex_SkipsPossibleSettings()
+    {
+        var output =
+            "  GUID параметра электропитания: 6738e2c4-e8a5-4a42-b16a-e040e769756e  (Таймаут отключения жёсткого диска)\r\n" +
+            "    GUID псевдонима: DISKIDLE\r\n" +
+            "    Минимально возможный параметр: 0x00000000\r\n" +
+            "    Максимально возможный параметр: 0xffffffff\r\n" +
+            "    Приращение параметра: 0x00000001\r\n" +
+            "    Текущий индекс параметра питания от сети переменного тока: 0x00092784\r\n" +
+            "    Текущий индекс параметра питания от батареи: 0x000004b0\r\n";
+
+        Assert.Equal(0x00092784, SCU.Infrastructure.Windows.Power.PowerService.ParseDiskIdleAcIndex(output));
+    }
+
+    [Fact]
+    public void ParseDiskIdleAcIndex_StopsAtNextParameterBlock()
+    {
+        var output =
+            "  GUID параметра электропитания: 6738e2c4-e8a5-4a42-b16a-e040e769756e\r\n" +
+            "    GUID псевдонима: DISKIDLE\r\n" +
+            "    Текущий индекс параметра питания от сети: 0x00000000\r\n" +
+            "    Текущий индекс параметра питания от батареи: 0x00000000\r\n" +
+            "\r\n" +
+            "  GUID параметра электропитания: 5dbb7c9f-38e9-40d2-9749-4f8fb067a6b7\r\n" +
+            "    Минимально возможный параметр: 0x00000000\r\n" +
+            "    Максимально возможный параметр: 0xffffffff\r\n";
+
+        Assert.Equal(0, SCU.Infrastructure.Windows.Power.PowerService.ParseDiskIdleAcIndex(output));
+    }
 }

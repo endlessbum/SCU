@@ -26,19 +26,33 @@ public static class TaskRunner
     // Запуск фоновой задачи без ожидания. Голый `_ = task` терял исключение до
     // финализатора GC (UnobservedTaskException всплывает в неопределённый момент);
     // здесь отмена глотается, а сбой сразу попадает в журнал.
-    public static async void RunAndForget(Task task, Logger? logger = null, string context = "")
+    // Публичный метод не async: сам логгер может бросить исключение, а необработанное
+    // исключение из async void роняет процесс — логирование под собственной защитой.
+    public static void RunAndForget(Task task, Logger? logger = null, string context = "")
     {
-        try
+        async void Run()
         {
-            await task.ConfigureAwait(false);
+            try
+            {
+                await task.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Осознанная отмена — не ошибка.
+            }
+            catch (Exception exception)
+            {
+                try
+                {
+                    logger?.Error("BACKGROUND | " + (context.Length > 0 ? context + " | " : string.Empty) + exception);
+                }
+                catch
+                {
+                    // Сбой журнала не должен ронять приложение поверх фоновой ошибки.
+                }
+            }
         }
-        catch (OperationCanceledException)
-        {
-            // Осознанная отмена — не ошибка.
-        }
-        catch (Exception exception)
-        {
-            logger?.Error("BACKGROUND | " + (context.Length > 0 ? context + " | " : string.Empty) + exception);
-        }
+
+        Run();
     }
 }

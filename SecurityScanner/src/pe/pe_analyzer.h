@@ -6,6 +6,8 @@
 
 #include "core/types.h"
 
+#include <windows.h>
+
 #include <string>
 #include <vector>
 
@@ -22,7 +24,10 @@ class PeAnalyzer {
 public:
     // Анализирует файл по пути (заголовки читает из памяти файла, entropy
     // секций считает потоково, без чтения всего файла в память).
-    static PeAnalysis Analyze(const std::wstring& path);
+    // predefinedFile — уже открытый хэндл (аудит TOCTOU): анализ идёт по нему,
+    // хэндл не закрывается (владелец — вызывающий); INVALID_HANDLE_VALUE —
+    // открыть по пути и закрыть как раньше.
+    static PeAnalysis Analyze(const std::wstring& path, HANDLE predefinedFile = INVALID_HANDLE_VALUE);
 };
 
 } // namespace scan

@@ -16,8 +16,10 @@ public sealed class SCURunner
 
     // Аудит portable-развёртывания (лог 2026-10-05: E:\SCU без Assets\SCU.ps1 →
     // startup/tasks зоны сканера отваливались). Раньше путь жёстко был
-    // BaseDirectory\Assets\SCU.ps1; теперь проверяем несколько стандартных
-    // раскладок, включая «скрипт рядом с exe».
+    // BaseDirectory\Assets\SCU.ps1; теперь проверяем раскладки внутри каталога
+    // приложения, включая «скрипт рядом с exe». Кандидаты от
+    // Environment.CurrentDirectory убраны (аудит): рабочий каталог — доступная
+    // процессу папка, подложенный оттуда SCU.ps1 выполнился бы с правами SCU.
     public static string FindScript()
     {
         var baseDir = AppContext.BaseDirectory;
@@ -25,8 +27,6 @@ public sealed class SCURunner
         {
             Path.Combine(baseDir, "Assets", "SCU.ps1"),
             Path.Combine(baseDir, "SCU.ps1"),
-            Path.Combine(Environment.CurrentDirectory, "Assets", "SCU.ps1"),
-            Path.Combine(Environment.CurrentDirectory, "SCU.ps1"),
         };
 
         return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
@@ -135,7 +135,24 @@ public sealed class SCURunner
         }
         catch (Exception exception)
         {
+            // Единая процедура выхода (аудит, по образцу LongProcessRunner):
+            // снимаем дерево процессов и наблюдаем read-таски, иначе при редком
+            // сбое wait'а повышенный PowerShell оставался жить, а исключения
+            // чтения становились UnobservedTaskException.
             _logger.Error($"PS | wait failed | action={action} | {exception.Message}");
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception killException)
+            {
+                _logger.Warn($"PS | kill after failure | {killException.Message}");
+            }
+
+            await RunnerGuard.ObserveQuietly(stdoutTask, stderrTask).ConfigureAwait(false);
             return Result.Failure("Ошибка ожидания SCU.ps1: " + exception.Message);
         }
 

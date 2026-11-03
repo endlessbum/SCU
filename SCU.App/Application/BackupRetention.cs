@@ -25,7 +25,8 @@ public static class BackupRetention
     // Оставить MaxFilesPerDirectory самых свежих файлов каталога, остальные удалить.
     // Любой сбой (нет каталога, файл занят) не роняет вызывающую операцию: бэкап
     // важнее уборки. Сортировка по LastWriteTimeUtc, при равенстве — по имени (стабильно).
-    public static void Enforce(string? directory, Logger? logger = null)
+    // rootDirectory — если задан, каталог обязан лежать внутри него (канонический путь).
+    public static void Enforce(string? directory, Logger? logger = null, string? rootDirectory = null)
     {
         if (IsRetentionExempt(directory, logger))
         {
@@ -39,8 +40,19 @@ public static class BackupRetention
                 return;
             }
 
+            // Аудит, п. 2: junction/reparse point внутри backup-дерева увёл бы
+            // удаление файлов в целевой каталог (при запуске с правами администратора —
+            // за пределы %AppData%\SCU\backup).
+            if (!IsSafeForRetention(directory, rootDirectory, logger))
+            {
+                return;
+            }
+
             var stale = Directory.EnumerateFiles(directory)
                 .Select(path => new FileInfo(path))
+                // Ссылки (reparse point) не считаем и не удаляем: их адресат — чужой
+                // файл, а mtime ссылки не отражает свежесть бэкапа.
+                .Where(file => (file.Attributes & FileAttributes.ReparsePoint) == 0)
                 .OrderByDescending(file => file.LastWriteTimeUtc)
                 .ThenBy(file => file.Name, StringComparer.OrdinalIgnoreCase)
                 .Skip(MaxFilesPerDirectory)
@@ -85,7 +97,7 @@ public static class BackupRetention
                     continue;
                 }
 
-                Enforce(directory, logger);
+                Enforce(directory, logger, root);
             }
         }
         catch (Exception exception)
@@ -93,6 +105,58 @@ public static class BackupRetention
             logger?.Warn("RETENTION | enforce all failed | " + exception.Message);
         }
     }
+
+    // Каталог пригоден для retention: лежит внутри канонического корня (если он
+    // задан), и ни он сам, ни кто-то из его родителей не является reparse point.
+    // Так уборка не может уйти по junction/symlink в чужой каталог.
+    private static bool IsSafeForRetention(string directory, string? rootDirectory, Logger? logger)
+    {
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(directory);
+        }
+        catch (Exception exception)
+        {
+            logger?.Warn("RETENTION | path resolve failed | " + directory + " | " + exception.Message);
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(rootDirectory))
+        {
+            var canonicalRoot = CanonicalPath(rootDirectory);
+            var canonicalDirectory = CanonicalPath(fullPath);
+            if (!canonicalDirectory.StartsWith(
+                    canonicalRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                logger?.Warn("RETENTION | outside backup root | " + fullPath);
+                return false;
+            }
+        }
+
+        for (var current = new DirectoryInfo(fullPath); current is not null; current = current.Parent)
+        {
+            try
+            {
+                if ((current.Attributes & FileAttributes.ReparsePoint) != 0 || current.LinkTarget is not null)
+                {
+                    logger?.Warn("RETENTION | skipped reparse point | " + current.FullName);
+                    return false;
+                }
+            }
+            catch (Exception exception)
+            {
+                // Не смогли убедиться, что каталог обычный, — уборку не выполняем.
+                logger?.Warn("RETENTION | attributes failed | " + current.FullName + " | " + exception.Message);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string CanonicalPath(string path) =>
+        Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     private static bool IsRetentionExempt(string? directory, Logger? logger)
     {

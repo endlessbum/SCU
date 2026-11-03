@@ -27,11 +27,15 @@ public:
 
     // Блокирующе резервирует bytes, ожидая освобождения кредита с учётом отмены.
     // Возврат false — отмена во время ожидания. Если bytes больше всего бюджета,
-    // резерв выдаётся при пустом пуле — защита от ливлока на предельном архиве.
+    // резерв при пустом пуле выдаётся только в пределах kEscapeHatchCapBytes
+    // (аудит: люк против ливлока на предельном архиве, но не безлимитный).
     bool Acquire(unsigned long long bytes, const std::atomic<bool>& isCancelled);
     void Release(unsigned long long bytes) noexcept;
 
     static constexpr unsigned long long kBudgetBytes = 1024ull * 1024 * 1024; // 1 ГБ
+    // Кап escape-люка — дефолтный maxArchiveSize: обычный архив всегда проходит
+    // по основному бюджету, люк остаётся страховкой на предельные конфигурации.
+    static constexpr unsigned long long kEscapeHatchCapBytes = 256ull * 1024 * 1024;
 
 private:
     std::mutex mutex_;

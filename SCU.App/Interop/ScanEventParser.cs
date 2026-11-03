@@ -81,7 +81,9 @@ public static class ScanEventParser
                     // summary обязателен и должен быть объектом с числовыми полями:
                     // {"summary":{}} с нулями — malformed-протокол, а не Clean;
                     // {"summary":null} раньше давал NullReferenceException в маппере.
-                    scanEvent.Result = HasValidSummary(root)
+                    // Массив detections тоже обязан быть массивом: "detections": null
+                    // присваивал DTO null, и маппер падал на .Count (аудит, п. 22).
+                    scanEvent.Result = HasValidSummary(root) && HasValidDetections(root)
                         ? root.Deserialize<ScanResultDto>(Options)
                         : null;
                     break;
@@ -121,6 +123,20 @@ public static class ScanEventParser
         }
 
         return true;
+    }
+
+    // Массив detections: поле может отсутствовать (тогда детектов нет), но
+    // если оно есть — обязано быть массивом. "detections": null в
+    // malformed-протоколе раньше доходил до маппера как null и ронял скан
+    // (аудит, п. 22).
+    private static bool HasValidDetections(JsonElement root)
+    {
+        if (!root.TryGetProperty("detections", out var detections))
+        {
+            return true;
+        }
+
+        return detections.ValueKind == JsonValueKind.Array;
     }
 
     private static string GetString(JsonElement root, string name) =>

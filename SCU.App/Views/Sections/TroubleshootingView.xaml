@@ -44,11 +44,20 @@
                     </Style.Triggers>
                 </Style>
             </Border.Style>
-            <StackPanel Orientation="Horizontal">
+            <!-- Grid вместо горизонтального StackPanel (аудит, п. 17): в StackPanel
+                 средний блок измерялся с бесконечной шириной, и кнопка
+                 «Пропустить все» выдавливалась за пределы видимой области. -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
                 <!-- Прочерк сводки: красный при проблемах, иначе жёлтый при
                      предупреждениях, иначе серый при информации, зелёный — чисто.
                      Выровнен по центру первой строки заголовка. -->
-                <TextBlock Margin="0,-3,12,0"
+                <TextBlock Grid.Column="0"
+                           Margin="0,-3,12,0"
                            VerticalAlignment="Top"
                            FontSize="18"
                            Text="—">
@@ -78,14 +87,23 @@
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource RowHeaderText}" Text="{Binding SummaryTitle}" />
-                    <TextBlock Style="{StaticResource CaptionText}" Text="{Binding SummaryDetail}" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource RowHeaderText}"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{Binding SummaryTitle}" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               TextWrapping="Wrap"
+                               Text="{Binding SummaryDetail}" />
                     <TextBlock Style="{StaticResource CaptionText}">
                         <Run Text="{DynamicResource S_TS_LastRun}" /><Run Text=" " /><Run Text="{Binding LastScanTimeText, Mode=OneWay}" />
                     </TextBlock>
                 </StackPanel>
-            </StackPanel>
+                <Button Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Margin="12,0,0,0"
+                        Content="{DynamicResource S_TS_SkipAll}"
+                        Command="{Binding SkipAllCommand}" />
+            </Grid>
         </Border>
 
         <!-- Прогресс отдельных проверок (виден только во время работы) -->

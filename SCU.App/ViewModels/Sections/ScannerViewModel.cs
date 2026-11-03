@@ -342,19 +342,28 @@ public partial class ScannerViewModel : ObservableObject, IDisposable, ISectionO
         }
 
         var verdictLine = L.T("Вердикт скана: {0} ({1})", detection.Verdict, detection.RuleId);
+        // Цветной бейдж вердикта (дизайн, п. 3): угроза/подозрение/чистое/ошибка.
+        var verdict = detection.Verdict?.ToLowerInvariant() switch
+        {
+            "malware" or "trojan" or "virus" or "ransomware" or "worm" or "backdoor" => SafeVerdict.Threat,
+            "suspicious" or "potentially_unwanted" or "pua" => SafeVerdict.Suspicious,
+            "clean" => SafeVerdict.Clean,
+            _ => SafeVerdict.Error,
+        };
         if (detection.IsVirtual)
         {
             SafeViewerViewModel.ShowFile(
                 detection.QuarantineTarget,
                 verdictLine,
-                L.T("Обнаружение в члене архива: {0}. Открыт контейнер.", detection.Path));
+                L.T("Обнаружение в члене архива: {0}. Открыт контейнер.", detection.Path),
+                verdict);
             return;
         }
 
         // Persistence-запись: Path — псевдопуть (HKCU\...\Run\X), смотреть
         // можно только реальный файл цели. Кнопка скрыта, когда цели нет,
         // но ShowFile и сам деградирует в «Файл не найден» (fail-safe).
-        SafeViewerViewModel.ShowFile(detection.QuarantineTarget, verdictLine);
+        SafeViewerViewModel.ShowFile(detection.QuarantineTarget, verdictLine, null, verdict);
     }
 
     [RelayCommand]

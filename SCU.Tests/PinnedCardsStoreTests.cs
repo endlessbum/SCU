@@ -14,7 +14,7 @@ public sealed class PinnedCardsStoreTests : IDisposable
     public PinnedCardsStoreTests()
     {
         // Уникальная временная папка на каждый тест; удаление — в Dispose.
-        _directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        _directory = TestScratch.NewDir();
         Directory.CreateDirectory(_directory);
         _filePath = Path.Combine(_directory, "pinned-cards.json");
         _logger = Logger.CreateForCurrentRun();

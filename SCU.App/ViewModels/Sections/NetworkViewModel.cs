@@ -38,6 +38,8 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
     [NotifyCanExecuteChangedFor(nameof(NetBiosDhcpCommand))]
     [NotifyCanExecuteChangedFor(nameof(FlushNetBiosCacheCommand))]
     [NotifyCanExecuteChangedFor(nameof(FlushDnsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(NduDisableCommand))]
+    [NotifyCanExecuteChangedFor(nameof(NduEnableCommand))]
     [NotifyCanExecuteChangedFor(nameof(RemoveMinCifraCertCommand))]
     [NotifyCanExecuteChangedFor(nameof(GamingProfileCommand))]
     [NotifyCanExecuteChangedFor(nameof(RollbackGamingProfileCommand))]
@@ -95,6 +97,11 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
     [ObservableProperty]
     private string? _activeNetBiosKey;
 
+    // Подсветка NDU-кнопок: "disabled"/"enabled" — фактический Start из реестра,
+    // null — состояние не прочитано (кнопки без подсветки, честное «неизвестно»).
+    [ObservableProperty]
+    private string? _activeNduKey;
+
     // В бэкапе профиля адаптера есть что откатывать — видна кнопка «Откатить».
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RestoreAdapterProfileCommand))]
@@ -144,6 +151,7 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
             AddRefreshProblem(problems, await RefreshInterfacesAsync(ct).ConfigureAwait(true));
             await RefreshQosAsync(ct).ConfigureAwait(true);
             await RefreshNetBiosAsync(ct).ConfigureAwait(true);
+            AddRefreshProblem(problems, await RefreshNduAsync(ct).ConfigureAwait(true));
             IsAdapterProfileRestoreAvailable = NetworkService.HasAdapterProfileBackup();
             IsMinCifraCertInstalled = TrustedCertificateService.IsRussianTrustedInstalled();
             StatusText = problems.Count > 0
@@ -433,7 +441,60 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
         {
             StatusText = "ipconfig /flushdns…";
             var result = await _networkService.FlushDnsCacheAsync(ct).ConfigureAwait(true);
-            StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка (код {0}): {1}", result.Code, result.Message);
+            StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
+        }).ConfigureAwait(true);
+    }
+
+    // Служба NDU (Network Data Usage): отключение сбрасывает статистику трафика
+    // («Использование данных», лимиты) — потому подтверждение; включение —
+    // восстановление, диалог не нужен (как «Восстановить исходное» у QoS).
+    [RelayCommand(CanExecute = nameof(CanModify))]
+    private async Task NduDisableAsync()
+    {
+        if (!_dialogs.Ask(
+                L.T("Отключение службы NDU"),
+                L.T("Служба перестанет собирать статистику трафика: экран «Использование данных» и лимиты трафика перестанут обновляться. Исходный режим запуска сохраняется в бэкап. Продолжить?"),
+                L.T("Отключить")))
+        {
+            return;
+        }
+
+        await RunExclusiveAsync("отключение NDU", async ct =>
+        {
+            StatusText = L.T("Отключение службы NDU…");
+            var result = await TaskRunner.RunBlocking(_networkService.DisableNdu, ct).ConfigureAwait(true);
+            StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
+            if (result.IsSuccess)
+            {
+                _history.Enqueue(new HistoryEvent(
+                    DateTime.Now,
+                    L.T("Сеть"),
+                    L.T("Служба NDU отключена"),
+                    HistoryEvent.StatusOk));
+            }
+
+            await RefreshNduAsync(ct).ConfigureAwait(true);
+        }).ConfigureAwait(true);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanModify))]
+    private async Task NduEnableAsync()
+    {
+        await RunExclusiveAsync("включение NDU", async ct =>
+        {
+            StatusText = L.T("Включение службы NDU…");
+            var result = await TaskRunner.RunBlocking(_networkService.EnableNdu, ct).ConfigureAwait(true);
+            StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
+            if (result.IsSuccess)
+            {
+                _history.Enqueue(new HistoryEvent(
+                    DateTime.Now,
+                    L.T("Сеть"),
+                    L.T("Служба NDU включена"),
+                    HistoryEvent.StatusOk));
+            }
+
+            await RefreshNduAsync(ct).ConfigureAwait(true);
         }).ConfigureAwait(true);
     }
 
@@ -615,6 +676,21 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
         ActiveNetBiosKey = modes.Count > 0 && modes.All(m => m.Options == 2)
             ? "disable"
             : modes.Count > 0 && modes.All(m => m.Options == 0) ? "dhcp" : null;
+    }
+
+    // NDU: Start=4 — отключена (подсветка «Отключить»), иное — включена,
+    // нечитаемо — подсветки нет (сбой чтения уходит в общий статус проблем).
+    private async Task<string?> RefreshNduAsync(CancellationToken ct)
+    {
+        var start = await TaskRunner.RunBlocking(_networkService.GetNduStart, ct).ConfigureAwait(true);
+        if (!start.IsSuccess)
+        {
+            ActiveNduKey = null;
+            return L.T("служба NDU: {0}", L.S(start.Message));
+        }
+
+        ActiveNduKey = start.Value == 4 ? "disabled" : "enabled";
+        return null;
     }
 
     // Последнее прочитанное TCP Global — для вычисления признака игрового профиля.

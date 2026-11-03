@@ -61,16 +61,20 @@
 
             <Button Grid.Column="0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE72B;" Command="{Binding GoBackCommand}"
-                    ToolTip="{DynamicResource S_BrowserBack}" ToolTipService.InitialShowDelay="300" />
+                    ToolTip="{DynamicResource S_BrowserBack}" ToolTipService.InitialShowDelay="300"
+                    AutomationProperties.Name="{DynamicResource S_BrowserBack}" />
             <Button Grid.Column="1" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE72A;" Command="{Binding GoForwardCommand}"
-                    ToolTip="{DynamicResource S_BrowserForward}" ToolTipService.InitialShowDelay="300" />
+                    ToolTip="{DynamicResource S_BrowserForward}" ToolTipService.InitialShowDelay="300"
+                    AutomationProperties.Name="{DynamicResource S_BrowserForward}" />
             <Button Grid.Column="2" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE72C;" Command="{Binding ReloadCommand}"
-                    ToolTip="{DynamicResource S_BrowserReload}" ToolTipService.InitialShowDelay="300" />
+                    ToolTip="{DynamicResource S_BrowserReload}" ToolTipService.InitialShowDelay="300"
+                    AutomationProperties.Name="{DynamicResource S_BrowserReload}" />
             <Button Grid.Column="3" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE711;" Command="{Binding StopCommand}"
-                    ToolTip="{DynamicResource S_BrowserStop}" ToolTipService.InitialShowDelay="300" />
+                    ToolTip="{DynamicResource S_BrowserStop}" ToolTipService.InitialShowDelay="300"
+                    AutomationProperties.Name="{DynamicResource S_BrowserStop}" />
 
             <!-- Адресная строка: URL или поиск в Google. Для небезопасного http://
                  слева внутри поля появляется бейдж «Не защищено», текст сдвигается
@@ -109,7 +113,8 @@
 
             <Button Grid.Column="5" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                     Content="&#xE734;" Command="{Binding ToggleBookmarkCommand}"
-                    ToolTip="{DynamicResource S_BrowserBookmarkAdd}" ToolTipService.InitialShowDelay="300" />
+                    ToolTip="{DynamicResource S_BrowserBookmarkAdd}" ToolTipService.InitialShowDelay="300"
+                    AutomationProperties.Name="{DynamicResource S_BrowserBookmarkAdd}" />
 
             <StackPanel Grid.Column="6" Orientation="Horizontal">
                 <!-- Тумблеры popup-панелей: Click + PreviewMouseDown вместо Command,
@@ -119,36 +124,55 @@
                 <Button x:Name="DownloadsButton" Style="{StaticResource BrowserToolButton}"
                         Content="&#xE896;" Tag="Downloads"
                         PreviewMouseDown="OnPopupTogglePreviewMouseDown" Click="OnPopupToggleClick"
-                        ToolTip="{DynamicResource S_BrowserDownloads}" ToolTipService.InitialShowDelay="300" />
+                        ToolTip="{DynamicResource S_BrowserDownloads}" ToolTipService.InitialShowDelay="300"
+                        AutomationProperties.Name="{DynamicResource S_BrowserDownloads}" />
                 <Button x:Name="HistoryButton" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                         Content="&#xE81C;" Tag="History"
                         PreviewMouseDown="OnPopupTogglePreviewMouseDown" Click="OnPopupToggleClick"
-                        ToolTip="{DynamicResource S_BrowserHistory}" ToolTipService.InitialShowDelay="300" />
+                        ToolTip="{DynamicResource S_BrowserHistory}" ToolTipService.InitialShowDelay="300"
+                        AutomationProperties.Name="{DynamicResource S_BrowserHistory}" />
                 <Button x:Name="BookmarksButton" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                         Content="&#xE8A4;" Tag="Bookmarks"
                         PreviewMouseDown="OnPopupTogglePreviewMouseDown" Click="OnPopupToggleClick"
-                        ToolTip="{DynamicResource S_BrowserBookmarks}" ToolTipService.InitialShowDelay="300" />
+                        ToolTip="{DynamicResource S_BrowserBookmarks}" ToolTipService.InitialShowDelay="300"
+                        AutomationProperties.Name="{DynamicResource S_BrowserBookmarks}" />
                 <Button x:Name="SettingsButton" Margin="6,0,0,0" Style="{StaticResource BrowserToolButton}"
                         Content="&#xE713;" Tag="Settings"
                         PreviewMouseDown="OnPopupTogglePreviewMouseDown" Click="OnPopupToggleClick"
-                        ToolTip="{DynamicResource S_BrowserSettings}" ToolTipService.InitialShowDelay="300" />
+                        ToolTip="{DynamicResource S_BrowserSettings}" ToolTipService.InitialShowDelay="300"
+                        AutomationProperties.Name="{DynamicResource S_BrowserSettings}" />
             </StackPanel>
         </Grid>
 
         <!-- Вкладки -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,6">
-            <Button Style="{StaticResource BrowserToolButton}"
+        <!-- Лента — в Grid, а не в горизонтальном StackPanel (аудит, п. 15):
+             горизонтальный StackPanel измеряет детей с бесконечной шириной,
+             ScrollViewer получал desired width по всем вкладкам, и прокрутка
+             не включалась — часть ленты просто обрезалась. -->
+        <Grid Grid.Row="1" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0"
+                    Style="{StaticResource BrowserToolButton}"
                     Content="&#xE710;" Command="{Binding NewTabCommand}"
-                    ToolTip="{DynamicResource S_BrowserNewTab}" ToolTipService.InitialShowDelay="300" />
+                    ToolTip="{DynamicResource S_BrowserNewTab}" ToolTipService.InitialShowDelay="300"
+                    AutomationProperties.Name="{DynamicResource S_BrowserNewTab}" />
             <!-- Горизонтальная прокрутка (L-03): при 8 вкладках лента может
                  переполнить окно; вертикальный скролл и лишние полосы отключены. -->
-            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+            <ScrollViewer Grid.Column="1"
+                          CanContentScroll="True"
+                          HorizontalScrollBarVisibility="Auto"
                           VerticalScrollBarVisibility="Disabled"
                           Padding="0,0,0,1">
                 <ItemsControl ItemsSource="{Binding Tabs}" x:Name="TabStrip">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" />
+                            <!-- Виртуализированная горизонтальная панель (дизайн, п. 6):
+                                 дети измеряются по своей ширине, а не по бесконечной,
+                                 и лента прокручивается по элементам, а не по пикселям. -->
+                            <VirtualizingStackPanel Orientation="Horizontal" />
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <!-- Флаг триггерных анимаций — на контейнере: MultiDataTrigger
@@ -275,7 +299,7 @@
                 </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
-        </StackPanel>
+        </Grid>
 
         <!-- Web-контент: созданные вкладки живут здесь, видима только активная -->
         <Grid Grid.Row="2" x:Name="WebViewPanel" />
@@ -310,10 +334,20 @@
             <Border Style="{StaticResource SectionCard}"
                     MinWidth="440" MaxWidth="560" MaxHeight="360"
                     Margin="8">
-                <StackPanel>
-                    <TextBlock Style="{StaticResource RowHeaderText}"
+                <!-- Grid, а не StackPanel (аудит, п. 15): список получает
+                     ограниченную по высоте область и прокручивается, а не
+                     обрезается по MaxHeight панели. -->
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Style="{StaticResource RowHeaderText}"
                                Text="{DynamicResource S_BrowserDownloads}" />
-                    <ItemsControl ItemsSource="{Binding Downloads}">
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Downloads}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="0,4">
@@ -383,8 +417,9 @@
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
             </Border>
         </Popup>
 
@@ -400,8 +435,14 @@
             <Border Style="{StaticResource SectionCard}"
                     MinWidth="420" MaxWidth="560" MaxHeight="360"
                     Margin="8">
-                <StackPanel>
-                    <Grid>
+                <!-- Прокручиваемый список (аудит, п. 15): длинная история
+                     обрезалась по MaxHeight без возможности прокрутки. -->
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -413,7 +454,10 @@
                                 Content="{DynamicResource S_BrowserClearHistory}"
                                 Command="{Binding ClearHistoryCommand}" />
                     </Grid>
-                    <ItemsControl ItemsSource="{Binding HistoryEntries}">
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding HistoryEntries}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="0,4">
@@ -438,13 +482,14 @@
                                     <Button Grid.Column="1" Margin="8,0,0,0"
                                             Style="{StaticResource SmallButton}"
                                             Content="{DynamicResource S_BrowserDelete}"
-                                            Command="{Binding DataContext.RemoveBookmarkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            Command="{Binding DataContext.RemoveHistoryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                             CommandParameter="{Binding Url}" />
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
             </Border>
         </Popup>
 
@@ -460,10 +505,18 @@
             <Border Style="{StaticResource SectionCard}"
                     MinWidth="420" MaxWidth="560" MaxHeight="360"
                     Margin="8">
-                <StackPanel>
-                    <TextBlock Style="{StaticResource RowHeaderText}"
+                <!-- Прокручиваемый список (аудит, п. 15). -->
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Style="{StaticResource RowHeaderText}"
                                Text="{DynamicResource S_BrowserBookmarks}" />
-                    <ItemsControl ItemsSource="{Binding BookmarkEntries}">
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding BookmarkEntries}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="0,4">
@@ -493,8 +546,9 @@
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
             </Border>
         </Popup>
 
@@ -510,7 +564,19 @@
             <Border Style="{StaticResource SectionCard}"
                     MinWidth="440" MaxWidth="560" MaxHeight="420"
                     Margin="8">
-                <StackPanel>
+                <!-- Настройки прокручиваются (аудит, п. 15): список не помещался
+                     в MaxHeight и нижние пункты были недоступны. -->
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Style="{StaticResource RowHeaderText}"
+                               Text="{DynamicResource S_BrowserSettings}" />
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
                     <TextBlock Style="{StaticResource RowHeaderText}"
                                Text="{DynamicResource S_BrowserSettings}" />
                     <TextBlock Margin="0,8,0,2"
@@ -556,7 +622,9 @@
                     <TextBlock Style="{StaticResource CaptionText}"
                                Foreground="{DynamicResource SecondaryTextBrush}"
                                Text="{Binding ProfilePathText}" />
-                </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
             </Border>
         </Popup>
     </Grid>

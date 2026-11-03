@@ -1,5 +1,7 @@
 #include "core/database_package.h"
 
+#include "core/path_util.h"
+
 #include <windows.h>
 #include <bcrypt.h>
 
@@ -25,9 +27,13 @@ namespace {
 // Сгенерирован tools/database-builder (dotnet run DatabaseBuilder.cs -- genkeys).
 // Ротирован 2026-09-30: прежний приватный ключ попал в историю репозитория
 // (коммит 05dbbd0a) и считается скомпрометированным.
+// Ротирован 2026-11-03: приватный ключ лежал в рабочем дереве открытым текстом
+// (в git не попадал, но дерево читалось внешним аудитом) — пара считается
+// раскрытой. Базы, подписанные прежним ключом, не принимаются — пакет базы
+// нужно пересобрать новым ключом.
 constexpr const char* kDatabasePublicKeyXYHex =
-    "2430f609db729255df398577e2805a8e7dba9e74f9f6980b87ec1c05e4fb10c4"
-    "a4177185f5d665f13b80aa98c862479d9bf3af00462fba840536ddde34d932e0";
+    "aed8c902d73eabef92e79a2c231de293c7ee9c9c8c79e367a5cea6bb2f827e669"
+    "2c1517e54b1a4e5c9101befbe703141033aac760d95bc91deaaebcac96e28be";
 
 // Лимиты под внешние дампы (MalwareBazaar и агрегаторы, ~90 байт на запись):
 // 64 МБ вмещают ~700k хешей с запасом; in-memory map лимита не имеет.
@@ -551,10 +557,32 @@ void DatabasePackage::Apply(const std::wstring& packageZip,
                static_cast<unsigned long>(GetCurrentProcessId()));
     const std::wstring generationId = idBuffer;
 
-    CreateDirectoryW((databaseDir + L"\\generations").c_str(), nullptr); // уже есть — норма
-    const std::wstring generationDir = databaseDir + L"\\generations\\" + generationId;
-    if (!CreateDirectoryW(generationDir.c_str(), nullptr)) {
+    // Аудит: создание через голый CreateDirectoryW не следовало за reparse-
+    // точками только при создании; существующий каталог generations мог быть
+    // junction'ом (junction-гонка в user-writable portable-установке), и
+    // запись базы уходила по ссылке атакующего. Хелпер CreateDirectoryRecursiveNoReparse
+    // (общий, из core/path_util) отклоняет reparse-каталоги; после создания
+    // оба каталога перепроверяются перед AtomicWrite — между созданием и
+    // записью каталог успели заменить reparse-точкой → fail-closed.
+    const std::wstring generationsDir = databaseDir + L"\\generations";
+    const DWORD generationsError = CreateDirectoryRecursiveNoReparse(generationsDir);
+    if (generationsError != ERROR_SUCCESS) {
+        result.error = L"failed to create generations directory";
+        return;
+    }
+    const std::wstring generationDir = generationsDir + L"\\" + generationId;
+    if (CreateDirectoryRecursiveNoReparse(generationDir) != ERROR_SUCCESS) {
         result.error = L"failed to create generation directory";
+        return;
+    }
+
+    const DWORD generationsAttributes = GetFileAttributesW(generationsDir.c_str());
+    const DWORD generationAttributes = GetFileAttributesW(generationDir.c_str());
+    if (generationsAttributes == INVALID_FILE_ATTRIBUTES
+        || generationAttributes == INVALID_FILE_ATTRIBUTES
+        || (generationsAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0
+        || (generationAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+        result.error = L"generation directory is a reparse point";
         return;
     }
 
@@ -566,8 +594,15 @@ void DatabasePackage::Apply(const std::wstring& packageZip,
     }
 
     // Commit point: атомарный указатель на новую генерацию.
-    const std::string pointerJson = "{\"generation\":\"" +
-        std::string(generationId.begin(), generationId.end()) + "\"}\n";
+    // generationId генерируется выше из ASCII-шаблона swprintf_s — сужение
+    // wchar_t→char безопасно; делаем его явным (C4244 в range-конструкторе
+    // std::string из <xutility>).
+    std::string generationIdAscii;
+    generationIdAscii.reserve(generationId.size());
+    for (const wchar_t c : generationId) {
+        generationIdAscii.push_back(static_cast<char>(c));
+    }
+    const std::string pointerJson = "{\"generation\":\"" + generationIdAscii + "\"}\n";
     const std::vector<unsigned char> pointerBytes(pointerJson.begin(), pointerJson.end());
     if (!AtomicWrite(databaseDir + L"\\current.json", pointerBytes)) {
         TryRemoveGeneration(generationDir);

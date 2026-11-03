@@ -15,7 +15,7 @@ public class UninstallLifecycleTests
     [Fact]
     public async Task UninstallCompletely_TimedOutUninstaller_TreeKilled_TimeoutReported()
     {
-        var root = Path.Combine(Path.GetTempPath(), "scu-uninst-" + Guid.NewGuid().ToString("N"));
+        var root = TestScratch.NewDir("scu-uninst-");
         Directory.CreateDirectory(root);
         File.WriteAllText(Path.Combine(root, "app.ini"), "marker");
 
@@ -53,7 +53,7 @@ public class UninstallLifecycleTests
     [Fact]
     public void KillAppProcesses_KillsOnlyProcessesUnderInstallRoot()
     {
-        var baseDirectory = Path.Combine(Path.GetTempPath(), "scu-kill-" + Guid.NewGuid().ToString("N"));
+        var baseDirectory = TestScratch.NewDir("scu-kill-");
         var appRoot = Path.Combine(baseDirectory, "App");
         var siblingRoot = Path.Combine(baseDirectory, "Other");
         Directory.CreateDirectory(appRoot);

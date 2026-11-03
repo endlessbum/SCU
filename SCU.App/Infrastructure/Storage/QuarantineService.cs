@@ -122,13 +122,18 @@ public sealed class QuarantineService
 
         try
         {
-            // Снимок источника (аудит п. 8, TOCTOU): хэндл с FileShare.Read
-            // блокирует запись/замену исходника до конца сверки копии. Хэш
-            // источника снимается до копирования и сверяется с хэшем копии —
-            // между «сканер увидел файл» и «карантин зафиксировал объект»
-            // содержимое не может измениться незамеченным.
+            // Снимок источника (SCU-03): дескриптор открыт через CreateFile с
+            // GENERIC_READ | DELETE и без FILE_SHARE_WRITE/FILE_SHARE_DELETE —
+            // пока он жив, другой процесс не может записать, переименовать,
+            // заменить или удалить исходник: имя и содержимое объекта «приколоты»
+            // на весь цикл сверка→копия→удаление. Хэш источника снимается до
+            // копирования и сверяется с хэшем копии — между «сканер увидел файл»
+            // и «карантин зафиксировал объект» содержимое не может измениться
+            // незамеченным. FileAccess.Delete в .NET не существует, поэтому
+            // Delete-доступ даёт только прямое CreateFile.
             string? sourceSha;
-            using (var sourceStream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var sourceHandle = OpenPinnedSourceHandle(source))
+            using (var sourceStream = new FileStream(sourceHandle, FileAccess.Read))
             {
                 sourceSha = ComputeSha256(sourceStream);
                 if (sourceSha is null)
@@ -137,7 +142,13 @@ public sealed class QuarantineService
                     return false;
                 }
 
-                File.Copy(source, objectPath, overwrite: false);
+                // Копия читается из закреплённого потока, а не по пути — никакого
+                // повторного разрешения имени между проверкой и фиксацией.
+                sourceStream.Position = 0;
+                using (var objectStream = File.Create(objectPath))
+                {
+                    sourceStream.CopyTo(objectStream);
+                }
 
                 // Проверка фиксации: размер и хэш копии совпадают с оригиналом.
                 if (new FileInfo(objectPath).Length != sourceStream.Length)
@@ -169,11 +180,32 @@ public sealed class QuarantineService
                     SizeBytes = new FileInfo(objectPath).Length,
                 };
                 File.WriteAllText(metadataPath, JsonSerializer.Serialize(item, JsonOptions));
+
+                // Удаление проверенного объекта (SCU-03): раньше File.Delete(source)
+                // выполнялся ПОСЛЕ закрытия дескриптора по имени пути — конкурентная
+                // замена файла в этом окне приводила к удалению чужого файла. Теперь
+                // объект удаляется через тот же дескриптор, по которому снимался хэш:
+                // FILE_DISPOSITION_INFO помечает объект, он удаляется при закрытии
+                // последнего хэндла; в окне «помечен, но не закрыт» новые открытия
+                // имени отвергаются, подмена невозможна. Если метка не встала —
+                // исходник остаётся на месте, а частичная запись откатывается.
+                MarkFileForDeletion(sourceHandle);
             }
 
-            // Метаданные записаны, сверка пройдена — оригинал можно удалять.
-            File.Delete(source);
-            return true;
+            // Обычный случай: объект удалён при закрытии дескриптора.
+            if (!File.Exists(source))
+            {
+                return true;
+            }
+
+            // Отложенное удаление: внешний процесс держит свой хэндл, объект
+            // помечен и будет удалён при его закрытии. Записи карантина НЕ
+            // откатываем: если помеченный объект исчезнет позже, запись с копией
+            // останется корректной, а откат при живом исходнике не оставил бы
+            // «призрачного» состояния — пользователю честно сообщаем о занятости.
+            error = "Исходник помечен на удаление, но занят другим процессом — удаление завершится после освобождения.";
+            _logger.Warn("QUARANTINE | source delete deferred by external handle | " + source);
+            return false;
         }
         catch (IOException exception)
         {
@@ -482,6 +514,74 @@ public sealed class QuarantineService
             return null;
         }
     }
+
+    // Объектное удаление исходника (SCU-03): FILE_DISPOSITION_INFO помечает
+    // удаление по самому дескриптору, без повторного разрешения пути. Требует,
+    // чтобы дескриптор был открыт с DELETE-доступом; откат удаления невозможен,
+    // поэтому вызывается только после успешной сверки копии.
+    private static void MarkFileForDeletion(Microsoft.Win32.SafeHandles.SafeFileHandle handle)
+    {
+        var info = new FileDispositionInfo { DeleteFile = true };
+        if (!SetFileInformationByHandle(
+                handle, FileDispositionInfoClass, ref info, sizeof(int)))
+        {
+            throw new IOException(
+                "Не удалось пометить исходник на удаление: "
+                + new System.ComponentModel.Win32Exception().Message);
+        }
+    }
+
+    // Открытие исходника с закреплением объекта (SCU-03): GENERIC_READ | DELETE
+    // без FILE_SHARE_WRITE/FILE_SHARE_DELETE — до закрытия дескриптора файл
+    // невозможно записать, переименовать, заменить или удалить из другого
+    // процесса. FileAccess.Delete в .NET не существует, поэтому DELETE-доступ
+    // даёт только прямое CreateFileW.
+    private static Microsoft.Win32.SafeHandles.SafeFileHandle OpenPinnedSourceHandle(string path)
+    {
+        var handle = CreateFileW(
+            path, GenericRead | DeleteAccess, FileShareRead,
+            IntPtr.Zero, OpenExisting, FileAttributeNormal, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            throw new IOException(
+                "Не удалось открыть исходный файл: "
+                + new System.ComponentModel.Win32Exception().Message);
+        }
+
+        return handle;
+    }
+
+    private const int FileDispositionInfoClass = 4; // FILE_DISPOSITION_INFO
+    private const uint GenericRead = 0x80000000;
+    private const uint DeleteAccess = 0x00010000;   // DELETE
+    private const uint FileShareRead = 0x00000001;
+    private const uint OpenExisting = 3;
+    private const uint FileAttributeNormal = 0x00000080;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct FileDispositionInfo
+    {
+        // Win32 BOOL: 4 байта; размер фиксируем через sizeof(int) в вызове.
+        public bool DeleteFile;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(
+        string fileName,
+        uint desiredAccess,
+        uint shareMode,
+        IntPtr securityAttributes,
+        uint creationDisposition,
+        uint flagsAndAttributes,
+        IntPtr templateFile);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(
+        Microsoft.Win32.SafeHandles.SafeFileHandle file,
+        int fileInformationClass,
+        ref FileDispositionInfo fileDispositionInfo,
+        int bufferSize);
 
     private static void TryDelete(string path)
     {

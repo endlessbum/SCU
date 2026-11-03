@@ -99,6 +99,11 @@ scan::ScanOptions ParseArgs(int argc, wchar_t** argv, int& exitCode)
             options.useDiskCache = false;
         } else if (arg == L"--dev-unsigned-ok") {
             options.devUnsignedOk = true;
+        } else if (arg.rfind(L"--", 0) == 0) {
+            // Неизвестная --опция — bad args (аудит): опечатка вида --max-siz
+            // молча игнорировалась и меняла покрытие скана. Позиционные
+            // аргументы (подкоманда scan) игнорируются как прежде.
+            exitCode = kExitBadArgs;
         }
     }
 

@@ -147,10 +147,25 @@ public sealed class SimpleChart : Canvas
 
         var min = points.Min(point => point.Value);
         var max = points.Max(point => point.Value);
+
+        // Индекс проверки не может превышать 100 %: ограничиваем шкалу сверху.
+        if (max > 100) max = 100;
+        if (min > max) min = max;
+
         // Плоская серия (все значения равны): рисуем линию посередине, делитель = 1.
         if (Math.Abs(max - min) < 0.0001)
         {
-            max = min + 1;
+            if (max >= 100)
+            {
+                // Достигнут потолок 100 %: верх шкалы = 100 %, низ = 99 %.
+                max = 100;
+                min = 99;
+            }
+            else
+            {
+                // Есть куда расти: верх шкалы на 1 выше текущего значения.
+                max = min + 1;
+            }
         }
 
         // Кисти приходят из токенов темы через resource reference; пока ресурсы
@@ -241,7 +256,7 @@ public sealed class SimpleChart : Canvas
         var index = 0;
         foreach (var (x, _) in EnumerateCoordinates(points, left, top, plotWidth, plotHeight, min, max))
         {
-            var barHeight = Math.Max(1, (points[index].Value - min) / (max - min) * plotHeight);
+            var barHeight = Math.Max(1, (Math.Min(points[index].Value, max) - min) / (max - min) * plotHeight);
             var bar = new Rectangle
             {
                 Width = barWidth,
@@ -272,7 +287,8 @@ public sealed class SimpleChart : Canvas
             var x = points.Count == 1
                 ? left + plotWidth / 2
                 : left + i / (double)(points.Count - 1) * plotWidth;
-            var y = top + (1 - (points[i].Value - min) / (max - min)) * plotHeight;
+            var clampedValue = Math.Min(points[i].Value, max);
+            var y = top + (1 - (clampedValue - min) / (max - min)) * plotHeight;
             yield return (x, y);
         }
     }

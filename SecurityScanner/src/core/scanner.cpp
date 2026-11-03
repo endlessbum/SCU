@@ -44,24 +44,6 @@ constexpr int kSuspiciousScriptScore = 4;
 // Верхняя граница дискового кэша (п. 25): переполнение отключает пополнение.
 constexpr size_t kMaxCacheEntries = 100000;
 
-bool FileExistsNow(const std::wstring& path)
-{
-    const DWORD attributes = GetFileAttributesW(path.c_str());
-    return attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
-}
-
-unsigned long long GetFileSizeSafe(const std::wstring& path)
-{
-    WIN32_FIND_DATAW findData{};
-    HANDLE find = FindFirstFileExW(path.c_str(), FindExInfoBasic, &findData,
-                                   FindExSearchNameMatch, nullptr, 0);
-    if (find == INVALID_HANDLE_VALUE) {
-        return 0;
-    }
-    FindClose(find);
-    return (static_cast<unsigned long long>(findData.nFileSizeHigh) << 32) | findData.nFileSizeLow;
-}
-
 std::string ToLowerAscii(const std::wstring& text)
 {
     // Аудит: прежняя версия молча выбрасывала не-ASCII символы — Unicode-путь
@@ -83,7 +65,11 @@ std::string ToLowerAscii(const std::wstring& text)
         return {};
     }
     for (char& c : result) {
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        // ASCII-only lowercase без std::tolower: тот зависит от локали на
+        // байтах >= 0x80 и искажал многобайтные UTF-8 последовательности.
+        if (c >= 'A' && c <= 'Z') {
+            c += 'a' - 'A';
+        }
     }
     return result;
 }
@@ -102,6 +88,13 @@ bool IsSha256Hex(const std::string& text)
         }
     }
     return true;
+}
+
+// TAB/CR/LF рвут TSV-строку дискового кэша (аудит): legacy-база валидирует
+// имя записи слабо, и такие символы могли доехать до ruleId/description.
+bool ContainsTsvBreaker(const std::wstring& text)
+{
+    return text.find_first_of(L"\t\r\n") != std::wstring::npos;
 }
 
 std::string HashTargetForReport(const std::wstring& path)
@@ -132,8 +125,10 @@ std::string WideToUtf8(const std::wstring& wide)
         return {};
     }
     std::string result(static_cast<size_t>(size), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()),
-                        result.data(), size, nullptr, nullptr);
+    if (WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()),
+                            result.data(), size, nullptr, nullptr) != size) {
+        return {}; // сбой конвертации: вход непуст → выход пуст
+    }
     return result;
 }
 
@@ -148,7 +143,10 @@ std::wstring Utf8ToWide(const std::string& utf8)
         return {};
     }
     std::wstring result(static_cast<size_t>(size), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()), result.data(), size);
+    if (MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()),
+                            result.data(), size) != size) {
+        return {}; // сбой конвертации: вход непуст → выход пуст
+    }
     return result;
 }
 
@@ -334,14 +332,19 @@ std::wstring TrustedCacheDirectory()
 // ключа не-elevated процессом физически невозможна, отдельная проверка
 // владельца файла не нужна (на системах, где даже elevated-токен создаёт
 // файлы user-owned, она давала бы ложное срабатывание и churn ключа).
-std::vector<unsigned char> LoadOrCreateCacheKey(const std::wstring& cacheDir)
+// DACL самого key-файла проверяется (аудит): allowCreate=false (load-путь)
+// ключ не создаёт вовсе — кэш без ключа не загружается; сбой SDDL не даёт
+// создать файл с DACL по умолчанию; уже существующий файл доверяется только
+// при строгом DACL.
+std::vector<unsigned char> LoadOrCreateCacheKey(const std::wstring& cacheDir, bool allowCreate)
 {
     const std::wstring keyPath = cacheDir + L"\\cache.key";
     const DWORD desiredAccess = GENERIC_READ | GENERIC_WRITE;
     SECURITY_ATTRIBUTES sa{};
     PSECURITY_DESCRIPTOR sd = nullptr;
-    if (ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            L"D:P(A;;FA;;;S-1-5-18)(A;;FA;;;BA)", SDDL_REVISION_1, &sd, nullptr)) {
+    const bool sddlOk = ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        L"D:P(A;;FA;;;S-1-5-18)(A;;FA;;;BA)", SDDL_REVISION_1, &sd, nullptr);
+    if (sddlOk) {
         sa.nLength = sizeof(sa);
         sa.lpSecurityDescriptor = sd;
         sa.bInheritHandle = FALSE;
@@ -355,11 +358,12 @@ std::vector<unsigned char> LoadOrCreateCacheKey(const std::wstring& cacheDir)
                                  FILE_ATTRIBUTE_NORMAL, nullptr);
     const bool missing = keyFile == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_NOT_FOUND;
 
-    if (keyFile == INVALID_HANDLE_VALUE && missing) {
+    if (keyFile == INVALID_HANDLE_VALUE && missing && allowCreate && sddlOk) {
         // Создание — только elevated-запуском в доверенном каталоге: если
         // raising не сработал, ключ не придумываем, а отключаем дисковый кэш.
+        // При сбое SDDL не создаём файл с DACL по умолчанию — fail-closed.
         keyFile = CreateFileW(keyPath.c_str(), desiredAccess,
-                              0, sa.nLength ? &sa : nullptr, CREATE_NEW,
+                              0, &sa, CREATE_NEW,
                               FILE_ATTRIBUTE_NORMAL, nullptr);
         if (keyFile != INVALID_HANDLE_VALUE) {
             unsigned char fresh[32] = {};
@@ -378,6 +382,16 @@ std::vector<unsigned char> LoadOrCreateCacheKey(const std::wstring& cacheDir)
             return key;
         }
     } else if (keyFile != INVALID_HANDLE_VALUE) {
+        // Уже существующий ключ: доверяем только при строгом DACL — файл с
+        // DACL по умолчанию (создан прежней версией или чужим процессом)
+        // отбрасывается, кэш отключается.
+        if (!DirectoryDaclIsStrict(keyFile)) {
+            CloseHandle(keyFile);
+            if (sd != nullptr) {
+                LocalFree(sd);
+            }
+            return {};
+        }
         unsigned char keyBuffer[32] = {};
         DWORD read = 0;
         const BOOL readOk = ReadFile(keyFile, keyBuffer, sizeof(keyBuffer), &read, nullptr);
@@ -463,6 +477,10 @@ Scanner::Scanner(EventWriter& events, ComponentAllowlist& allowlist, HashDatabas
     , allowlist_(allowlist)
     , database_(database)
 {
+    // Аудит: при смерти родителя (сломанный пайп stdout) писатель взводит наш
+    // флаг отмены — скан останавливается сам, а не дописывает события в никуда.
+    // До старта скана, однопоточно.
+    events_.SetCancelFlag(&isCancelled_);
 }
 
 void Scanner::RememberVerdict(const std::string& sha256, Verdict verdict, Detection detection)
@@ -520,12 +538,15 @@ void Scanner::LoadDiskCache()
     }
 
     // Ключ в том же доверенном каталоге, что и кэш; нет каталога/ключа/прав →
-    // дисковый кэш отключён. НЕ-elevated прогон: каталог нечитаем для него —
+    // дисковый кэш отключён. Load-путь ключ не создаёт (allowCreate=false):
+    // заранее подложенное сочетание «ключ + отравленный кэш» перестаёт быть
+    // сценарием — без ключа, который не создавался этим бинарником, кэш не
+    // загружается. НЕ-elevated прогон: каталог нечитаем для него —
     // кэш отключён сам по себе (гейт оставлен как короткое замыкание).
     if (!ProcessIsElevated()) {
         return;
     }
-    const auto cacheKey = LoadOrCreateCacheKey(TrustedCacheDirectory());
+    const auto cacheKey = LoadOrCreateCacheKey(TrustedCacheDirectory(), /*allowCreate=*/false);
     if (cacheKey.empty()) {
         return;
     }
@@ -596,6 +617,12 @@ void Scanner::LoadDiskCache()
         detection.verdict = verdict;
         detection.ruleId = Utf8ToWide(ruleId);
         detection.description = Utf8ToWide(description);
+        // Сбой конвертации (вход непуст → выход пуст) — строка кэша не
+        // принимается, вердикт будет пересчитан по-настоящему.
+        if ((!ruleId.empty() && detection.ruleId.empty())
+            || (!description.empty() && detection.description.empty())) {
+            continue;
+        }
         detection.score = atoi(scoreText.c_str());
         detection.signedFile = signedText == "1";
         verdictCache_[sha256] = {verdict, std::move(detection)};
@@ -611,11 +638,12 @@ void Scanner::SaveDiskCache()
 
     // Аудит trust model: без ключа (нет прав на его создание/чтение) дисковый
     // кэш не пишется вовсе — неподписанные вердикты на диск не попадают.
+    // Save-путь создаёт ключ при первом elevated-запуске (allowCreate=true).
     // НЕ-elevated прогон: не трогаем ключ вообще (см. LoadDiskCache).
     if (!ProcessIsElevated()) {
         return;
     }
-    const auto cacheKey = LoadOrCreateCacheKey(TrustedCacheDirectory());
+    const auto cacheKey = LoadOrCreateCacheKey(TrustedCacheDirectory(), /*allowCreate=*/true);
     if (cacheKey.empty()) {
         return;
     }
@@ -625,16 +653,31 @@ void Scanner::SaveDiskCache()
         << " db=" << WideToUtf8(database_.Version())
         << " profile=" << CacheProfileTag() << "\n";
     for (const auto& [sha256, cached] : verdictCache_) {
+        // Двойная защита TSV-формата (аудит): вторая линия после очистки имени
+        // в legacy LoadEntries. Кэш — оптимизация: лучше не кэшировать запись,
+        // чем писать строку, которая на загрузке развалится на чужие поля.
+        if (ContainsTsvBreaker(cached.detection.ruleId)
+            || ContainsTsvBreaker(cached.detection.description)) {
+            continue;
+        }
         std::ostringstream payload;
         payload << sha256 << '\t' << VerdictToString(cached.verdict);
         if (cached.verdict == Verdict::Clean) {
             out << HmacHex(cacheKey, payload.str()) << '\t' << payload.str() << '\n';
             continue;
         }
-        payload << '\t' << WideToUtf8(cached.detection.ruleId)
+        const std::string ruleIdUtf8 = WideToUtf8(cached.detection.ruleId);
+        const std::string descriptionUtf8 = WideToUtf8(cached.detection.description);
+        // Сбой конвертации (вход непуст → выход пуст) — запись не кэшируется:
+        // строка с потерянным полем на загрузке развалилась бы в битую.
+        if ((!cached.detection.ruleId.empty() && ruleIdUtf8.empty())
+            || (!cached.detection.description.empty() && descriptionUtf8.empty())) {
+            continue;
+        }
+        payload << '\t' << ruleIdUtf8
                 << '\t' << cached.detection.score
                 << '\t' << (cached.detection.signedFile ? '1' : '0')
-                << '\t' << WideToUtf8(cached.detection.description);
+                << '\t' << descriptionUtf8;
         out << HmacHex(cacheKey, payload.str()) << '\t' << payload.str() << '\n';
     }
 
@@ -810,6 +853,12 @@ Verdict Scanner::RunArchiveScan(const std::wstring& path,
 {
     Verdict worst = Verdict::Clean;
     ArchiveLimits limits;
+    // Лимит члена не выше лимита файла обхода (аудит): дефолтные 256 МБ
+    // maxMemberSize при maxFileSize_ 100 МБ (или 64 КиБ через --max-size)
+    // означали полное извлечение члена 100–256 МБ во временный файл до первой
+    // проверки размера. Применяется до ScanZip — limits_ читается
+    // ArchiveScanner при обходе членов.
+    limits.maxMemberSize = std::min(limits.maxMemberSize, maxFileSize_);
     ArchiveScanner scanner(
         limits,
         isCancelled_,
@@ -874,7 +923,8 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
                              ScanStats& stats,
                              std::vector<Detection>& detections,
                              bool& needsArchiveScan,
-                             bool countInFileStats)
+                             bool countInFileStats,
+                             HANDLE predefinedFile)
 {
     needsArchiveScan = false;
 
@@ -891,7 +941,9 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
     }
 
     std::string sha256;
-    if (!Sha256::HashFile(realPath, sha256)) {
+    // predefinedFile (аудит TOCTOU): хеш считается из уже открытого
+    // проверенного файла, повторное открытие пути не выполняется.
+    if (!Sha256::HashFile(realPath, sha256, predefinedFile)) {
         {
             std::lock_guard lock(stateMutex_);
             stats.errors++;
@@ -923,8 +975,12 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
             }
             stats.detections++;
             detections.push_back(detection);
+            // Испускание под тем же stateMutex_ (аудит): на отмене между
+            // stats++ и событием GUI мог потерять детект. EventWriter держит
+            // внутренний лок — дедлока нет; порядок stateMutex_ →
+            // events_.mutex_ единый для всех путей (инверсии нет).
+            events_.DetectionEvent(detection);
         }
-        events_.DetectionEvent(detection);
         RememberVerdict(sha256, dbVerdict, detection);
         return dbVerdict;
     }
@@ -944,7 +1000,7 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
     //    вердикт контейнера из кэша не доказывает безопасность содержимого,
     //    поэтому архив не может пройти мимо archive scan через cache hit.
     //    Классификация дешёвая (magic bytes) в сравнении с эвристиками.
-    const FileType fileType = ClassifyFile(realPath);
+    const FileType fileType = ClassifyFile(realPath, predefinedFile);
     if (fileType == FileType::ArchiveZip) {
         needsArchiveScan = true;
         // Контейнер НЕ кэшируется вовсе: обновление базы может найти malware
@@ -1017,8 +1073,10 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
                 std::lock_guard lock(stateMutex_);
                 detections.push_back(detection);
                 stats.detections++;
+                // Испускание внутри критической секции — см. db-hit выше:
+                // на отмене GUI мог потерять детект.
+                events_.DetectionEvent(detection);
             }
-            events_.DetectionEvent(detection);
             RememberVerdict(sha256, Verdict::Suspicious, detection);
             return Verdict::Suspicious;
         }
@@ -1032,7 +1090,7 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
     }
 
     const SignatureCheck signature = SignatureVerifier::Verify(realPath);
-    const PeAnalysis pe = PeAnalyzer::Analyze(realPath);
+    const PeAnalysis pe = PeAnalyzer::Analyze(realPath, predefinedFile);
 
     int score = pe.score;
     std::vector<std::wstring> signals = pe.signals;
@@ -1058,8 +1116,10 @@ Verdict Scanner::AnalyzeFile(const std::wstring& displayPath,
             std::lock_guard lock(stateMutex_);
             detections.push_back(detection);
             stats.detections++;
+            // Испускание внутри критической секции — см. db-hit выше:
+            // на отмене GUI мог потерять детект.
+            events_.DetectionEvent(detection);
         }
-        events_.DetectionEvent(detection);
         RememberVerdict(sha256, Verdict::Suspicious, detection);
         return Verdict::Suspicious;
     }
@@ -1088,17 +1148,41 @@ void Scanner::ScanPersistence(ScanStats& stats, std::vector<Detection>& detectio
         std::vector<std::wstring> signals;
         int score = 0;
 
-        const bool hasTarget = !entry.targetPath.empty() && FileExistsNow(entry.targetPath);
+        // TOCTOU (аудит): путь цели ранее проверялся (FileExistsNow), после
+        // чего размер и анализ открывали его повторно — подмена пути между
+        // тремя открытиями обходила maxFileSize и хэшировала не тот файл,
+        // что проверялся. Цель открывается ОДИН раз (симлинк/ярлык
+        // раскрывается как обычно): размер берётся из хэндла (GetFileSizeEx),
+        // тот же хэндл уходит в AnalyzeFile (хэш и классификация по нему).
+        // Владелец хэндла — этот блок. Файл, исчезнувший или недоступный
+        // к открытию, — цель не коррелируется, остаётся анализ командной
+        // строки (fail-closed, без подмены вердикта).
+        HANDLE targetFile = INVALID_HANDLE_VALUE;
+        unsigned long long targetSize = 0;
+        bool hasTarget = false;
         Verdict targetVerdict = Verdict::Clean;
+        const auto cached = entry.targetPath.empty()
+            ? verdictCache.end()
+            : verdictCache.find(entry.targetPath);
+        if (cached != verdictCache.end()) {
+            targetVerdict = cached->second;
+            hasTarget = true;
+        } else if (!entry.targetPath.empty()) {
+            targetFile = CreateFileW(entry.targetPath.c_str(), FILE_GENERIC_READ, FILE_SHARE_READ,
+                                     nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            LARGE_INTEGER size{};
+            if (targetFile != INVALID_HANDLE_VALUE && GetFileSizeEx(targetFile, &size)
+                && size.QuadPart >= 0) {
+                targetSize = static_cast<unsigned long long>(size.QuadPart);
+                hasTarget = true;
+            }
+        }
         if (hasTarget) {
-            const auto cached = verdictCache.find(entry.targetPath);
-            if (cached != verdictCache.end()) {
-                targetVerdict = cached->second;
-            } else {
+            if (targetFile != INVALID_HANDLE_VALUE) {
                 bool needsArchiveScan = false;
-                targetVerdict = AnalyzeFile(displayPath, entry.targetPath, GetFileSizeSafe(entry.targetPath),
+                targetVerdict = AnalyzeFile(displayPath, entry.targetPath, targetSize,
                                             L"", false, stats, detections, needsArchiveScan,
-                                            /*countInFileStats=*/false);
+                                            /*countInFileStats=*/false, targetFile);
 
                 // Persistence-цель — архив: AnalyzeFile анализирует только сам
                 // контейнер (п. 4 аудита). Полный archive-скан обязателен, иначе
@@ -1116,6 +1200,9 @@ void Scanner::ScanPersistence(ScanStats& stats, std::vector<Detection>& detectio
                 signals.push_back(L"persistence-target:" + VerdictToWide(targetVerdict));
                 score += 2;
             }
+        }
+        if (targetFile != INVALID_HANDLE_VALUE) {
+            CloseHandle(targetFile);
         }
 
         // П. SCAN-03: командная строка анализируется ВСЕГДА, а не только когда

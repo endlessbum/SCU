@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using System.Management;
+using System.ServiceProcess;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
@@ -14,6 +15,21 @@ public sealed class NetworkService
 {
     private const string PschedSubKey = @"SOFTWARE\Policies\Microsoft\Windows\Psched";
     private const string PschedValueName = "NonBestEffortLimit";
+
+    // Служба NDU (Network Data Usage) — «бухгалтер трафика»: питает экран
+    // «Использование данных» и лимиты трафика. Отключение — известный твик
+    // (исторические утечки памяти и нагрузка на диск); побочный эффект —
+    // статистика использования данных перестаёт обновляться.
+    private const string NduSubKey = @"SYSTEM\CurrentControlSet\Services\Ndu";
+    private const string NduValueName = "Start";
+    private const string NduServiceName = "Ndu";
+    private const int NduDisabledStart = 4;
+    // Заводской тип запуска NDU — Automatic (2); используется, если бэкапа SCU нет.
+    private const int NduDefaultStart = 2;
+
+    // Верхняя граница ожидания остановки/запуска NDU: переход не критичен для
+    // результата операции (реестр уже применён), поэтому ждём ограниченно.
+    private static readonly TimeSpan ServiceTransitionTimeout = TimeSpan.FromSeconds(15);
 
     private static readonly string BackupDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -403,6 +419,192 @@ public sealed class NetworkService
         }
 
         return result;
+    }
+
+    // ===== NDU (Network Data Usage) =====
+    // Паттерн тот же, что у QoS override: бэкап → запись → read-back verify.
+    // Остановка/запуск работающего экземпляра — best-effort: цель операции —
+    // тип запуска в реестре, поэтому неудача перехода лишь помечается в сообщении.
+
+    // Только чтение: текущий Start службы NDU. Failure — ключ/значение нечитаемы:
+    // UI обязан показать неизвестное состояние, а не «включено» (fail-honest).
+    public Result<int> GetNduStart()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(NduSubKey);
+            if (key is null)
+            {
+                return Result<int>.Failure("Раздел службы NDU не найден.");
+            }
+
+            return key.GetValue(NduValueName) is int start
+                ? Result<int>.Success(start)
+                : Result<int>.Failure("Параметр Start службы NDU нечитаем.");
+        }
+        catch (Exception exception)
+        {
+            return Result<int>.Failure("Не удалось прочитать Start службы NDU: " + exception.Message);
+        }
+    }
+
+    // Отключение NDU: бэкап → Start=4 → verify → best-effort остановка.
+    // Бэкап пишется только для работоспособного состояния (Start != 4), иначе
+    // «Включить» вернуло бы отключённую службу.
+    public Result DisableNdu()
+    {
+        var current = GetNduStart();
+        if (!current.IsSuccess)
+        {
+            _logger.Warn("NET | NDU disable | read failed: " + current.Message);
+            return Result.Failure("Не удалось прочитать Start службы NDU — отключение отменено.");
+        }
+
+        if (current.Value == NduDisabledStart)
+        {
+            return Result.Success("Служба NDU уже отключена (Start=4).");
+        }
+
+        try
+        {
+            // Повторный бэкап не перезаписывает исходное значение (как у QoS).
+            if (!File.Exists(NduBackupFile))
+            {
+                Directory.CreateDirectory(BackupDirectory);
+                File.WriteAllText(NduBackupFile, "start=" + current.Value.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+        catch (Exception exception)
+        {
+            return Result.Failure("Не удалось сохранить бэкап Start службы NDU: " + exception.Message);
+        }
+
+        var set = SetNduStart(NduDisabledStart);
+        if (!set.IsSuccess)
+        {
+            return set;
+        }
+
+        var note = TryTransitionService(stop: true);
+        return Result.Success("Служба NDU отключена (Start=4)." + note);
+    }
+
+    // Включение NDU: Start из бэкапа SCU, без него — заводской Automatic (2).
+    // Бэкап со значением 4 (отключено) считается повреждённым: включение обязано включать.
+    public Result EnableNdu()
+    {
+        var target = NduDefaultStart;
+        if (File.Exists(NduBackupFile))
+        {
+            string content;
+            try
+            {
+                content = File.ReadAllText(NduBackupFile).Trim();
+            }
+            catch (Exception exception)
+            {
+                return Result.Failure("Не удалось прочитать бэкап NDU: " + exception.Message);
+            }
+
+            if (!content.StartsWith("start=", StringComparison.OrdinalIgnoreCase)
+                || !int.TryParse(content["start=".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var saved)
+                || saved is < 0 or > 3)
+            {
+                return Result.Failure("Бэкап NDU повреждён: ожидается start=<0..3>.");
+            }
+
+            target = saved;
+        }
+
+        var set = SetNduStart(target);
+        if (!set.IsSuccess)
+        {
+            return set;
+        }
+
+        var note = TryTransitionService(stop: false);
+
+        // Бэкап отработал своё: удаление — необязательный хвост (как у QoS).
+        try
+        {
+            File.Delete(NduBackupFile);
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("NET | NDU backup cleanup failed: " + exception.Message);
+        }
+
+        return Result.Success("Служба NDU включена." + note);
+    }
+
+    // Запись Start + read-back verify: запись без проверки недопустима
+    // (аудит раздела — UI-операция не считается фактом без перечитывания).
+    private Result SetNduStart(int value)
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(NduSubKey, writable: true)
+                ?? Registry.LocalMachine.CreateSubKey(NduSubKey, writable: true);
+            key.SetValue(NduValueName, value, RegistryValueKind.DWord);
+        }
+        catch (Exception exception)
+        {
+            return Result.Failure("Не удалось изменить Start службы NDU: " + exception.Message);
+        }
+
+        var verify = GetNduStart();
+        if (!verify.IsSuccess)
+        {
+            return Result.Failure("Не удалось проверить Start службы NDU после записи: " + verify.Message);
+        }
+
+        if (verify.Value != value)
+        {
+            _logger.Warn($"NET | NDU Start verify | expected={value} actual={verify.Value}");
+            return Result.Failure("Start службы NDU не применился.");
+        }
+
+        _logger.Info($"NET | NDU Start={value}");
+        return Result.Success();
+    }
+
+    // Best-effort остановка/запуск работающего экземпляра NDU. Реестр уже применён
+    // и проверен, поэтому неудача перехода не роняет операцию — возвращается
+    // пометка для сообщения («вступит в силу после перезагрузки»).
+    private string TryTransitionService(bool stop)
+    {
+        try
+        {
+            using var controller = new ServiceController(NduServiceName);
+            if (stop)
+            {
+                if (controller.Status != ServiceControllerStatus.Running)
+                {
+                    return string.Empty;
+                }
+
+                controller.Stop();
+                controller.WaitForStatus(ServiceControllerStatus.Stopped, ServiceTransitionTimeout);
+            }
+            else
+            {
+                if (controller.Status != ServiceControllerStatus.Stopped)
+                {
+                    return string.Empty;
+                }
+
+                controller.Start();
+                controller.WaitForStatus(ServiceControllerStatus.Running, ServiceTransitionTimeout);
+            }
+
+            _logger.Info($"NET | NDU service {(stop ? "stopped" : "started")}");
+            return string.Empty;
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("NET | NDU service transition failed: " + exception.Message);
+            return " Изменение вступит в силу после перезагрузки.";
+        }
     }
 
     // NetBIOS over TCP/IP: бэкап по индексам интерфейсов через WMI, изменение SetTcpipNetbios.
@@ -876,4 +1078,5 @@ public sealed class NetworkService
     private static string MtuBackupFile => Path.Combine(BackupDirectory, "mtu.txt");
     private static string QosBackupFile => Path.Combine(BackupDirectory, "qos.txt");
     private static string NetBiosBackupFile => Path.Combine(BackupDirectory, "netbios.txt");
+    private static string NduBackupFile => Path.Combine(BackupDirectory, "ndu.txt");
 }

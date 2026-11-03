@@ -60,6 +60,17 @@ internal static partial class LocalizationDictionaries
         ["SCU.ps1 недоступен, бэкап не создан."] = "SCU.ps1 is unavailable; no backup was created.",
         ["Корзина очищена; отдельные системные или занятые элементы пропущены."] = "Recycle Bin cleaned; some system or busy items were skipped.",
         ["Корзина не очищена (код {0}): {1}"] = "Recycle Bin was not cleaned (code {0}): {1}",
+        ["Корзина не очищена."] = "Recycle Bin was not cleaned.",
+        ["Корзина очищена частично: отдельные системные или занятые элементы пропущены."] =
+            "Recycle Bin was partially cleaned: some system or busy items were skipped.",
+        // «Очистить всё» (аудит, п. 5/9): диалог, статусы и запись истории.
+        ["Очистить всё"] = "Clean all",
+        ["Безвозвратно удалить данные во всех целях очистки (корзина, Downloads, Temp, кэши, кэш обновлений)?"] =
+            "Permanently delete data in all cleanup targets (Recycle Bin, Downloads, Temp, caches, update cache)?",
+        ["Очистка всего выполняется…"] = "Cleaning everything…",
+        ["Все цели"] = "All targets",
+        ["Службы обновления не останавливались: не удалось сохранить их состояние."] =
+            "Update services were not stopped: their state could not be saved.",
         ["Выберите операцию очистки."] = "Choose a cleanup operation.",
         ["Список компонентов не загружен"] = "Components list has not been loaded",
         ["Список компонентов не загружен."] = "The components list has not been loaded yet.",
@@ -357,6 +368,25 @@ internal static partial class LocalizationDictionaries
         ["Отключить: "] = "Disable: ",
         ["{0}: ошибка (код {1}): {2}"] = "{0}: error (code {1}): {2}",
 
+        // ===================== Windows Defender (раздел 27) =====================
+        ["Показано текущее состояние Защитника Windows."] = "The current Windows Defender state is shown.",
+        ["Состояние Защитника Windows обновлено."] = "Windows Defender state refreshed.",
+        ["Нужны права администратора — управление Защитником Windows недоступно."] =
+            "Administrator rights are required — Windows Defender management is unavailable.",
+        ["Включение Защитника Windows…"] = "Enabling Windows Defender…",
+        ["Выключение Защитника Windows…"] = "Disabling Windows Defender…",
+        ["Защитник Windows: выключено. "] = "Windows Defender: disabled. ",
+        ["Защитник Windows: включено. "] = "Windows Defender: enabled. ",
+        ["Если защита не вернулась, перезагрузите ПК."] = "If protection has not returned, reboot the PC.",
+        ["Выключение — Защитник Windows"] = "Disable — Windows Defender",
+        ["Защитник Windows работает."] = "Windows Defender is active.",
+        ["Защитник Windows полностью выключается на уровне системы: политика DisableAntiSpyware, мониторинг в реальном времени и службы WinDefend/WdNisSvc/SecurityHealthService."] =
+            "Windows Defender is fully disabled at the system level: the DisableAntiSpyware policy, real-time monitoring and the WinDefend/WdNisSvc/SecurityHealthService services.",
+        ["Защита в реальном времени и антивирусные проверки перестают работать до повторного включения — система остаётся без антивируса."] =
+            "Real-time protection and antivirus scans stop working until it is enabled again — the system stays without antivirus.",
+        ["Состояния служб сохраняются в бэкап; включение восстанавливает их, а при отсутствии бэкапа — заводские значения."] =
+            "Service states are saved to a backup; enabling restores them, or factory defaults when no backup exists.",
+
         // ===================== Службы =====================
         ["Чтение статусов служб…"] = "Reading service states…",
         ["Сохранение бэкапа служб…"] = "Saving the services backup…",
@@ -495,6 +525,27 @@ internal static partial class LocalizationDictionaries
         ["Удалить сертификаты «Russian Trusted Root CA» из доверенных корневых и промежуточных центров сертификации?"] =
             "Remove the «Russian Trusted Root CA» certificates from the Trusted Root and Intermediate Certification Authorities stores?",
         ["Удаление сертификата Минцифры…"] = "Removing the Mincifry certificate…",
+        ["Отключение службы NDU…"] = "Disabling the NDU service…",
+        ["Включение службы NDU…"] = "Enabling the NDU service…",
+        ["служба NDU: {0}"] = "NDU service: {0}",
+        ["Отключение службы NDU"] = "Disabling the NDU service",
+        ["Служба перестанет собирать статистику трафика: экран «Использование данных» и лимиты трафика перестанут обновляться. Исходный режим запуска сохраняется в бэкап. Продолжить?"] =
+            "The service will stop collecting traffic statistics: the «Data usage» screen and traffic limits will stop updating. The original startup type is saved to a backup. Continue?",
+        ["Служба NDU отключена"] = "NDU service disabled",
+        ["Служба NDU включена"] = "NDU service enabled",
+        ["Раздел службы NDU не найден."] = "The NDU service registry key was not found.",
+        ["Параметр Start службы NDU нечитаем."] = "The NDU service Start value is unreadable.",
+        ["Не удалось прочитать Start службы NDU — отключение отменено."] =
+            "Could not read the NDU service Start value — disabling cancelled.",
+        ["Служба NDU уже отключена (Start=4)."] = "The NDU service is already disabled (Start=4).",
+        ["Служба NDU отключена (Start=4)."] = "The NDU service is disabled (Start=4).",
+        ["Служба NDU отключена (Start=4). Изменение вступит в силу после перезагрузки."] =
+            "The NDU service is disabled (Start=4). The change takes effect after a reboot.",
+        ["Служба NDU включена."] = "The NDU service is enabled.",
+        ["Служба NDU включена. Изменение вступит в силу после перезагрузки."] =
+            "The NDU service is enabled. The change takes effect after a reboot.",
+        ["Бэкап NDU повреждён: ожидается start=<0..3>."] = "The NDU backup is corrupted: expected start=<0..3>.",
+        ["Start службы NDU не применился."] = "The NDU service Start value did not apply.",
         ["Удаление «{0}»…"] = "Uninstalling «{0}»…",
 
         // ===================== Обслуживание =====================
@@ -524,6 +575,38 @@ internal static partial class LocalizationDictionaries
         ["Отключение Game Bar и DVR…"] = "Disabling Game Bar and DVR…",
         ["Game Bar и DVR"] = "Game Bar and DVR",
         ["Отключить Game Bar и фоновую запись (DVR)?\nGame Mode останется включённым — это полезно для игр."] = "Disable Game Bar and background recording (DVR)?\nGame Mode stays enabled — it is useful for games.",
+        ["Перевод раскладки"] = "Keyboard layout translator",
+        ["Автоматически определяет, что текст набирается в неверной раскладке (русский текст английскими буквами и наоборот), и исправляет последнее слово по разделителю."] = "Automatically detects text typed in the wrong keyboard layout (Russian text with English letters and vice versa) and corrects the last word at a delimiter.",
+        ["Работает только в активном окне и только при включённой карточке. Исправляет слово после пробела, Enter или знака препинания. Пароли и ввод в повышенных правах (администратор) не перехватываются."] = "Works only in the active window and only while the card is enabled. Corrects a word after Space, Enter or punctuation. Passwords and elevated (administrator) input are not intercepted.",
+        ["Перевод раскладки включён."] = "Keyboard layout translator enabled.",
+        ["Перевод раскладки выключен."] = "Keyboard layout translator disabled.",
+        ["Перевод раскладки не включён."] = "Keyboard layout translator was not enabled.",
+        ["Перевод раскладки: включение…"] = "Keyboard layout translator: starting…",
+        ["Перевод раскладки: выключение…"] = "Keyboard layout translator: stopping…",
+        ["Ошибка перевода раскладки: {0} (код {1})"] = "Keyboard layout translator error: {0} (code {1})",
+        ["Включить автоматический перевод раскладки?\nПрограмма будет перехватывать нажатия клавиш в активном окне и исправлять слова, набранные в неверной раскладке. Корректный текст не меняется, распознанные поля пароля пропускаются."] = "Enable automatic keyboard layout translation?\nThe app will intercept keystrokes in the active window and correct words typed in the wrong layout. Correct text is not changed, and recognized password fields are skipped.",
+        ["Не удалось выполнить ручную конвертацию."] = "Could not perform manual conversion.",
+        // Автозапуск SCU вместе с переводчиком (аудит, п. 12) — только с согласия.
+        ["Автозапуск SCU"] = "SCU autostart",
+        ["Перевод раскладки работает, пока запущена SCU. Добавить SCU в автозагрузку Windows, чтобы переводчик включался вместе с системой?"] =
+            "The keyboard layout translator works while SCU is running. Add SCU to Windows startup so the translator starts with the system?",
+        ["Добавить"] = "Add",
+        ["Перевод раскладки включён, но горячие клавиши заняты другим приложением."] = "Keyboard layout translator is enabled, but its hotkeys are already in use.",
+        ["Исключение должно быть одним токеном длиной не более 64 символов."] = "An exception must be a single token no longer than 64 characters.",
+        ["Можно добавить не более 200 исключений."] = "You can add up to 200 exceptions.",
+        ["Исключение добавлено."] = "Exception added.",
+        ["Исключение удалено."] = "Exception removed.",
+        ["Ручная конвертация должна запускаться на UI-потоке."] = "Manual conversion must run on the UI thread.",
+        ["Ручная конвертация отключена в поле пароля."] = "Manual conversion is disabled in password fields.",
+        ["Не удалось выделить последнее слово."] = "Could not select the previous word.",
+        ["Не удалось скопировать текст для конвертации."] = "Could not copy text for conversion.",
+        ["Текст для конвертации не найден."] = "No text to convert was found.",
+        ["Текст смешанный, пустой или не требует смены раскладки."] = "The text is mixed, empty, or does not need layout conversion.",
+        ["Не удалось вставить преобразованный текст."] = "Could not paste the converted text.",
+        ["Ручная конвертация выполнена."] = "Manual conversion completed.",
+        ["Ошибка ручной конвертации: {0}"] = "Manual conversion failed: {0}",
+        ["Слово исправлено. Для отмены нажмите Ctrl+Z."] = "Word corrected. Press Ctrl+Z to undo.",
+        ["Включить автоматический перевод раскладки?\nПрограмма будет перехватывать нажатия клавиш и исправлять слова, набранные в неверной раскладке."] = "Enable automatic keyboard layout translation?\nThe program will intercept keystrokes and correct words typed in the wrong layout.",
         ["Перезапуск проводника"] = "Restarting Explorer",
         ["Задержка меню: {0} мс…"] = "Menu delay: {0} ms…",
 
@@ -790,7 +873,10 @@ internal static partial class LocalizationDictionaries
         ["Элемент автозагрузки: {0}"] = "Startup entry: {0}",
         ["Бэкап"] = "Backup",
         ["Бэкап: {0}"] = "Backup: {0}",
-        ["Ошибка"] = "Error",
+        // Бейдж вердикта SafeViewer (дизайн, п. 3). «Угроза» и «Ошибка» уже есть
+        // в словаре выше — здесь только недостающие подписи.
+        ["Чисто"] = "Clean",
+        ["Подозрительно"] = "Suspicious",
         ["Неизвестная ошибка при получении информации о системе."] =
             "Unknown error while getting system information.",
         ["Внутренняя ошибка: {0}"] = "Internal error: {0}",
@@ -875,6 +961,7 @@ internal static partial class LocalizationDictionaries
         ["Закладка удалена."] = "Bookmark removed.",
         ["Закладка добавлена."] = "Bookmark added.",
         ["История браузера очищена."] = "Browser history cleared.",
+        ["Запись истории удалена."] = "History entry removed.",
         ["История и данные сайтов очищены."] = "Browser history and site data cleared.",
         ["Масштаб: {0}%"] = "Zoom: {0}%",
         ["Выбор папки загрузок"] = "Choose download folder",
@@ -1550,6 +1637,87 @@ internal static partial class LocalizationDictionaries
         ["Фиксированный размер {0} МБ на всех перечисленных томах."] = "A fixed size of {0} MB on all listed volumes.",
         ["Эта модель не поддерживает вызов функций: ответы по справке и текстовые подсказки. Изменения настроек недоступны."] = "This model does not support function calling: help answers and text hints only. Settings changes are unavailable.",
         ["нет — действие необратимо"] = "no — the action is irreversible",
+
+        // ===================== Трей (область уведомлений) =====================
+        // Пункты меню иконки трея: единственный штатный «Выход», когда закрытие
+        // окна уходит в фоновый режим (включён перевод раскладки).
+        ["Показать SCU"] = "Show SCU",
+        ["Выключить переводчик"] = "Disable layout translator",
+        ["Выход"] = "Exit",
+
+        // ===================== Аудит, п. 18: непереведённые строки =====================
+        // Точные ключи важнее фрагментной подстановки: L.S заменял только
+        // префикс («Не удалось прочитать »), и остаток оставался русским.
+        ["Модель вернула пустой ответ — повторите запрос."] = "The model returned an empty response — repeat the request.",
+        ["Не удалось прочитать текущее состояние: {0}"] = "Failed to read the current state: {0}",
+        ["Слово исправлено."] = "Word corrected.",
+        ["Проверка завершена, но журнал не сохранён на диск — подробности в журнале."] = "The check finished, but the log was not saved to disk — see the log for details.",
+        ["Проверка завершена, но снимок и журнал не сохранены на диск — подробности в журнале."] = "The check finished, but the snapshot and the log were not saved to disk — see the log for details.",
+        ["Настройки не сохранены на диск — подробности в журнале."] = "Settings were not saved to disk — see the log for details.",
+        ["Перевод раскладки включён. Горячая клавиша ручной конвертации: {0}."] = "Keyboard layout translator enabled. Manual conversion hotkey: {0}.",
+        ["Пропущено состояний: {0}."] = "Skipped states: {0}.",
+        ["системный том"] = "system volume",
+        ["На системе несколько файлов подкачки. Размер будет применён ко ВСЕМ перечисленным томам."] = "The system has several page files. The size will be applied to ALL listed volumes.",
+        ["Дамп памяти"] = "Memory dump",
+        ["Уменьшение файла подкачки может повлиять на возможность создания дампа памяти после BSOD."] = "Reducing the page file may affect the ability to create a memory dump after a BSOD.",
+
+        // ===================== Аудит, п. 18: crash dump / pagefile (остаток) =====================
+        ["Дамп памяти: {0}"] = "Memory dump: {0}",
+        ["Дамп памяти: {0}, файл: {1}"] = "Memory dump: {0}, file: {1}",
+        ["Дамп памяти: не удалось прочитать"] = "Memory dump: failed to read",
+        ["отключён"] = "disabled",
+        ["полный (Complete)"] = "Full (Complete)",
+        ["ядра (Kernel)"] = "Kernel",
+        ["малый (Small)"] = "Small",
+        ["автоматический (Automatic)"] = "Automatic",
+        ["Внимание: текущая конфигурация дампа памяти может требовать достаточный pagefile."] = "Warning: the current memory dump configuration may require a sufficient page file.",
+        ["Файл подкачки: {0} МБ на томах: {1}. Вступит в силу после перезагрузки."] = "Page file: {0} MB on volumes: {1}. Takes effect after reboot.",
+        ["Файл подкачки: {0} МБ ({1}). Вступит в силу после перезагрузки."] = "Page file: {0} MB ({1}). Takes effect after reboot.",
+        ["Размер файла подкачки должен быть в диапазоне 16..262144 МБ."] = "The page file size must be between 16 and 262144 MB.",
+        ["Не удалось открыть раздел реестра для настройки файла подкачки."] = "Failed to open the registry key for page file configuration.",
+        ["Настройка файла подкачки не подтвердилась чтением реестра."] = "The page file setting was not verified by reading the registry.",
+        ["Не удалось открыть раздел реестра для резервирования файла подкачки."] = "Failed to open the registry key for the page file backup.",
+        ["Бэкап файла подкачки не был создан."] = "The page file backup was not created.",
+        ["Бэкап сохранён: {0}"] = "Backup saved: {0}",
+        ["Не удалось сохранить бэкап файла подкачки: {0}"] = "Failed to save the page file backup: {0}",
+        ["Файл подкачки уже управляется Windows."] = "The page file is already managed by Windows.",
+        ["Не удалось включить System Managed pagefile (проверка после записи не прошла; исходное значение восстановлено)."] = "Failed to enable the System Managed page file (post-write verification failed; the original value was restored).",
+        ["Управление файлом подкачки передано Windows. Вступит в силу после перезагрузки."] = "Page file management was handed over to Windows. Takes effect after reboot.",
+        ["Не удалось включить System Managed pagefile: {0}"] = "Failed to enable the System Managed page file: {0}",
+        ["SHA-256: — (файл не читается)"] = "SHA-256: — (the file cannot be read)",
+        ["SHA-256: — (ошибка вычисления)"] = "SHA-256: — (calculation error)",
+
+        // ===================== Аудит, п. 21: раздел «Кэш приложений» =====================
+        ["Дождитесь завершения операции."] = "Wait for the current operation to finish.",
+        ["Скан не завершился — повторите позже."] = "The scan did not finish — try again later.",
+
+        // ===================== Дизайн, п. 4: удаление истории и закладок =====================
+        ["Удалить из истории"] = "Remove from history",
+        ["Удалить запись истории?\n{0}"] = "Remove the history entry?\n{0}",
+        ["Удалить закладку"] = "Remove bookmark",
+        ["Удалить закладку?\n{0}"] = "Remove the bookmark?\n{0}",
+
+        // ===================== Дизайн, п. 10: «Очистить всё» по целям =====================
+        ["Корзина: очищена."] = "Recycle Bin: cleaned.",
+        ["Корзина: очищена частично (занятые элементы пропущены)."] = "Recycle Bin: partially cleaned (busy items were skipped).",
+        ["Корзина: не выполнено (код {0}): {1}"] = "Recycle Bin: not performed (code {0}): {1}",
+        ["Корзина: не выполнено."] = "Recycle Bin: not performed.",
+        ["{0}: не выполнено."] = "{0}: not performed.",
+        ["{0}: удалено файлов: {1} ({2})."] = "{0}: files deleted: {1} ({2}).",
+        ["Службы обновления: не выполнено — не удалось сохранить их состояние."] = "Update services: not performed — their state could not be saved.",
+        ["Службы обновлений: состояние восстановлено."] = "Update services: state restored.",
+        ["Службы обновлений: часть служб не удалось вернуть — см. лог."] = "Update services: some services could not be restored — see the log.",
+
+        // ===================== Дизайн, п. 11: раздел «Электропитание» =====================
+        ["Отключение запрещено (0 с)"] = "Turning off is disabled (0 s)",
+        ["{0} мин ({1} с)"] = "{0} min ({1} s)",
+        ["AC: {0}"] = "AC: {0}",
+        ["AC: {0} · DC: {1}"] = "AC: {0} · DC: {1}",
+        ["Задано {0}, но Windows вернула {1}."] = "{0} was set, but Windows returned {1}.",
+
+        // ===================== Дизайн, п. 5: редактор меню =====================
+        ["Группа не указана — раздел «{0}» добавлен в «{1}»."] = "No group specified — the section «{0}» was added to «{1}».",
+        ["Раздел «{0}» добавлен в группу «{1}»."] = "The section «{0}» was added to the group «{1}».",
     };
 
 

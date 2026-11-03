@@ -1,6 +1,8 @@
 using Microsoft.Win32;
 using SCU.Common;
 using SCU.Interop;
+using System.Xml;
+using System.Xml.Linq;
 
 namespace SCU.Infrastructure.Windows.Tweaks;
 
@@ -166,7 +168,7 @@ public sealed class PrivacyService
     }
 
     // Категория применена, если каждая существующая CEIP-задача отключена
-    // (<Enabled>false</Enabled> в XML задачи). Отсутствующая задача неактивна
+    // (элемент Enabled=false в XML задачи). Отсутствующая задача неактивна
     // и не мешает; ошибка чтения → не применено (fail-closed для метрики).
     private static bool AreCeipTasksDisabled()
     {
@@ -183,7 +185,7 @@ public sealed class PrivacyService
                 }
 
                 var xml = File.ReadAllText(file);
-                if (!xml.Contains("<Enabled>false</Enabled>", StringComparison.OrdinalIgnoreCase))
+                if (!HasDisabledElement(xml))
                 {
                     return false;
                 }
@@ -194,6 +196,28 @@ public sealed class PrivacyService
         catch
         {
             return false;
+        }
+    }
+
+    // Элемент Enabled со значением false ищется разбором XML: строковый Contains
+    // на "<Enabled>false</Enabled>" ложно рапортовал «не применено», если в теге
+    // появились атрибуты/пробелы. Корневой Task может иметь namespace — сравниваем
+    // локальные имена элементов (XName.LocalName), а не полные XName.
+    // Не-XML содержимое (XmlException) — fallback на прежний строковый поиск:
+    // распознавание не должно стать уже старого.
+    private static bool HasDisabledElement(string xml)
+    {
+        try
+        {
+            var document = XDocument.Parse(xml);
+            return document.Descendants()
+                .Any(element =>
+                    string.Equals(element.Name.LocalName, "Enabled", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(element.Value, "false", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (XmlException)
+        {
+            return xml.Contains("<Enabled>false</Enabled>", StringComparison.OrdinalIgnoreCase);
         }
     }
 

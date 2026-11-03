@@ -14,7 +14,7 @@ public sealed class BrowserStateStoresTests : IDisposable
 
     public BrowserStateStoresTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        _directory = TestScratch.NewDir();
         Directory.CreateDirectory(_directory);
         _logger = Logger.CreateForCurrentRun();
     }
@@ -134,6 +134,24 @@ public sealed class BrowserStateStoresTests : IDisposable
 
         Assert.Equal(2, reloaded.Entries.Count);
         Assert.Contains(reloaded.Entries, item => item.Url == "https://example.org" && item.Title == "Other");
+    }
+
+    // Удаление одной записи истории (аудит, п. 6): кнопка «удалить» в истории
+    // была привязана к команде удаления закладки — запись истории не удалялась.
+    [Fact]
+    public void History_Remove_DropsOnlyMatchingEntry()
+    {
+        var path = FilePath("history.json");
+        var service = new BrowserHistoryService(_logger, path);
+        service.Add("https://example.com", "Example");
+        service.Add("https://example.org", "Other");
+
+        Assert.True(service.Remove("https://example.com"));
+        Assert.False(service.Remove("https://missing.example"));
+
+        var reloaded = new BrowserHistoryService(_logger, path);
+        Assert.Single(reloaded.Entries);
+        Assert.Equal("https://example.org", reloaded.Entries[0].Url);
     }
 
     // ===================== Закладки =====================

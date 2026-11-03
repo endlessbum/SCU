@@ -282,7 +282,9 @@ public sealed class UIService
     }
 
     // Текущая задержка меню (MenuShowDelay).
-    public string GetMenuShowDelay() => ReadString(RegistryHive.CurrentUser, Desktop, "MenuShowDelay", "400");
+    // ReadString может вернуть null только при сбое чтения реестра; fallback "400"
+    // гарантирует разумное значение по умолчанию, поэтому null-forgiving безопасен.
+    public string GetMenuShowDelay() => ReadString(RegistryHive.CurrentUser, Desktop, "MenuShowDelay", "400")!;
 
     public Result SetMenuShowDelay(int milliseconds)
     {
@@ -488,7 +490,10 @@ public sealed class UIService
     // Перезапуск проводника (taskkill /f + start explorer.exe в BAT).
     // Из повышенного процесса убиваем только проводник текущей сессии —
     // Process.GetProcessesByName без фильтра зацепил бы explorer других пользователей.
-    public Result RestartExplorer()
+    // Асинхронный (аудит): ожидания — на Task.Delay, Thread.Sleep держал
+    // поток заблокированным до ~5.7 с. Суммарные таймауты прежние:
+    // пауза 700 мс + опрос появления процесса до 20 × 250 мс.
+    public async Task<Result> RestartExplorerAsync()
     {
         try
         {
@@ -510,7 +515,7 @@ public sealed class UIService
                 process.Dispose();
             }
 
-            Thread.Sleep(700);
+            await Task.Delay(700).ConfigureAwait(false);
             Process.Start(new ProcessStartInfo
             {
                 FileName = "explorer.exe",
@@ -520,7 +525,7 @@ public sealed class UIService
             // Верификация: проводник поднялся.
             for (var attempt = 0; attempt < 20; attempt++)
             {
-                Thread.Sleep(250);
+                await Task.Delay(250).ConfigureAwait(false);
                 var explorers = Process.GetProcessesByName("explorer");
                 try
                 {
@@ -550,7 +555,7 @@ public sealed class UIService
     // Очистка панели задач: удаление Taskband и Streams\Desktop + перезапуск (как :TaskbarClean).
     // Перед удалением — полный рекурсивный снимок ключей: операция необратима,
     // а в Taskband хранятся закреплённые значки, в Streams\Desktop — раскладка ярлыков.
-    public Result ClearTaskbar()
+    public async Task<Result> ClearTaskbarAsync()
     {
         const string taskband = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband";
         const string streamsDesktop = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Streams\Desktop";
@@ -578,13 +583,13 @@ public sealed class UIService
             return Result.Failure("Очистка панели задач: " + exception.Message);
         }
 
-        return RestartExplorer();
+        return await RestartExplorerAsync().ConfigureAwait(false);
     }
 
-    // Восстановление панели задач из снимка taskbar-cleanup.json (пишется ClearTaskbar).
+    // Восстановление панели задач из снимка taskbar-cleanup.json (пишется ClearTaskbarAsync).
     // Ключи снимка — "путь\подключа\имя значения", каждое — { kind, data } в кодировке
     // RegistryHelper.EncodeValue; значения пишутся назад, затем проводник перезапускается.
-    public Result RestoreTaskbar()
+    public async Task<Result> RestoreTaskbarAsync()
     {
         var backupPath = BackupPath("taskbar-cleanup.json");
         if (!File.Exists(backupPath))
@@ -612,7 +617,7 @@ public sealed class UIService
         var errors = new List<string>();
 
         // Граница записи: снимок лежит в пользовательском каталоге и мог быть
-        // подменён. Восстановление вправе писать только туда, откуда ClearTaskbar
+        // подменён. Восстановление вправе писать только туда, откуда ClearTaskbarAsync
         // снимал бэкап (Taskband и Streams\Desktop, с их подключами) — иначе
         // подделанный бэкап записал бы произвольные HKCU-значения.
         var allowedPrefixes = (new[]
@@ -679,7 +684,7 @@ public sealed class UIService
             return Result.Failure("Не восстановлено ни одного значения: " + string.Join("; ", errors));
         }
 
-        var restart = RestartExplorer();
+        var restart = await RestartExplorerAsync().ConfigureAwait(false);
         if (!restart.IsSuccess)
         {
             return restart;
@@ -690,7 +695,7 @@ public sealed class UIService
         {
             message += $", ошибок: {errors.Count}";
             // Частичное восстановление: снимок сохраняется для повторной попытки,
-            // но следующий ClearTaskbar обязан взять свежий снимок, а не этот.
+            // но следующий ClearTaskbarAsync обязан взять свежий снимок, а не этот.
         }
         else
         {

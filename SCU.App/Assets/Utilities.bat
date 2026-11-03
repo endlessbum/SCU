@@ -157,6 +157,62 @@ exit /b
 :Ask
 set "choice="
 set /p "choice=  Выбор: "
+rem Аудит: неэкранированная подстановка ввода — if "%choice%"=="1" исполнял
+rem payload вида 1" & команда & rem " прямо при разборе строки. После set /p
+rem оставляем только безопасный набор символов: цифры, латинские буквы (пункты
+rem меню A/B/R/S/E/H/P/C/O/D/G, см. SvcMenu/ExpMenu и др.) и пробел (IdxMenu
+rem принимает несколько дисков через пробел: "C D E"). Всё прочее — очистка:
+rem кавычка закрывала бы строку сравнения в if, а & | < > ^ % ! ( ) ; , фильтр
+rem не проходят, так что исполнимый payload собрать не из чего.
+rem Схема — вычитание разрешённых символов (замена на пусто) с проверкой «что
+rem осталось»: for /f in ("!var!") не годится — ввод с ";" (префикс payload)
+rem cmd разбирает как разделитель элементов и исполняет остаток строки.
+rem if defined перед каждым шагом: промежуточный результат мог опустеть,
+rem а !var:x=! над неопределённой переменной раскрывается литерально.
+rem Раскрытие только задержанное (значение не перепарсивается); %VALID% в
+rem строке endlocal раскрывается уже валидированным.
+setlocal enabledelayedexpansion
+set "VALID=!choice!"
+set "TEST=!VALID!"
+if defined TEST set "TEST=!TEST:0=!"
+if defined TEST set "TEST=!TEST:1=!"
+if defined TEST set "TEST=!TEST:2=!"
+if defined TEST set "TEST=!TEST:3=!"
+if defined TEST set "TEST=!TEST:4=!"
+if defined TEST set "TEST=!TEST:5=!"
+if defined TEST set "TEST=!TEST:6=!"
+if defined TEST set "TEST=!TEST:7=!"
+if defined TEST set "TEST=!TEST:8=!"
+if defined TEST set "TEST=!TEST:9=!"
+if defined TEST set "TEST=!TEST:a=!"
+if defined TEST set "TEST=!TEST:b=!"
+if defined TEST set "TEST=!TEST:c=!"
+if defined TEST set "TEST=!TEST:d=!"
+if defined TEST set "TEST=!TEST:e=!"
+if defined TEST set "TEST=!TEST:f=!"
+if defined TEST set "TEST=!TEST:g=!"
+if defined TEST set "TEST=!TEST:h=!"
+if defined TEST set "TEST=!TEST:i=!"
+if defined TEST set "TEST=!TEST:j=!"
+if defined TEST set "TEST=!TEST:k=!"
+if defined TEST set "TEST=!TEST:l=!"
+if defined TEST set "TEST=!TEST:m=!"
+if defined TEST set "TEST=!TEST:n=!"
+if defined TEST set "TEST=!TEST:o=!"
+if defined TEST set "TEST=!TEST:p=!"
+if defined TEST set "TEST=!TEST:q=!"
+if defined TEST set "TEST=!TEST:r=!"
+if defined TEST set "TEST=!TEST:s=!"
+if defined TEST set "TEST=!TEST:t=!"
+if defined TEST set "TEST=!TEST:u=!"
+if defined TEST set "TEST=!TEST:v=!"
+if defined TEST set "TEST=!TEST:w=!"
+if defined TEST set "TEST=!TEST:x=!"
+if defined TEST set "TEST=!TEST:y=!"
+if defined TEST set "TEST=!TEST:z=!"
+if defined TEST set "TEST=!TEST: =!"
+if defined TEST set "VALID="
+endlocal & set "choice=%VALID%"
 exit /b
 
 :Ok
@@ -441,9 +497,11 @@ goto InstDone
 
 :DownloadFile
 rem %1 = URL, %2 = целевой файл. Возвращает 0 только при успешном скачивании.
+rem Аудит: голый curl поднимается из PATH — используем только системный
+rem %SystemRoot%\System32\curl.exe (провал — есть fallback на PowerShell ниже).
 if exist "%~2" del /f /q "%~2" >nul 2>&1
 set "DLRC=0"
-curl -fL -o "%~2" --retry 3 --connect-timeout 20 "%~1" 2>nul
+"%SystemRoot%\System32\curl.exe" -fL -o "%~2" --retry 3 --connect-timeout 20 "%~1" 2>nul
 set "DLRC=!errorlevel!"
 if "!DLRC!"=="0" if exist "%~2" goto DownloadFileOK
 set "DL_URL=%~1"
@@ -703,8 +761,12 @@ goto ClnDone
 
 :CountFiles
 rem %1 = папка, %2 = маска. Результат в CNT.
+rem Путь и маска передаются через переменные окружения (аудит): в одинарных
+rem кавычках powershell апостроф в пути исполнялся как код.
 set "CNT=0"
-for /f %%a in ('powershell -NoProfile -Command "try { (Get-ChildItem -LiteralPath '%~1' -Filter '%~2' -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object).Count } catch { 0 }" 2^>nul') do set "CNT=%%a"
+set "SCU_CF_DIR=%~1"
+set "SCU_CF_FILTER=%~2"
+for /f %%a in ('powershell -NoProfile -Command "try { (Get-ChildItem -LiteralPath $env:SCU_CF_DIR -Filter $env:SCU_CF_FILTER -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object).Count } catch { 0 }" 2^>nul') do set "CNT=%%a"
 exit /b
 
 :CleanDirContents
@@ -719,7 +781,10 @@ if not exist "%~1" (
 call :CountFiles "%~1" "%MASK%"
 set "BEFORE=!CNT!"
 del /f /s /q "%~1\%MASK%" >nul 2>&1
-for /d %%i in ("%~1\*") do rd /s /q "%%i" >nul 2>&1
+rem Подкаталоги сносятся только при полной маске * (аудит: Prefetch вызывался
+rem с маской "*.pf", а сносил ВСЕ подпапки подряд). При конкретной маске
+rem удаляются только файлы по маске, подкаталоги не трогаются.
+if /i "!MASK!"=="*" for /d %%i in ("%~1\*") do rd /s /q "%%i" >nul 2>&1
 call :CountFiles "%~1" "%MASK%"
 set "AFTER=!CNT!"
 if "!BEFORE!"=="0" (

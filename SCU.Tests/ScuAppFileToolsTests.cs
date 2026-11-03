@@ -22,7 +22,7 @@ public class ScuAppFileToolsTests : IDisposable
 
     public ScuAppFileToolsTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), "scu-ai-files-" + Guid.NewGuid().ToString("N"));
+        _root = TestScratch.NewDir("scu-ai-files-");
         Directory.CreateDirectory(_root);
 
         File.WriteAllText(Path.Combine(_root, "readme.txt"), "hello from scu");
@@ -39,6 +39,7 @@ public class ScuAppFileToolsTests : IDisposable
         try
         {
             Directory.Delete(_root, recursive: true);
+            File.Delete(Path.Combine(Path.GetDirectoryName(_root)!, "scu-ai-outside.txt"));
         }
         catch (IOException)
         {
@@ -79,7 +80,9 @@ public class ScuAppFileToolsTests : IDisposable
     public async Task Read_RejectsParentDirectoryTraversal()
     {
         // Файл лежит вне корня — чтение через «..» должно быть отвергнуто.
-        var outside = Path.Combine(Path.GetTempPath(), "scu-ai-outside.txt");
+        // Кладём его рядом с корнем песочницы: "../scu-ai-outside.txt" при обходе
+        // резолвится ровно в эту позицию.
+        var outside = Path.Combine(Path.GetDirectoryName(_root)!, "scu-ai-outside.txt");
         File.WriteAllText(outside, "secret outside");
 
         var result = await _read.ExecuteAsync(Args("""{"path":"../scu-ai-outside.txt"}"""), Context());

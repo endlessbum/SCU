@@ -382,7 +382,7 @@ public sealed class BloatService
     }
 
     // Только процессы текущей сессии: без фильтра запуск от админа убивал бы
-    // процессы других пользователей (как в UIService.RestartExplorer).
+    // процессы других пользователей (как в UIService.RestartExplorerAsync).
     private static void KillProcesses(string[]? names)
     {
         if (names is null)

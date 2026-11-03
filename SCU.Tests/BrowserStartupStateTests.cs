@@ -18,7 +18,7 @@ public sealed class BrowserStartupStateTests : IDisposable
 
     public BrowserStartupStateTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        _directory = TestScratch.NewDir();
         Directory.CreateDirectory(_directory);
         _logger = Logger.CreateForCurrentRun();
         _service = new FakeBrowserService { RuntimeAvailable = true };

@@ -11,7 +11,7 @@ public sealed class BackupRetentionTests : IDisposable
 
     public BackupRetentionTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        _directory = TestScratch.NewDir();
         Directory.CreateDirectory(_directory);
     }
 
@@ -94,5 +94,36 @@ public sealed class BackupRetentionTests : IDisposable
         BackupRetention.EnforceAll(_directory);
 
         Assert.Equal(BackupRetention.MaxFilesPerDirectory, Directory.GetFiles(nested).Length);
+    }
+
+    // Аудит, п. 2: каталог вне backup-корня уборке не подлежит — иначе удаление
+    // могло уйти по junction/symlink за пределы backup-дерева.
+    [Fact]
+    public void Enforce_DirectoryOutsideRoot_IsNotCleaned()
+    {
+        for (var i = 0; i < BackupRetention.MaxFilesPerDirectory + 3; i++)
+        {
+            CreateFile($"tasks_{i:D2}.txt", i);
+        }
+
+        var otherRoot = Path.Combine(Path.GetDirectoryName(_directory)!, "other-root");
+        Directory.CreateDirectory(otherRoot);
+        try
+        {
+            BackupRetention.Enforce(_directory, null, otherRoot);
+
+            Assert.Equal(BackupRetention.MaxFilesPerDirectory + 3, Directory.GetFiles(_directory).Length);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(otherRoot, recursive: true);
+            }
+            catch
+            {
+                // Временный каталог не критичен.
+            }
+        }
     }
 }

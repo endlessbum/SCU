@@ -156,9 +156,62 @@ public static class L
 
         Current = language;
         SwapStringsDictionary();
+        RaiseStatusRefresh();
         if (notify)
         {
             LanguageChanged?.Invoke();
+        }
+    }
+
+    // Обновление уже показанных статусов и подсказок (дизайн, п. 9): при смене
+    // языка переподписываются не только XAML-ресурсы, но и тексты, которые
+    // разделы уже вывели в свои строки статуса.
+    private static readonly List<Action> StatusRefreshers = [];
+
+    public static void RegisterStatusRefresh(Action refresh)
+    {
+        if (refresh is null)
+        {
+            return;
+        }
+
+        lock (StatusRefreshers)
+        {
+            StatusRefreshers.Add(refresh);
+        }
+    }
+
+    public static void UnregisterStatusRefresh(Action refresh)
+    {
+        if (refresh is null)
+        {
+            return;
+        }
+
+        lock (StatusRefreshers)
+        {
+            StatusRefreshers.Remove(refresh);
+        }
+    }
+
+    private static void RaiseStatusRefresh()
+    {
+        Action[] snapshot;
+        lock (StatusRefreshers)
+        {
+            snapshot = [.. StatusRefreshers];
+        }
+
+        foreach (var refresh in snapshot)
+        {
+            try
+            {
+                refresh();
+            }
+            catch
+            {
+                // Обновление статуса не должно ломать смену языка.
+            }
         }
     }
 

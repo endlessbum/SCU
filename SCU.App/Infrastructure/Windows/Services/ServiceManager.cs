@@ -246,6 +246,7 @@ public sealed class ServiceManager
                 return false;
             }
 
+            BackupStartBeforeForce(key, serviceName);
             key.SetValue("Start", 2, Microsoft.Win32.RegistryValueKind.DWord);
             key.SetValue("DelayedAutostart", 1, Microsoft.Win32.RegistryValueKind.DWord);
             return ReadStartValue(serviceName) == 2;
@@ -268,12 +269,116 @@ public sealed class ServiceManager
                 return false;
             }
 
+            BackupStartBeforeForce(key, serviceName);
             key.SetValue("Start", startValue, Microsoft.Win32.RegistryValueKind.DWord);
             return ReadStartValue(serviceName) == startValue;
         }
         catch
         {
             return false;
+        }
+    }
+
+    // Файл, в который Force*-fallback складывает бэкап текущих значений.
+    // Один на сеанс: без кеша батч-операция успела бы насоздавать по файлу на службу.
+    private static string? _forceBackupPath;
+
+    // Аудит: Force*-fallback перезаписывал Start/DelayedAutostart без локального бэкапа —
+    // при отсутствии/устаревании файла бэкапа исходный тип запуска восстановить было нечем.
+    // Перед прямой записью снимаем текущие значения в тот же файл бэкапа служб, который
+    // читает ReadStartFromBackup (FindLatestServicesBackupPath: %AppData%\SCU\backup\services,
+    // services_*.txt, самый свежий). Бэкапов нет — создаём свой с именем по той же маске,
+    // что и у BackupCoreAsync в ServicesViewModel. Уже существующая запись о службе не
+    // затирается: в ней значение до ещё более ранних изменений.
+    private static void BackupStartBeforeForce(Microsoft.Win32.RegistryKey key, string serviceName)
+    {
+        try
+        {
+            var start = ReadStartFromKey(key);
+            if (start is null)
+            {
+                // Start нечитаем/отсутствует — бэкапировать нечего (восстановлению
+                // это не помогло бы); сама запись реестра продолжается.
+                return;
+            }
+
+            var backupPath = ResolveServicesBackupPathForAppend();
+
+            // Проверка тем же парсером, которым бэкап потом читается.
+            if (ServiceBackupParser.ReadStartFromBackup(backupPath, serviceName) is not null)
+            {
+                return;
+            }
+
+            var delayed = ReadDelayedFromKey(key);
+            var line = $"{serviceName}|{start}|{QueryServiceState(serviceName)}|{(delayed is null ? string.Empty : delayed.Value ? "1" : "0")}";
+            File.AppendAllText(backupPath, line + Environment.NewLine);
+            Log.Info($"SVC | {serviceName}: Start={start} сохранён в бэкап перед прямой записью реестра.");
+        }
+        catch (Exception exception)
+        {
+            // Бэкап — страховка: сбой его записи не отменяет саму операцию.
+            Log.Warn($"SVC | {serviceName}: не удалось сохранить Start в бэкап ({exception.Message}).");
+        }
+    }
+
+    // Не возвращает null: нет бэкапов — создаёт файл (сбой каталога даёт исключение,
+    // которое гасит BackupStartBeforeForce).
+    private static string ResolveServicesBackupPathForAppend()
+    {
+        var latest = FindLatestServicesBackupPath();
+        if (latest is not null)
+        {
+            return latest;
+        }
+
+        if (_forceBackupPath is not null)
+        {
+            return _forceBackupPath;
+        }
+
+        var directory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "SCU", "backup", "services");
+        Directory.CreateDirectory(directory);
+        _forceBackupPath = Path.Combine(directory, $"services_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.txt");
+        return _forceBackupPath;
+    }
+
+    private static int? ReadStartFromKey(Microsoft.Win32.RegistryKey key) => key.GetValue("Start") switch
+    {
+        int intValue => intValue,
+        uint uintValue => (int)uintValue,
+        _ => null
+    };
+
+    // null = значения нет (в строке бэкапа пустой столбец — восстановление его удалит,
+    // как делает ServicesRestore в SCU.ps1 для delayed='').
+    private static bool? ReadDelayedFromKey(Microsoft.Win32.RegistryKey key) => key.GetValue("DelayedAutostart") switch
+    {
+        int intValue => intValue != 0,
+        uint uintValue => uintValue != 0,
+        long longValue => longValue != 0,
+        _ => null
+    };
+
+    // Столбец state формата ServicesBackup: Running/Stopped; нечитаемое состояние —
+    // Unknown (ServicesRestore тогда не трогает состояние службы).
+    private static string QueryServiceState(string serviceName)
+    {
+        try
+        {
+            using var controller = new ServiceController(serviceName);
+            return controller.Status switch
+            {
+                ServiceControllerStatus.Running => "Running",
+                ServiceControllerStatus.Stopped => "Stopped",
+                _ => "Unknown"
+            };
+        }
+        catch
+        {
+            return "Unknown";
         }
     }
 

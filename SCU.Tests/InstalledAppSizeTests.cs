@@ -40,7 +40,7 @@ public class InstalledAppSizeTests
     [Fact]
     public void GetInstallSizeBytes_SumsAllFilesRecursively()
     {
-        var root = Path.Combine(Path.GetTempPath(), "scu-app-size-" + Guid.NewGuid().ToString("N"));
+        var root = TestScratch.NewDir("scu-app-size-");
         Directory.CreateDirectory(Path.Combine(root, "sub"));
         File.WriteAllText(Path.Combine(root, "a.bin"), new string('a', 1000));
         File.WriteAllText(Path.Combine(root, "sub", "b.bin"), new string('b', 2000));

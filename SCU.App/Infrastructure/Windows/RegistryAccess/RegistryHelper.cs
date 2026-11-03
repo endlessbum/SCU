@@ -45,6 +45,17 @@ public sealed class RegistryHelper
     // записью снимается текущее значение, применённое подмножество откатывается по снимкам.
     public Result Apply(IReadOnlyList<RegistryTweak> tweaks, string backupFile)
     {
+        // Бэкап — под эксклюзивной блокировкой бэкап-файла (аудит): параллельный
+        // цикл Restore+Delete (UpdateService.UnpauseUpdates) мог пройти между
+        // проверкой File.Exists и записью бэкапа, и «исходными» оказывались
+        // пост-изменённые значения. Кто не захватил lock — ждёт и после
+        // освобождения перепроверяет наличие бэкапа заново.
+        using var backupLock = AcquireBackupLock(backupFile);
+        if (backupLock is null)
+        {
+            return Result.Failure("Файл бэкапа реестра занят другой операцией — применение отменено.");
+        }
+
         if (!File.Exists(backupFile))
         {
             var backup = BackupValues(tweaks, backupFile);
@@ -312,6 +323,76 @@ public sealed class RegistryHelper
         }
 
         return true;
+    }
+
+    // Эксклюзивная блокировка файла бэкапа (аудит): запись бэкапа в Apply и
+    // удаление в UpdateService идут через один lock-файл рядом с бэкапом —
+    // без него гонка «проверили отсутствие бэкапа → удалили → записали бэкап
+    // пост-изменённых значений» делала такой бэкап «восстанавливаемым».
+    internal sealed class BackupLock : IDisposable
+    {
+        private readonly string _lockPath;
+        private FileStream? _stream;
+
+        internal BackupLock(string lockPath, FileStream stream)
+        {
+            _lockPath = lockPath;
+            _stream = stream;
+        }
+
+        // Dispose + удаление lock-файла с подавлением ошибок: сбой удаления
+        // (файл уже исчез/занят) не должен маскировать исход основной операции.
+        public void Dispose()
+        {
+            var stream = _stream;
+            _stream = null;
+            if (stream is null)
+            {
+                return;
+            }
+
+            try { stream.Dispose(); } catch { /* хэндл мог закрыться */ }
+            try { File.Delete(_lockPath); } catch { /* уже удалён или занят */ }
+        }
+    }
+
+    // null — блокировка не получена (таймаут ожидания или сбой создания):
+    // операции с бэкапом при этом не выполняются (fail-closed). После захвата
+    // вызывающий обязан перепроверить File.Exists(backupFile).
+    internal BackupLock? AcquireBackupLock(string backupFile)
+    {
+        var lockPath = backupFile + ".lock";
+        try
+        {
+            // Каталог создаём заранее: на первом применении бэкапа его ещё нет,
+            // а BackupValues добирается до CreateDirectory позже.
+            Directory.CreateDirectory(Path.GetDirectoryName(backupFile)!);
+            var deadline = Environment.TickCount64 + 2000;
+            while (true)
+            {
+                try
+                {
+                    var stream = new FileStream(lockPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                    return new BackupLock(lockPath, stream);
+                }
+                catch (IOException) when (File.Exists(lockPath))
+                {
+                    // Lock держит параллельная операция — ждём освобождения.
+                    if (Environment.TickCount64 >= deadline)
+                    {
+                        _logger.Warn("REG | backup lock timeout | " + lockPath);
+                        return null;
+                    }
+
+                    Thread.Sleep(100);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("REG | backup lock failed | " + exception.Message);
+            return null;
+        }
     }
 
     private Result BackupValues(IReadOnlyList<RegistryTweak> tweaks, string backupFile)

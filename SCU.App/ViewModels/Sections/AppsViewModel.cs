@@ -123,8 +123,10 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
         AppsFoundText = L.T("Программ найдено: {0}", found.Count);
     }
 
-    // Сортировка. Объём и дата: записи без значения (размер ещё считается,
-    // даты нет в реестре) всегда в конце, независимо от направления.
+    // Сортировка. Объём и дата: записи без значения (размер ещё считается;
+    // даты нет в реестре или она есть, но не распознана — InstallDateUnparsed)
+    // всегда в конце, независимо от направления. Сбой разбора даты сохранён
+    // в модели отдельным флагом и не смешивается с «даты нет».
     internal static IEnumerable<InstalledApp> SortApps(
         IEnumerable<InstalledApp> apps, AppSortMode mode, bool ascending) =>
         (mode, ascending) switch
@@ -278,7 +280,7 @@ public partial class AppsViewModel : ObservableObject, IDisposable, ISectionOper
         }).ConfigureAwait(true);
     }
 
-    private bool CanUninstallApp(InstalledApp? app) => !IsBusy && app != null && app.HasUninstaller;
+    private bool CanUninstallApp(InstalledApp? app) => !IsBusy && app != null && app.CanUninstall;
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {

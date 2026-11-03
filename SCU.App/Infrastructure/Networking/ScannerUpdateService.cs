@@ -29,6 +29,10 @@ public sealed class ScannerUpdateService
     // Верхняя граница размера пакета базы: защищает диск от гигантского/обрывочного ответа.
     private const long MaxPackageBytes = 64 * 1024 * 1024;
 
+    // Каталог для скачанных пакетов, переопределяемый тестами: в песочницах
+    // агентов запись в %TEMP% может быть запрещена; пусто — реальный %TEMP%.
+    internal static string TempRootOverrideForTests { get; set; } = string.Empty;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -219,7 +223,12 @@ public sealed class ScannerUpdateService
         string tempPath;
         try
         {
-            tempPath = Path.Combine(Path.GetTempPath(), "scu-db-" + Guid.NewGuid().ToString("N") + ".zip");
+            // Тесты могут переопределить каталог: песочницы агентов режут запись
+            // в %TEMP% (боевой путь — GetTempPath).
+            var tempRoot = string.IsNullOrEmpty(TempRootOverrideForTests)
+                ? Path.GetTempPath()
+                : TempRootOverrideForTests;
+            tempPath = Path.Combine(tempRoot, "scu-db-" + Guid.NewGuid().ToString("N") + ".zip");
         }
         catch (IOException exception)
         {
@@ -278,22 +287,34 @@ public sealed class ScannerUpdateService
                 }
 
                 await using var responseStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                await using var fileStream = File.Create(tempPath);
                 // CopyToAsync без ограничения писало бы в temp сколько угодно: копируем
                 // с подсчётом и обрываем при превышении лимита (Content-Length может
                 // отсутствовать или врать).
                 var buffer = new byte[81920];
                 long total = 0;
-                int read;
-                while ((read = await responseStream.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+                bool limitExceeded = false;
+                await using (var fileStream = File.Create(tempPath))
                 {
-                    total += read;
-                    if (total > MaxPackageBytes)
+                    int read;
+                    while ((read = await responseStream.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
                     {
-                        return Fail(tempPath, $"Пакет базы превышает лимит {MaxPackageBytes / (1024 * 1024)} МБ — загрузка прервана.");
-                    }
+                        total += read;
+                        if (total > MaxPackageBytes)
+                        {
+                            limitExceeded = true;
+                            break;
+                        }
 
-                    await fileStream.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+                        await fileStream.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+                    }
+                }
+
+                // Файл закрыт до удаления (аудит, п. 14): раньше удаление шло при
+                // открытом потоке, Windows отказывал (sharing violation), и пакет
+                // оставался в temp навсегда — на каждый превышенный лимит.
+                if (limitExceeded)
+                {
+                    return Fail(tempPath, $"Пакет базы превышает лимит {MaxPackageBytes / (1024 * 1024)} МБ — загрузка прервана.");
                 }
             }
 
@@ -385,6 +406,9 @@ public sealed class ScannerUpdateService
             File.Delete(path);
         }
         catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
         {
         }
     }

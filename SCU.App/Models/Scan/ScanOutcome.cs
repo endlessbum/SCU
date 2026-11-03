@@ -50,7 +50,9 @@ public static class ScanOutcomeMapper
         // Согласование двух источников количества: summary.detections и длина
         // detections[]. Протокол присылает оба; расхождение (malformed-пейлоад)
         // трактуется консервативно — детекты есть, если есть хоть в одном.
-        var detectionCount = Math.Max(finished.Summary.Detections, finished.Detections.Count);
+        // ?? [] — массив может быть null из чужого/битого протокола
+        // (аудит, п. 22): падать на .Count нельзя.
+        var detectionCount = Math.Max(finished.Summary.Detections, finished.Detections?.Count ?? 0);
         return detectionCount > 0 ? ScanOutcome.Threats : ScanOutcome.Clean;
     }
 }

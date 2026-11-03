@@ -13,7 +13,7 @@ public sealed class UserScriptStoreTests : IDisposable
 
     public UserScriptStoreTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        _directory = TestScratch.NewDir();
         Directory.CreateDirectory(_directory);
         _logger = Logger.CreateForCurrentRun();
         _store = new UserScriptStore(_logger, _directory);
@@ -215,5 +215,51 @@ public sealed class UserScriptStoreTests : IDisposable
         Assert.True(_store.UpdateContent(stored, "@echo off" + Environment.NewLine + "echo V2"));
 
         Assert.Single(_store.Load());
+    }
+
+    // ===================== Путь скрипта (аудит, п. 13) =====================
+
+    // Идентификатор приходит из scripts.json (файл в %AppData% можно подменить):
+    // «Id + расширение» не должно уводить путь за пределы каталога хранилища.
+    [Fact]
+    public void TryGetScriptPath_TraversalId_IsRejected()
+    {
+        var data = new UserScriptData { Id = "..\\..\\evil", Extension = ".bat" };
+
+        Assert.False(_store.TryGetScriptPath(data, out _));
+        Assert.False(UserScriptStore.IsValidScriptId("..\\..\\evil"));
+        Assert.False(UserScriptStore.IsValidScriptId("sub/dir"));
+        Assert.False(UserScriptStore.IsValidScriptId("C:evil"));
+        Assert.False(UserScriptStore.IsValidScriptId(""));
+        Assert.True(UserScriptStore.IsValidScriptId("us_ok"));
+    }
+
+    [Fact]
+    public async Task Run_TraversalId_IsRefused()
+    {
+        var data = new UserScriptData { Id = "..\\..\\evil", Extension = ".bat" };
+
+        var (exitCode, output) = await _store.RunAsync(data);
+
+        Assert.Equal(-1, exitCode);
+        Assert.Contains("недопустим", output, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Delete_TraversalId_DoesNotTouchOutsideFile()
+    {
+        var outside = Path.Combine(Path.GetDirectoryName(_directory)!, "outside-evil.bat");
+        File.WriteAllText(outside, "@echo off");
+        try
+        {
+            var data = new UserScriptData { Id = "..\\outside-evil", Extension = ".bat" };
+
+            Assert.False(_store.Delete(data));
+            Assert.True(File.Exists(outside));
+        }
+        finally
+        {
+            try { File.Delete(outside); } catch { /* временный файл */ }
+        }
     }
 }

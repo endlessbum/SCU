@@ -74,6 +74,28 @@ public sealed class ScannerRunner
         }
     }
 
+    // Блокировка файла на время проверки и запуска (аудит, п. 24): дескриптор
+    // открыт без FileShare.Write/Delete, поэтому подменить ScannerCore.exe между
+    // проверкой подписи и стартом процесса невозможно — Windows вернёт
+    // sharing violation. В dev-сборках (без пина) блокировка не нужна.
+    private FileStream? LockScannerForRun()
+    {
+        if (!HasSigningPin)
+        {
+            return null;
+        }
+
+        try
+        {
+            return new FileStream(_scannerPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("SCAN | pin check | cannot lock ScannerCore.exe | " + exception.Message);
+            return null;
+        }
+    }
+
     // Разобранное состояние одного запуска сканера (stdout-события).
     // internal — для регрессионных тестов протокола (SCU.Tests).
     internal sealed class RunContext
@@ -101,6 +123,14 @@ public sealed class ScannerRunner
         if (string.IsNullOrWhiteSpace(path))
         {
             return Result<ScanResultDto>.Failure("Не задан путь сканирования.");
+        }
+
+        // Файл блокируется до проверки и остаётся заблокированным до конца
+        // запуска: подмена бинаря между проверкой подписи и стартом невозможна.
+        using var scannerLock = LockScannerForRun();
+        if (HasSigningPin && scannerLock is null)
+        {
+            return Result<ScanResultDto>.Failure("ScannerCore.exe: файл занят — запуск запрещён.", 98);
         }
 
         var pinError = VerifyScannerPin();
@@ -155,6 +185,13 @@ public sealed class ScannerRunner
         if (!File.Exists(packagePath))
         {
             return Result<string>.Failure("Пакет базы не найден.", 2);
+        }
+
+        // Блокировка файла до проверки подписи (аудит, п. 24) — как в RunScanAsync.
+        using var scannerLock = LockScannerForRun();
+        if (HasSigningPin && scannerLock is null)
+        {
+            return Result<string>.Failure("ScannerCore.exe: файл занят — запуск запрещён.", 98);
         }
 
         var pinError = VerifyScannerPin();

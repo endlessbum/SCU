@@ -16,7 +16,7 @@ public sealed class HistoryStoreTests : IDisposable
     public HistoryStoreTests()
     {
         // Уникальная временная папка на каждый тест; удаление — в Dispose.
-        _directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        _directory = TestScratch.NewDir();
         Directory.CreateDirectory(_directory);
         _filePath = Path.Combine(_directory, "history.json");
         _logger = Logger.CreateForCurrentRun();

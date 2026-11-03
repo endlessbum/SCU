@@ -61,7 +61,13 @@ std::string ToLowerAscii(const std::string& text)
     std::string lowered;
     lowered.reserve(text.size());
     for (const char c : text) {
-        lowered += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        // ASCII-only lowercase без std::tolower: тот зависит от локали на
+        // байтах >= 0x80 и искажал многобайтные UTF-8 последовательности.
+        if (c >= 'A' && c <= 'Z') {
+            lowered += static_cast<char>(c + ('a' - 'A'));
+        } else {
+            lowered += c;
+        }
     }
     return lowered;
 }
@@ -131,7 +137,11 @@ void AppendDecodedBase64(const std::string& text, const std::string& lowerText, 
                     if (value < 0) {
                         break;
                     }
-                    accumulator = (accumulator << 6) | value;
+                    // Маска 24 бит (аудит): без неё accumulator рос без
+                    // границы — сдвиг int мимо разрядности (UB) после ~5
+                    // символов прогона. 24 бита с запасом: между выбросами
+                    // байта bits ∈ {0,2,4,6} — максимум 20 значимых бит.
+                    accumulator = ((accumulator << 6) | value) & 0xFFFFFF;
                     bits += 6;
                     if (bits >= 8) {
                         bits -= 8;

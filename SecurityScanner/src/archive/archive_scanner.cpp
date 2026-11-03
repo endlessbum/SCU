@@ -21,29 +21,9 @@ std::wstring TempRoot()
     return temp.empty() ? std::wstring(L".") : temp;
 }
 
-// Создание каталога без следования по reparse-точкам: если путь уже существует,
-// он обязан быть обычным каталогом — junction/symlink на нём означает, что
-// кто-то подготовил цель для записи с правами сканера (fail-closed).
-DWORD CreateDirectoryRecursiveNoReparse(const std::wstring& path)
-{
-    if (CreateDirectoryW(path.c_str(), nullptr)) {
-        return ERROR_SUCCESS;
-    }
-
-    const DWORD error = GetLastError();
-    if (error != ERROR_ALREADY_EXISTS) {
-        return error;
-    }
-
-    const DWORD attributes = GetFileAttributesW(path.c_str());
-    if (attributes == INVALID_FILE_ATTRIBUTES
-        || (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0
-        || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
-        return ERROR_ACCESS_DENIED; // существующий путь не является обычным каталогом
-    }
-
-    return ERROR_SUCCESS;
-}
+// CreateDirectoryRecursiveNoReparse перенесён в core/path_util.cpp (общий
+// хелпер: используется и DatabasePackage::Apply против junction-гонки в
+// каталоге базы — аудит).
 
 std::wstring ToWideName(const char* name, mz_uint bitFlag)
 {
@@ -73,13 +53,17 @@ struct WriteContext {
     HANDLE file;
     const std::atomic<bool>* isCancelled;
     bool failed = false;
+    // Отмена — отдельный флаг (аудит): раньше она взводила failed и MEMBER
+    // репортился как техошибка записи, завышая stats.errors и меняя exit-код
+    // отменённого прогона с Cancelled на Partial.
+    bool cancelled = false;
 };
 
 size_t WriteChunk(void* opaque, mz_uint64 /*fileOfs*/, const void* buffer, size_t size)
 {
     auto* context = static_cast<WriteContext*>(opaque);
     if (context->isCancelled->load(std::memory_order_relaxed)) {
-        context->failed = true;
+        context->cancelled = true;
         return 0; // отмена: прерывает извлечение
     }
     DWORD written = 0;
@@ -124,7 +108,13 @@ bool ArchiveMemoryBudget::Acquire(unsigned long long bytes, const std::atomic<bo
 {
     std::unique_lock lock(mutex_);
     while (!isCancelled.load(std::memory_order_relaxed)) {
-        if (inUse_ + bytes <= kBudgetBytes || inUse_ == 0) {
+        if (inUse_ + bytes <= kBudgetBytes) {
+            inUse_ += bytes;
+            return true;
+        }
+        // Люк против дедлока «один огромный архив при пустом пуле», но с капом
+        // (аудит): сколь угодно большой запрос через люк не проходит.
+        if (inUse_ == 0 && bytes <= kEscapeHatchCapBytes) {
             inUse_ += bytes;
             return true;
         }
@@ -337,13 +327,18 @@ bool ArchiveScanner::ScanMember(int index,
         return true;
     }
 
-    WriteContext context{outFile, &isCancelled_, false};
+    WriteContext context{outFile, &isCancelled_, false, false};
     const mz_bool extracted = mz_zip_reader_extract_to_callback(
         static_cast<mz_zip_archive*>(zipHandle), static_cast<mz_uint>(index), WriteChunk, &context, 0);
     CloseHandle(outFile);
 
     if (!extracted) {
         DeleteFileW(tempPath.c_str());
+        if (context.cancelled) {
+            // Отмена — чистое прерывание: без issue, без stats.errors,
+            // exit-код остаётся Cancelled (см. WriteContext::cancelled).
+            return false;
+        }
         // Ошибка записи на диск — техническая ошибка, не свойство архива.
         onIssue_({virtualPath, L"unsupported-member", displayName, context.failed});
         return !context.failed; // ошибка записи — прерываем, отмена/лимит не было
@@ -393,7 +388,11 @@ ArchiveScanner::~ArchiveScanner()
         FindClose(find);
     }
     RemoveDirectoryW(tempDir_.c_str());
-    RemoveDirectoryW((TempRoot() + L"ScannerCore").c_str());
+    // Общий родитель ScannerCore намеренно НЕ удаляется (аудит): RemoveDirectoryW
+    // на разделяемом каталоге — гонка с параллельным инстансом другого
+    // ScannerCore (у чужого процесса в этот момент может создаваться свой
+    // GUID-лист). Каталог удаляется и так только при пустоте, поэтому
+    // оставшийся пустой ScannerCore безвреден и осознанно остаётся.
 }
 
 } // namespace scan

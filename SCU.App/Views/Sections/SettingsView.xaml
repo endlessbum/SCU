@@ -241,6 +241,26 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}" Text="{DynamicResource S_SettingsCloseBehavior}" ToolTip="{DynamicResource S_SettingsCloseBehaviorDesc}" ToolTipService.InitialShowDelay="250" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_SettingsCloseBehaviorDesc}" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="1"
+                              VerticalAlignment="Center"
+                              SelectedIndex="{Binding CloseBehaviorIndex}">
+                        <ComboBoxItem Content="{DynamicResource S_CloseBehaviorExit}" />
+                        <ComboBoxItem Content="{DynamicResource S_CloseBehaviorTray}" />
+                    </ComboBox>
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
                         <TextBlock Style="{StaticResource RowHeaderText}" Text="{DynamicResource S_SettingsLog}" ToolTip="{DynamicResource S_SettingsLogDesc}" ToolTipService.InitialShowDelay="250" />
                         <TextBlock Style="{StaticResource RowActionText}"
                                    Text="{DynamicResource S_SettingsLogDesc}" />

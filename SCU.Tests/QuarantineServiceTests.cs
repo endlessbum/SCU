@@ -13,7 +13,7 @@ public class QuarantineServiceTests : IDisposable
 
     public QuarantineServiceTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), "scu-quarantine-test-" + Guid.NewGuid().ToString("N"));
+        _root = TestScratch.NewDir("scu-quarantine-test-");
         _service = new QuarantineService(_root);
     }
 
@@ -58,6 +58,24 @@ public class QuarantineServiceTests : IDisposable
             Path.Combine(_root, "missing.txt")), out var error));
         Assert.NotEmpty(error);
         Assert.Empty(_service.List());
+    }
+
+    [Fact]
+    public void Quarantine_SourceLockedByExternalReader_FailsSafely_OriginalIntact()
+    {
+        // SCU-03: внешний дескриптор без FileShare.Delete блокирует наш запрос
+        // Delete-доступа — операция обязана безопасно завершиться ошибкой, не
+        // оставив ни частичного объекта, ни записи, ни (тем более) удалённого
+        // исходника.
+        var source = CreateSourceFile("locked.txt", "payload-locked");
+        using var external = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        Assert.False(_service.Quarantine(DetectionFor(source), out var error));
+        Assert.NotEmpty(error);
+        Assert.True(File.Exists(source), "исходник обязан остаться на месте");
+        Assert.Empty(_service.List());
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, "objects")));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, "metadata")));
     }
 
     [Fact]

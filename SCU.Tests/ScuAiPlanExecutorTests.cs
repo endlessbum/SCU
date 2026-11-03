@@ -1,5 +1,6 @@
 using SCU.AppCore.AI;
 using SCU.AppCore.Help;
+using SCU.Common;
 using SCU.Infrastructure.Logging;
 using SCU.Models.AI;
 using Xunit;
@@ -42,7 +43,8 @@ public class ScuAiPlanExecutorTests
     };
 
     private static (ScuAiActionPlanStore plans, ScuAiPlanExecutor executor) CreateWithCapability(
-        ScuAiCapability capability)
+        ScuAiCapability capability,
+        IConfirmDialogService? dialogs = null)
     {
         var plans = new ScuAiActionPlanStore(Logger);
         var capabilities = new ScuAiCapabilityRegistry(Logger);
@@ -56,9 +58,16 @@ public class ScuAiPlanExecutorTests
             Capabilities = capabilities,
             Environment = new StubEnvironment(),
             State = null!, // этим тестам не нужен
+            Dialogs = dialogs,
         };
 
         return (plans, new ScuAiPlanExecutor(deps));
+    }
+
+    private sealed class StubDialogs(bool confirmChange) : IConfirmDialogService
+    {
+        public bool Ask(string title, string message, string? confirmText = null) => confirmChange;
+        public bool ConfirmChange(DestructiveChange change) => confirmChange;
     }
 
     // Минимальные заглушкиdeps: executor не зовёт их, но контракт требует.
@@ -393,5 +402,46 @@ public class ScuAiPlanExecutorTests
         Assert.Equal(0, holder.ApplyCalls);
         // План вернулся в Confirmed (claim освобождён), не «применён».
         Assert.True(plans.IsConfirmed(plan.PlanId));
+    }
+
+    [Fact]
+    public async Task Apply_HighRiskDialogDeclined_DoesNotMutate()
+    {
+        var holder = new FakeCapabilityHolder();
+        var capability = holder.Create("Вкл.", ScuAiRiskLevel.HighRisk);
+        var (plans, executor) = CreateWithCapability(capability, new StubDialogs(confirmChange: false));
+
+        var plan = plans.Create(new ScuAiActionPlanTemplate(
+            "prepare_scu_change", "fake", "Тест",
+            "Вкл.", "Выкл.", ScuAiRiskLevel.HighRisk,
+            "Сводка", "Детали", false, false));
+        executor.Confirm(plan.PlanId);
+
+        var outcome = await executor.ApplyAsync(plan.PlanId, CancellationToken.None);
+
+        Assert.False(outcome.Success);
+        Assert.Equal(ScuAiErrorCode.ConfirmationCancelled, outcome.ErrorCode);
+        Assert.Contains("не подтверждена", outcome.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, holder.ApplyCalls);
+        Assert.True(plans.IsConfirmed(plan.PlanId));
+    }
+
+    [Fact]
+    public async Task Apply_HighRiskDialogAccepted_Applies()
+    {
+        var holder = new FakeCapabilityHolder();
+        var capability = holder.Create("Вкл.", ScuAiRiskLevel.HighRisk);
+        var (plans, executor) = CreateWithCapability(capability, new StubDialogs(confirmChange: true));
+
+        var plan = plans.Create(new ScuAiActionPlanTemplate(
+            "prepare_scu_change", "fake", "Тест",
+            "Вкл.", "Выкл.", ScuAiRiskLevel.HighRisk,
+            "Сводка", "Детали", false, false));
+        executor.Confirm(plan.PlanId);
+
+        var outcome = await executor.ApplyAsync(plan.PlanId, CancellationToken.None);
+
+        Assert.True(outcome.Success, outcome.Message);
+        Assert.Equal(1, holder.ApplyCalls);
     }
 }

@@ -60,7 +60,7 @@ public sealed class RestorePointStoreTests
     [Fact]
     public void TrackedStore_SaveAndLoad_Roundtrip()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        var directory = TestScratch.NewDir();
         try
         {
             var path = Path.Combine(directory, "restore_points.json");

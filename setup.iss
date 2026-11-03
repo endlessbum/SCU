@@ -31,6 +31,9 @@ UninstallDisplayIcon={app}\SCU.exe
 ArchitecturesInstallIn64BitMode=x64compatible
 ; Обновление поверх запущенного SCU: предложить закрыть приложение.
 CloseApplications=yes
+; Лог установки в %TEMP%\Setup Log*.txt: при «Ошибка 5: Отказано в доступе»
+; видно, на каком шаге не прошла распаковка в диапазоне временных данных.
+SetupLogging=yes
 
 ; Подпись installer'а и деинсталлятора (п. 49): включается release-скриптом
 ; через /DUSE_SIGNTOOL + /Ssigntool="...". Без /DUSE_SIGNTOOL сборка остаётся
@@ -43,6 +46,15 @@ SignedUninstaller=yes
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
+
+; Тексты диалога удаления данных (аудит, п. 20): в [Code] был зашит русский
+; текст, и при английском языке установщика диалог оставался русским.
+; Ключи вынесены в [CustomMessages] с вариантами для каждого языка.
+[CustomMessages]
+english.DeleteDataTitle=Delete SCU data as well?
+english.DeleteDataText=These are the settings, service/network/update backups (rolling back tweaks will no longer be possible), logs, scripts and quarantine (quarantined files cannot be restored). If you keep them, the previous settings and backups will be preserved for a reinstall.
+russian.DeleteDataTitle=Удалить также данные SCU?
+russian.DeleteDataText=Это настройки, бэкапы служб/сети/обновлений (откат твиков станет невозможен), журналы, скрипты и карантин (файлы карантина восстановить будет нельзя). Если оставить, при переустановке прежние настройки и бэкапы сохранятся.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -95,13 +107,11 @@ begin
     if not UninstallSilent() then
       if DirExists(UserDataDir) or DirExists(LocalDataDir) or DirExists(CommonDataDir) then
         if MsgBox(
-             'Удалить также данные SCU?' + #13#10 +
+             ExpandConstant('{cm:DeleteDataTitle}') + #13#10 +
              UserDataDir + #13#10 +
              LocalDataDir + #13#10 +
              CommonDataDir + #13#10 + #13#10 +
-             'Это настройки, бэкапы служб/сети/обновлений (откат твиков станет невозможен),' + #13#10 +
-             'журналы, скрипты и карантин (файлы карантина восстановить будет нельзя).' + #13#10 +
-             'Если оставить, при переустановке прежние настройки и бэкапы сохранятся.',
+             ExpandConstant('{cm:DeleteDataText}'),
              mbConfirmation, MB_YESNO) = IDYES then
         begin
           DelTree(UserDataDir, True, True, True);

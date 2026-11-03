@@ -93,7 +93,7 @@ public class PathSafetyTests
     [Fact]
     public void InstalledAppsService_Ownership_RequiresUninstallerInsideRoot()
     {
-        var root = Path.Combine(Path.GetTempPath(), "scu-own-" + Guid.NewGuid().ToString("N"));
+        var root = TestScratch.NewDir("scu-own-");
         var inside = Path.Combine(root, "unins000.exe");
         Assert.True(InstalledAppsService.OwnsDirectoryForTest(inside, root));
 
@@ -110,7 +110,7 @@ public class PathSafetyTests
     [Fact]
     public void InstalledAppsService_DataFolder_MustBeDirectChildOfKnownRoot()
     {
-        var baseRoot = Path.Combine(Path.GetTempPath(), "scu-data-" + Guid.NewGuid().ToString("N"));
+        var baseRoot = TestScratch.NewDir("scu-data-");
         var siblingRoot = baseRoot + "-other";
         Assert.True(InstalledAppsService.IsDirectChildOfKnownRoot(
             Path.Combine(baseRoot, "MyApp"), [baseRoot]));
@@ -216,7 +216,7 @@ public class PathSafetyTests
     [Fact]
     public void JunctionInsideParent_PointingOutside_IsRejected()
     {
-        var root = Path.Combine(Path.GetTempPath(), "scu-reparse-" + Guid.NewGuid().ToString("N"));
+        var root = TestScratch.NewDir("scu-reparse-");
         var safe = Path.Combine(root, "safe");
         var outside = Path.Combine(root, "outside");
         Directory.CreateDirectory(safe);
@@ -244,7 +244,7 @@ public class PathSafetyTests
     [Fact]
     public void JunctionAsParent_ResolvesConsistently_ChildInsideIsAccepted()
     {
-        var root = Path.Combine(Path.GetTempPath(), "scu-reparse-" + Guid.NewGuid().ToString("N"));
+        var root = TestScratch.NewDir("scu-reparse-");
         var real = Path.Combine(root, "real");
         Directory.CreateDirectory(real);
         var link = Path.Combine(root, "junc");
@@ -272,7 +272,7 @@ public class PathSafetyTests
     {
         // Uninstall-сценарий (п. 5/6): junction внутри папки установки, ведущий к
         // чужому каталогу, не делает чужие процессы «процессами приложения».
-        var root = Path.Combine(Path.GetTempPath(), "scu-reparse-" + Guid.NewGuid().ToString("N"));
+        var root = TestScratch.NewDir("scu-reparse-");
         var app = Path.Combine(root, "App");
         var other = Path.Combine(root, "Other");
         Directory.CreateDirectory(app);

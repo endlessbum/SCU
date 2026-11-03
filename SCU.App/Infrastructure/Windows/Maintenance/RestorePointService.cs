@@ -11,14 +11,15 @@ namespace SCU.Infrastructure.Windows.Maintenance;
 // Создание — через WMI-класс root\default:SystemRestore (как Checkpoint-Computer),
 // чтение — запросом по тому же классу. Лимит «одна точка в 24 часа» обходится
 // временной записью SystemRestorePointCreationFrequency=0 с возвратом исходного значения.
-// ЛИМИТ ХРАНЕНИЯ: в системном хранилище держится не более MaxRestorePoints (5) точек.
-// После каждого успешного создания список подрезается: самая старая точка (любая,
-// включая созданные системой или другим ПО) удаляется через srclient!SRRemoveRestorePoint.
-// Созданные приложением точки дополнительно tracked в собственном store
-// (%AppData%\SCU\state\restore_points.json) — учёт идентификаторов. ОГРАНИЧЕНИЕ:
-// SRRemoveRestorePoint требует прав администратора и может не поддерживаться на части
-// систем — если API вернул ошибку, точка остаётся в хранилище (лимит доберётся при
-// следующем создании), об этом пишется предупреждение в журнал.
+// ЛИМИТ ХРАНЕНИЯ (R-01, второй аудит): автоматически ограничивается ТОЛЬКО
+// список точек, созданных SCU (MaxRestorePoints = 5, учёт в собственном store
+// %AppData%\SCU\state\restore_points.json). При превышении лимита удаляется
+// самая старая СОБСТВЕННАЯ точка; точки Windows, драйверов и стороннего ПО
+// автоматикой не удаляются — только вручную из списка раздела, с подтверждением.
+// ОГРАНИЧЕНИЕ: SRRemoveRestorePoint требует прав администратора и может не
+// поддерживаться на части систем — если API вернул ошибку, точка остаётся в
+// хранилище (лимит доберётся при следующем создании), об этом пишется
+// предупреждение в журнал.
 public sealed class RestorePointService
 {
     private const string SystemRestoreKey = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore";
@@ -34,8 +35,12 @@ public sealed class RestorePointService
     }
 
     // Удаление точки восстановления по SequenceNumber: srclient.dll (WinAPI).
+    // SCU-06 (второй аудит): документированная сигнатура принимает только номер
+    // точки (dwRPNum) — второй параметр dwRestorePointType в объявлении был
+    // лишним (на x64 лишний аргумент молча игнорировался ABI, но контракт
+    // P/Invoke не соответствовал WinAPI).
     [DllImport("srclient.dll", SetLastError = true)]
-    private static extern int SRRemoveRestorePoint(uint dwSequenceNumber, uint dwRestorePointType);
+    private static extern int SRRemoveRestorePoint(uint dwRPNum);
 
     // DisableSR: 1 = защита системы отключена; значение отсутствует = включена по умолчанию.
     // Глобальное DisableSR=0 не гарантирует защиту системного тома: защита может быть
@@ -247,9 +252,8 @@ public sealed class RestorePointService
 
                 _logger.Info("RP | create ok | " + description);
 
-                // Лимит хранения: подрезаем системный список до MaxRestorePoints —
-                // шестая по счёту точка перезаписывает самую старую.
-                await TrimSystemRestorePointsToLimitAsync().ConfigureAwait(false);
+                // R-01 (второй аудит): автоматическая подрезка затрагивает только
+                // собственные точки SCU — системные и сторонние не удаляются.
                 return Result.Success("Точка восстановления создана.");
             }
             finally
@@ -391,7 +395,7 @@ public sealed class RestorePointService
         ct.ThrowIfCancellationRequested();
         try
         {
-            var code = SRRemoveRestorePoint((uint)sequenceNumber, ModifySettingsRestorePointType);
+            var code = SRRemoveRestorePoint((uint)sequenceNumber);
             if (code == 0)
             {
                 _logger.Info("RP | deleted | seq=" + sequenceNumber);
@@ -515,48 +519,35 @@ public sealed class RestorePointService
     }
 
     // Регистрация созданной точки в store приложения (учёт идентификаторов).
-    // Системное удаление лишних точек выполняет TrimSystemRestorePointsToLimitAsync —
-    // она работает и с точками, созданными вне приложения.
+    // R-01 (второй аудит): при превышении лимита удаляются ТОЛЬКО собственные
+    // точки SCU, выпавшие из store; точки Windows/драйверов/стороннего ПО
+    // автоматикой не трогаются — их удаление только вручную из списка раздела
+    // (с подтверждением в MaintenanceViewModel).
     private void TrackCreatedRestorePoint(int sequenceNumber, string description)
     {
         var records = LoadTrackedRestorePoints().ToList();
         records.Add(new AppRestorePointRecord(sequenceNumber, DateTime.Now, description));
         var (kept, removed) = TrimTrackedRestorePoints(records, MaxTrackedRestorePoints);
 
+        foreach (var removedRecord in removed)
+        {
+            TryDeleteSystemRestorePoint(removedRecord);
+        }
+
         SaveTrackedRestorePoints(kept);
         _logger.Info($"RP | tracked store | kept={kept.Count} removed={removed.Count}");
     }
 
-    // Подрезка системного хранилища до MaxRestorePoints: удаляются самые старые
-    // точки (список читается по убыванию даты — хвост и есть самые старые).
-    // Сбои удаления не влияют на результат создания: точка уже создана, лимит
-    // доберётся при следующей попытке.
-    private async Task TrimSystemRestorePointsToLimitAsync()
-    {
-        var points = await GetRestorePointsAsync(CancellationToken.None).ConfigureAwait(false);
-        if (!points.IsSuccess || points.Value is null || points.Value.Count <= MaxRestorePoints)
-        {
-            return;
-        }
-
-        for (var index = points.Value.Count - 1; index >= MaxRestorePoints; index--)
-        {
-            var oldest = points.Value[index];
-            _logger.Info("RP | trim | удаляется самая старая точка seq=" + oldest.SequenceNumber);
-            TryDeleteSystemRestorePoint(new AppRestorePointRecord(
-                oldest.SequenceNumber, oldest.CreationTime, oldest.Description));
-        }
-    }
-
-    // Попытка удалить системную точку (srclient!SRRemoveRestorePoint, тип 12 — как при создании).
-    // Требуются права администратора; на части систем API может вернуть ошибку — тогда
+    // Удаление собственной точки SCU, выпавшей из store (srclient!SRRemoveRestorePoint,
+    // SCU-06: документированная сигнатура — только номер точки). Требуются права
+    // администратора; на части систем API может вернуть ошибку — тогда
     // точка остаётся в системном хранилище (ограничение документировано в шапке класса),
     // но из store приложения она всё равно выписывается.
     private void TryDeleteSystemRestorePoint(AppRestorePointRecord record)
     {
         try
         {
-            var code = SRRemoveRestorePoint((uint)record.SequenceNumber, ModifySettingsRestorePointType);
+            var code = SRRemoveRestorePoint((uint)record.SequenceNumber);
             if (code == 0)
             {
                 _logger.Info($"RP | deleted stale point | seq={record.SequenceNumber}");

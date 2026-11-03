@@ -10,6 +10,8 @@
 #include "filesystem/enumerator.h"
 #include "ipc/event_writer.h"
 
+#include <windows.h>
+
 #include <atomic>
 #include <mutex>
 #include <unordered_map>
@@ -56,6 +58,8 @@ private:
     // Возвращает вердикт цели (для корреляции persistence, п. 18).
     // countInFileStats=false — анализ цели persistence: цель не из обхода,
     // счётчик файлов не растёт (семантика filesScanned — только обход).
+    // predefinedFile — уже открытый хэндл цели (аудит TOCTOU): размер, хэш и
+    // классификация идут по нему; владелец хэндла — вызывающий (ScanPersistence).
     Verdict AnalyzeFile(const std::wstring& displayPath,
                         const std::wstring& realPath,
                         unsigned long long size,
@@ -64,7 +68,8 @@ private:
                         ScanStats& stats,
                         std::vector<Detection>& detections,
                         bool& needsArchiveScan,
-                        bool countInFileStats = true);
+                        bool countInFileStats = true,
+                        HANDLE predefinedFile = INVALID_HANDLE_VALUE);
 
     // Persistence (п. 17/18): каждая запись коррелируется с анализом цели
     // (файл — через AnalyzeFile, командная строка — через ScriptScanner).

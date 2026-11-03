@@ -178,6 +178,46 @@ public class ScanEventParserTests
         Assert.Null(scanEvent.Result);
     }
 
+    // ===================== detections: null (аудит, п. 22) =====================
+
+    // "detections": null в malformed-протоколе: раньше DTO получал null, и
+    // маппер падал на .Count (NullReferenceException). Такой payload —
+    // не результат скана: Result = null → прогон классифицируется Failed.
+    [Fact]
+    public void Parse_FinishedWithNullDetections_ResultIsNull()
+    {
+        var scanEvent = ScanEventParser.Parse(
+            """{"event":"finished","cancelled":false,"summary":{"filesScanned":5,"filesSkipped":0,"errors":0,"detections":0},"detections":null}""");
+
+        Assert.Equal(ScanEventKind.Finished, scanEvent.Kind);
+        Assert.Null(scanEvent.Result);
+    }
+
+    // Отсутствующее поле detections — не повреждение: детектов просто нет.
+    [Fact]
+    public void Parse_FinishedWithoutDetectionsField_ResultIsNotNull()
+    {
+        var scanEvent = ScanEventParser.Parse(
+            """{"event":"finished","cancelled":false,"summary":{"filesScanned":5,"filesSkipped":0,"errors":0,"detections":0}}""");
+
+        Assert.Equal(ScanEventKind.Finished, scanEvent.Kind);
+        Assert.NotNull(scanEvent.Result);
+        Assert.Empty(scanEvent.Result!.Detections);
+    }
+
+    // Маппер не падает на null-массиве детектов (защита в глубину).
+    [Fact]
+    public void ScanOutcomeMapper_NullDetections_DoesNotThrow()
+    {
+        var result = new ScanResultDto
+        {
+            Summary = new ScanSummaryDto { FilesScanned = 1, FilesSkipped = 0, Errors = 0, Detections = 0 },
+            Detections = null!,
+        };
+
+        Assert.Equal(ScanOutcome.Clean, ScanOutcomeMapper.Map(result));
+    }
+
     private static ScanVerdict ParseVerdict(string verdict) => verdict switch
     {
         "clean" => ScanVerdict.Clean,

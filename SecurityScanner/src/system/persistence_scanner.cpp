@@ -45,7 +45,9 @@ std::wstring Trim(const std::wstring& value)
 bool FileExists(const std::wstring& path);
 void ExpandEnvironment(std::wstring& value);
 
-std::wstring ResolveTarget(const std::wstring& command)
+// Резолв цели из команды. rejected=true — команда malformed (незакрытая
+// кавычка, аудит): цель не резолвится вовсе.
+std::wstring ResolveTarget(const std::wstring& command, bool* rejected = nullptr)
 {
     std::wstring value = Trim(command);
     if (value.rfind(L"\\??\\", 0) == 0) {
@@ -64,7 +66,16 @@ std::wstring ResolveTarget(const std::wstring& command)
 
     if (value[0] == L'"') {
         const size_t closing = value.find(L'"', 1);
-        return closing == std::wstring::npos ? value.substr(1) : value.substr(1, closing - 1);
+        if (closing == std::wstring::npos) {
+            // Незакрытая кавычка (аудит): раньше весь остаток возвращался как
+            // «путь» и вердикт привязывался к мусорной цели. Запись считается
+            // unresolvable.
+            if (rejected != nullptr) {
+                *rejected = true;
+            }
+            return {};
+        }
+        return value.substr(1, closing - 1);
     }
 
     const size_t firstSpace = value.find(L' ');
@@ -139,6 +150,38 @@ std::wstring ResolveExistingPathInArguments(const std::wstring& command)
     return {};
 }
 
+// Исполнимые расширения (аудит): гейт применяется ТОЛЬКО к целям, найденным
+// в аргументах команды (ResolveExistingPathInArguments) — тот мог отдать
+// произвольный существующий файл, и вердикт привязывался бы к подставному
+// декою. Прямая цель (значение записи само указывает на файл) проверке на
+// расширение не подлежит: автозапуск на архив легитимно сканируется как
+// архив, и вердикт коррелируется с ним (регрессионный тест).
+const wchar_t* kExecutableExtensions[] = {
+    L".exe", L".dll", L".com", L".scr", L".pif", L".bat", L".cmd", L".ps1",
+    L".vbs", L".js", L".vbe", L".wsf", L".hta", L".msi", L".jar",
+};
+
+bool HasExecutableExtension(const std::wstring& path)
+{
+    const size_t dot = path.find_last_of(L'.');
+    if (dot == std::wstring::npos) {
+        return false;
+    }
+    const std::wstring extension = path.substr(dot);
+    for (const wchar_t* known : kExecutableExtensions) {
+        if (_wcsicmp(extension.c_str(), known) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Цель из аргументов без исполнимого расширения к вердикту не привязывается.
+std::wstring ExecutableTarget(const std::wstring& path)
+{
+    return HasExecutableExtension(path) ? path : std::wstring();
+}
+
 // Цель записи автозапуска: окружение раскрывается ДО разбора — иначе пути с
 // %ProgramFiles% (x86) не находятся как существующие префиксы. Если цель не
 // существует, ищем файл-путь в аргументах (rundll32/regsvr32-класс: exe —
@@ -146,16 +189,22 @@ std::wstring ResolveExistingPathInArguments(const std::wstring& command)
 std::wstring ResolveEntryTarget(const std::wstring& command)
 {
     std::wstring expanded = ExpandEnvironmentDynamic(command);
-    std::wstring target = ResolveTarget(expanded.empty() ? command : expanded);
+    bool rejected = false;
+    std::wstring target = ResolveTarget(expanded.empty() ? command : expanded, &rejected);
+    if (rejected) {
+        return {}; // malformed-команда: цель не привязывается (аудит)
+    }
     ExpandEnvironment(target);
     if (!FileExists(target)) {
         std::wstring argumentTarget =
             ResolveExistingPathInArguments(expanded.empty() ? command : expanded);
         if (!argumentTarget.empty()) {
             ExpandEnvironment(argumentTarget);
-            return argumentTarget;
+            return ExecutableTarget(argumentTarget); // гейт — только для аргумент-резолва
         }
     }
+    // Прямая цель без гейта: значение записи указывает на файл явно —
+    // в т.ч. архив (сканируется как архив, вердикт коррелируется).
     return target;
 }
 
@@ -189,14 +238,35 @@ void EnumRegistryValues(HKEY hive, int hiveIndex, const wchar_t* subKey,
     const std::wstring location = std::wstring(kHiveNames[hiveIndex]) + L"\\" + subKey;
 
     for (DWORD index = 0;; ++index) {
-        wchar_t valueName[16384]{};
-        DWORD nameLength = 16384;
+        // Имя значения — в динамическом буфере (аудит): имя длиннее
+        // фиксированных 16 КБ wchar возвращало ERROR_MORE_DATA и молча
+        // обрывало перечисление ключа — остаток значений не сканировался.
+        // Ретрай того же индекса с максимумом имени (32767 + 1 wchar);
+        // не хватило и его — значение пропускается, перечисление продолжается.
+        std::vector<wchar_t> nameBuffer(16384);
+        DWORD nameLength = static_cast<DWORD>(nameBuffer.size());
         DWORD type = 0;
         DWORD dataSize = 0;
         // Размер значения запрашивается первым (аудит 2, п. 12): значение
-        // больше 4 КБ больше не обрывает перечисление ключа.
-        LSTATUS status = RegEnumValueW(key, index, valueName, &nameLength,
+        // больше 4 КБ больше не обрывает перечисление ключа. ERROR_MORE_DATA
+        // здесь возможен только на ИМЯ: буфер данных не передан (lpData = nullptr).
+        LSTATUS status = RegEnumValueW(key, index, nameBuffer.data(), &nameLength,
                                        nullptr, &type, nullptr, &dataSize);
+        if (status == ERROR_MORE_DATA) {
+            nameBuffer.assign(32767 + 1, L'\0');
+            nameLength = static_cast<DWORD>(nameBuffer.size());
+            status = RegEnumValueW(key, index, nameBuffer.data(), &nameLength,
+                                   nullptr, &type, nullptr, &dataSize);
+        }
+        if (status == ERROR_MORE_DATA) {
+            // Даже максимум имени не вместил — значение непроверяемо, но
+            // обрывать перечисление ключа нельзя: остальные значения
+            // остаются в coverage.
+            if (onSkipped) {
+                onSkipped(location + L"\\" + nameBuffer.data(), L"registry-value-unreadable");
+            }
+            continue;
+        }
         if (status != ERROR_SUCCESS) {
             break;
         }
@@ -207,7 +277,7 @@ void EnumRegistryValues(HKEY hive, int hiveIndex, const wchar_t* subKey,
             // Чрезмерно длинное значение не читаем, но перечисление ключа
             // продолжаем — остальные значения остаются в coverage.
             if (onSkipped) {
-                onSkipped(location + L"\\" + valueName, L"registry-value-too-large");
+                onSkipped(location + L"\\" + nameBuffer.data(), L"registry-value-too-large");
             }
             continue;
         }
@@ -215,15 +285,24 @@ void EnumRegistryValues(HKEY hive, int hiveIndex, const wchar_t* subKey,
         std::wstring data;
         if (dataSize > 0) {
             data.resize(dataSize / sizeof(wchar_t) + 1, L'\0');
-            nameLength = 16384; // первая фаза вернула фактическую длину имени — вернуть размер буфера
+            nameLength = static_cast<DWORD>(nameBuffer.size()); // первая фаза вернула фактическую длину имени — вернуть размер буфера
             DWORD got = static_cast<DWORD>(data.size() * sizeof(wchar_t));
-            status = RegEnumValueW(key, index, valueName, &nameLength,
+            status = RegEnumValueW(key, index, nameBuffer.data(), &nameLength,
                                    nullptr, &type, reinterpret_cast<BYTE*>(data.data()), &got);
             if (status != ERROR_SUCCESS) {
                 // Значение могло измениться между двумя вызовами — пропускаем
                 // его, но не весь ключ.
                 if (onSkipped) {
-                    onSkipped(location + L"\\" + valueName, L"registry-value-unreadable");
+                    onSkipped(location + L"\\" + nameBuffer.data(), L"registry-value-unreadable");
+                }
+                continue;
+            }
+            // Ревалидация типа (аудит): значение могло смениться между двумя
+            // вызовами, включая тип (REG_SZ → REG_BINARY) — бинарные байты
+            // не должны попадать в командную строку записи.
+            if (type != REG_SZ && type != REG_EXPAND_SZ) {
+                if (onSkipped) {
+                    onSkipped(location + L"\\" + nameBuffer.data(), L"registry-value-unreadable");
                 }
                 continue;
             }
@@ -234,7 +313,7 @@ void EnumRegistryValues(HKEY hive, int hiveIndex, const wchar_t* subKey,
 
         PersistenceEntry entry;
         entry.location = location;
-        entry.name = valueName;
+        entry.name = nameBuffer.data();
         entry.command = data;
         entry.targetPath = ResolveEntryTarget(entry.command);
         onEntry(entry);
@@ -270,8 +349,12 @@ void EnumWinlogon(HKEY hive, int hiveIndex, const std::function<void(const Persi
 
         std::wstring data(dataSize / sizeof(wchar_t) + 1, L'\0');
         DWORD got = static_cast<DWORD>(data.size() * sizeof(wchar_t));
+        // Ревалидация типа (аудит): значение могло смениться между двумя
+        // чтениями, включая тип (REG_SZ → REG_BINARY) — бинарные байты не
+        // должны попадать в командную строку записи.
         if (RegQueryValueExW(key, valueName, nullptr, &type,
-                             reinterpret_cast<BYTE*>(data.data()), &got) != ERROR_SUCCESS) {
+                             reinterpret_cast<BYTE*>(data.data()), &got) != ERROR_SUCCESS
+            || (type != REG_SZ && type != REG_EXPAND_SZ)) {
             continue;
         }
         while (!data.empty() && data.back() == L'\0') {
@@ -353,8 +436,12 @@ void EnumStartupFolder(const std::wstring& folder,
     HANDLE find = FindFirstFileExW((folder + L"\\*").c_str(), FindExInfoBasic, &findData,
                                    FindExSearchNameMatch, nullptr, 0);
     if (find == INVALID_HANDLE_VALUE) {
-        // Нет каталога/нет доступа — не ошибка сканирования, но потерю
-        // перечисления посреди каталога репортим после цикла.
+        // Полный отказ перечисления (аудит): отсутствие каталога — норма,
+        // молча; иной отказ (права и т.п.) — потеря coverage, репортим.
+        const DWORD openError = GetLastError();
+        if (openError != ERROR_FILE_NOT_FOUND && openError != ERROR_PATH_NOT_FOUND && onSkipped) {
+            onSkipped(folder, L"startup-folder-unreadable");
+        }
         return;
     }
 
@@ -496,6 +583,12 @@ std::wstring DecodeXmlEntities(const std::wstring& text)
                 code = wcstoul(entity.c_str() + 1, const_cast<wchar_t**>(&end), 10);
                 ok = end != nullptr && *end == L'\0' && code > 0 && code <= 0x10FFFF;
             }
+            // Суррогатные диапазоны UTF-16 — не самостоятельные символы:
+            // «повисшая» половина пары портила результат (аудит). Отклоняем
+            // наравне с out-of-range, десятичная и hex-ветки одинаково.
+            if (ok && code >= 0xD800 && code <= 0xDFFF) {
+                ok = false;
+            }
             if (ok) {
                 if (code > 0xFFFF) {
                     // Astral-плоскость (аудит): без суррогатной пары
@@ -517,8 +610,6 @@ std::wstring DecodeXmlEntities(const std::wstring& text)
     }
     return result;
 }
-
-static wchar_t ToLowerW(wchar_t c) { return static_cast<wchar_t>(towlower(c)); }
 
 // Регистронезависимый поиск открывающего/закрывающего тега по ЛОКАЛЬНОМУ имени
 // (namespace-префикс <ns:Command> и атрибуты <Command attr="x"> не ломают поиск;
@@ -680,6 +771,15 @@ std::wstring ExtractTaskCommandLine(const std::wstring& path,
     const bool utf16NoBom = !utf16Bom && buffer.size() >= 2 && buffer.size() % 2 == 0
                             && buffer[1] == 0 && buffer[0] != 0;
     if (utf16Bom) {
+        // Нечётный остаток после BOM — повреждённый/обрезанный UTF-16: прежнее
+        // целочисленное деление молча выбрасывало хвостовой байт. Не парсим —
+        // отказ наравне с прочими task-parse-failed.
+        if ((buffer.size() - 2) % sizeof(wchar_t) != 0) {
+            if (onSkipped) {
+                onSkipped(path, L"task-parse-failed");
+            }
+            return {};
+        }
         wide.assign(reinterpret_cast<const wchar_t*>(buffer.data() + 2),
                     (buffer.size() - 2) / sizeof(wchar_t));
     } else if (utf16NoBom) {
@@ -766,7 +866,7 @@ void WalkTasksFolder(const std::wstring& tasksRoot, const std::wstring& folder, 
     // Обрыв перечисления посреди дерева задач — остаток молча терялся.
     const DWORD findError = GetLastError();
     FindClose(find);
-    if (findError != ERROR_NO_MORE_FILES && findError != ERROR_SUCCESS) {
+    if (findError != ERROR_NO_MORE_FILES && findError != ERROR_SUCCESS && onSkipped) {
         onSkipped(folder, L"tasks-enumeration-aborted");
     }
 }
@@ -781,8 +881,14 @@ void EnumScheduledTasks(const std::function<void(const PersistenceEntry&)>& onEn
         return;
     }
     std::wstring systemDir(needed + 1, L'\0');
-    GetSystemDirectoryW(systemDir.data(), needed + 1);
-    systemDir.resize(wcslen(systemDir.c_str()));
+    const UINT written = GetSystemDirectoryW(systemDir.data(), needed + 1);
+    if (written == 0 || written > needed) {
+        // Второй вызов раньше выполнялся без проверки: при сбое systemDir
+        // оставался пустым и обход шёл по мусорному корню "\Tasks". Сбой —
+        // аккуратный выход, перечисление задач не начинается.
+        return;
+    }
+    systemDir.resize(written);
 
     const std::wstring tasksRoot = systemDir + L"\\Tasks";
     WalkTasksFolder(tasksRoot, tasksRoot, 0, onEntry, onSkipped);

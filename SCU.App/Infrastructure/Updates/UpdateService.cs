@@ -122,13 +122,27 @@ public sealed class UpdateService
             // пропущенных значений и уничтожать его нельзя.
             if (result.Code == 0 && File.Exists(backupFile))
             {
-                try
+                // Удаление — под той же эксклюзивной блокировкой, что и запись
+                // бэкапа в RegistryHelper.Apply (аудит): без неё параллельный
+                // Apply, начавший бэкап до удаления, завершал его уже после
+                // Restore — «исходными» фиксировались пост-изменённые значения.
+                using var backupLock = _registry.AcquireBackupLock(backupFile);
+                if (backupLock is not null && File.Exists(backupFile))
                 {
-                    File.Delete(backupFile);
+                    try
+                    {
+                        File.Delete(backupFile);
+                    }
+                    catch (Exception exception)
+                    {
+                        _logger.Warn("WU | pause backup cleanup failed: " + exception.Message);
+                    }
                 }
-                catch (Exception exception)
+                else if (backupLock is null)
                 {
-                    _logger.Warn("WU | pause backup cleanup failed: " + exception.Message);
+                    // Lock не получен: бэкап оставляем — лишняя копия безопаснее
+                    // «восстановления» из бэкапа пост-изменённых значений.
+                    _logger.Warn("WU | pause backup retained | backup lock busy");
                 }
             }
             else if (result.Code != 0)

@@ -101,7 +101,7 @@ public sealed class BrowserSettingsService : BrowserJsonStore
         Load(BrowserSettingsModel.CreateDefault());
 
     // base.: иначе Save(settings) разрешается в саму себя — бесконечная рекурсия.
-    public new bool Save(BrowserSettingsModel settings) => base.Save(settings);
+    public bool Save(BrowserSettingsModel settings) => base.Save(settings);
 }
 
 // История посещений: только top-level http/https навигации, без ресурсов страницы.
@@ -135,6 +135,20 @@ public sealed class BrowserHistoryService : BrowserJsonStore
         }
 
         Save(_entries);
+    }
+
+    // Удаление отдельной записи истории (аудит, п. 6): кнопка «удалить» в
+    // истории была привязана к RemoveBookmarkCommand и удаляла закладку.
+    public bool Remove(string url)
+    {
+        var removed = _entries.RemoveAll(entry => string.Equals(entry.Url, url, StringComparison.Ordinal));
+        if (removed == 0)
+        {
+            return false;
+        }
+
+        Save(_entries);
+        return true;
     }
 
     public void Clear()

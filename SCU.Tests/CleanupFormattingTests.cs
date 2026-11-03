@@ -70,4 +70,34 @@ public class CleanupFormattingTests
 
         Assert.DoesNotContain("Осталось", CleanupViewModel.FormatCleanupResult(result));
     }
+
+    // ===================== Итог по группам целей (дизайн, п. 10) =====================
+
+    [Fact]
+    public void FormatCategoryResult_SumsOnlyItsGroup()
+    {
+        IReadOnlyList<CleanupItemResult> results =
+        [
+            new CleanupItemResult("Temp", true, 10, 8, 2 * 1024 * 1024),
+            new CleanupItemResult("Logs", true, 5, 2, 512),
+        ];
+        var targets = new List<CleanupTarget> { new("Temp", @"C:\Temp") };
+
+        var text = CleanupViewModel.FormatCategoryResult(results, targets, "Temp");
+
+        Assert.Contains("8", text);          // только файлы своей группы
+        Assert.DoesNotContain("5", text);     // файлы другой группы не учтены
+    }
+
+    [Fact]
+    public void FormatCategoryResult_GroupWithoutResults_SaysNotPerformed()
+    {
+        IReadOnlyList<CleanupItemResult> results = [];
+        var targets = new List<CleanupTarget> { new("Temp", @"C:\Temp") };
+
+        var text = CleanupViewModel.FormatCategoryResult(results, targets, "Кэш браузеров");
+
+        Assert.Contains("Кэш браузеров", text);
+        Assert.Contains("не выполнено", text);
+    }
 }

@@ -1,4 +1,4 @@
-﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
@@ -20,6 +20,14 @@
     <sys:String x:Key="S_Section03_Desc">Корзина, temp, браузеры и системная очистка</sys:String>
     <sys:String x:Key="S_Section26_Title">Кэш приложений</sys:String>
     <sys:String x:Key="S_Section26_Desc">Временные данные установленных приложений</sys:String>
+    <!-- Раздел 27 «Windows Defender»: подвкладка группы «Приватность и защита» -->
+    <sys:String x:Key="S_Section27_Title">Windows Defender</sys:String>
+    <sys:String x:Key="S_Section27_Desc">Полное выключение и включение Защитника на уровне системы</sys:String>
+    <sys:String x:Key="S_DefenderCardTitle">Защитник Windows</sys:String>
+    <sys:String x:Key="S_DefenderCardDesc">Скрипт SCU.ps1: политика DisableAntiSpyware и службы WinDefend, WdNisSvc, SecurityHealthService.</sys:String>
+    <sys:String x:Key="S_DefenderToggleTip">Переключает Защитник Windows. Перед выключением состояния служб сохраняются в бэкап.</sys:String>
+    <sys:String x:Key="S_DefenderNote">Выключение не удаляет Defender: включение тем же выключателем возвращает политику и службы из бэкапа (или к заводским значениям).</sys:String>
+    <sys:String x:Key="I_DefenderCard">Выключатель «Защитника Windows»: применяет политику DisableAntiSpyware, отключает мониторинг в реальном времени и переводит службы WinDefend, WdNisSvc, WdNisDrv, WdFilter, WdBoot и SecurityHealthService в «Отключена». Включение возвращает исходные состояния служб из бэкапа; для полного возврата драйверов WdFilter/WdBoot может потребоваться перезагрузка.</sys:String>
     <sys:String x:Key="S_Section04_Title">Удаление мусорного ПО</sys:String>
     <sys:String x:Key="S_Section04_Desc">AppX и другие необязательные компоненты</sys:String>
     <sys:String x:Key="S_Section05_Title">Приватность и телеметрия</sys:String>
@@ -137,9 +145,14 @@
 
 
     <sys:String x:Key="S_SettingsLanguage">Язык интерфейса</sys:String>
-    <sys:String x:Key="S_SettingsLanguageDesc">Применяется сразу. При первой установке берётся язык установщика.</sys:String>
+    <sys:String x:Key="S_SettingsLanguageDesc">Применяется сразу. Некоторые сообщения могут остаться на прежнем языке до перезапуска.</sys:String>
     <sys:String x:Key="S_LangRu">Русский</sys:String>
     <sys:String x:Key="S_LangEn">English</sys:String>
+
+    <sys:String x:Key="S_SettingsCloseBehavior">Закрытие окна</sys:String>
+    <sys:String x:Key="S_SettingsCloseBehaviorDesc">Что делать при закрытии главного окна: завершить приложение или свернуть его в трей (иконка в области уведомлений).</sys:String>
+    <sys:String x:Key="S_CloseBehaviorExit">Закрывать SCU</sys:String>
+    <sys:String x:Key="S_CloseBehaviorTray">Сворачивать в трей</sys:String>
 
     <sys:String x:Key="S_SettingsFooter">Настройки сохраняются в %AppData%\SCU\settings.json и применяются при следующем запуске.</sys:String>
 
@@ -217,6 +230,10 @@
     <sys:String x:Key="S_NetNetBiosDisable">Отключить (режим 2)</sys:String>
     <sys:String x:Key="S_NetNetBiosDhcp">По DHCP (режим 0)</sys:String>
     <sys:String x:Key="S_NetNetBiosFlush">Сбросить кэш (nbtstat -R / -RR)</sys:String>
+    <sys:String x:Key="S_NetNduTitle">Служба NDU (статистика трафика)</sys:String>
+    <sys:String x:Key="S_NetNduDesc">Отключает сбор статистики использования данных: экран «Использование данных» и лимиты трафика перестанут обновляться.</sys:String>
+    <sys:String x:Key="S_NetNduDisable">Отключить</sys:String>
+    <sys:String x:Key="S_NetNduEnable">Включить</sys:String>
     <!-- Заголовок «Очистки DNS» в списке пакетной очистки на «Главной» -->
     <sys:String x:Key="S_BatchDnsFlush">Очистка DNS</sys:String>
     <!-- Карточка «Путь очистки загрузок» в «Настройках» -->
@@ -280,6 +297,7 @@
     <sys:String x:Key="I_AppCacheScanScope">Кэш считывается только с данных расположенных на системном диске.</sys:String>
     <sys:String x:Key="S_Cancel">Отмена</sys:String>
     <sys:String x:Key="S_Clean">Очистить</sys:String>
+    <sys:String x:Key="S_CleanAll">Очистить всё</sys:String>
     <sys:String x:Key="S_ColIndex">#</sys:String>
     <sys:String x:Key="S_BloatDesc">Список фиксирован. Скан показывает фактическое наличие. Удаление идёт через powershell: SCU.ps1 с повторной проверкой</sys:String>
     <sys:String x:Key="S_ServicesDesc">Переключатель включает и отключает службу через .NET API</sys:String>
@@ -367,6 +385,24 @@
     <sys:String x:Key="S_EmptyStateStartup">Приложений в автозагрузке нет</sys:String>
     <!-- Ввод: сноска к карточкам со звёздочкой (ускорение мыши, залипание клавиш) -->
     <sys:String x:Key="S_InputAsteriskNote">* Включение отключает параметр</sys:String>
+
+    <!-- Ввод: карточка «Перевод раскладки» (автозамена в стиле Punto Switcher) -->
+    <sys:String x:Key="S_LayoutTranslatorTitle">Перевод раскладки</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorDesc">Автоматически определяет, что текст набирается в неверной раскладке (русский текст английскими буквами и наоборот), и исправляет последнее слово по разделителю. Корректирует только слова с высокой языковой уверенностью; корректный текст не меняется.</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorInfo">Работает только пока SCU запущена и карточка включена. Исправляет слово после пробела, Enter или знака препинания. Распознанные поля пароля не корректируются; абсолютная защита ввода не гарантируется.</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorOn">Перевод раскладки включён.</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorOff">Перевод раскладки выключен.</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorConfirm">Включить автоматический перевод раскладки?\nПрограмма будет перехватывать нажатия клавиш в активном окне и исправлять слова, набранные в неверной раскладке. Корректный текст не меняется, распознанные поля пароля пропускаются.</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorHotKeyLabel">Горячая клавиша ручной конвертации</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorHotKeyPause">Pause</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorHotKeyCtrlAltP">Ctrl+Alt+P</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorHotKeyHelp">Pause — конвертировать последнее слово; Shift+Pause — выделенный текст.</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorToastLabel">Показывать уведомление после автокоррекции</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorExceptionsLabel">Исключения автокоррекции</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorExceptionPlaceholder">Введите слово, домен или токен</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorAddException">Добавить</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorRemoveException">Удалить исключение</sys:String>
+    <sys:String x:Key="S_LayoutTranslatorEnable">Включить</sys:String>
 <sys:String x:Key="S_PrivacyAsteriskNote">* Включение отключает параметр</sys:String>
 
     <!-- ===================== Раздел 0 «Состояние ПК»: большой выключатель ===================== -->
@@ -494,6 +530,7 @@
     <sys:String x:Key="I_NetQosRestore">Возвращает исходное значение QoS из бэкапа.</sys:String>
     <sys:String x:Key="I_NetNetBiosMode">Переключает NetBIOS over TCP/IP на всех интерфейсах: «Отключить» выключает протокол (обычно безопасно в современных сетях), «По DHCP» возвращает автоматический режим. Совет: обычно включён в рабочих сетях; меняйте только при понимании работы SMB и сетевых служб.</sys:String>
     <sys:String x:Key="I_NetNetBiosFlush">Сбрасывает кэш имён NetBIOS (nbtstat -R) и перерегистрирует имена (nbtstat -RR). Безопасно; помогает после смены сетевого окружения.</sys:String>
+    <sys:String x:Key="I_NetNduToggle">NDU (Network Data Usage) — служба «бухгалтера трафика»: питает экран «Параметры → Сеть и Интернет → Использование данных» и работу лимитов на тарифицируемых сетях. «Отключить» записывает Start=4 (Disabled) и останавливает работающий экземпляр; известный твик из-за исторических утечек памяти и нагрузки на диск этой службы. «Включить» возвращает тип запуска из бэкапа (без бэкапа — заводской Automatic). Совет: отключайте, только если статистикой трафика не пользуетесь совсем.</sys:String>
 
     <sys:String x:Key="I_MaintDoCache">Удаляет кэш Delivery Optimization — копии обновлений Windows, которыми система делится с другими ПК в сети. Сами обновления не удаляются.</sys:String>
     <sys:String x:Key="I_MaintDumpsWer">Удаляет дампы памяти и очередь отчётов об ошибках Windows Error Reporting. Диагностическую информацию после сбоя (BSOD) восстановить будет нельзя.</sys:String>
@@ -589,6 +626,7 @@
     <sys:String x:Key="S_TS_Cancel">Отмена</sys:String>
     <sys:String x:Key="S_TS_LastRun">Последняя проверка:</sys:String>
     <sys:String x:Key="S_TS_Skip">Пропустить</sys:String>
+    <sys:String x:Key="S_TS_SkipAll">Пропустить все</sys:String>
     <sys:String x:Key="S_TS_SkipHint">Состояние перестанет учитываться в сводке и карточках</sys:String>
     <sys:String x:Key="S_TS_Restore">Вернуть</sys:String>
     <sys:String x:Key="S_TS_EmptyState">Диагностика ещё не выполнялась.&#x0a;Нажмите «Проверить систему», чтобы собрать состояние Windows.</sys:String>
@@ -641,6 +679,7 @@
     <sys:String x:Key="S_OnboardingOpen">Показать знакомство</sys:String>
     <sys:String x:Key="S_MenuEditorNewTitle">Название:</sys:String>
     <sys:String x:Key="S_MenuEditorNewGroup">Группа вкладки</sys:String>
+    <sys:String x:Key="S_MenuEditorNewGroupHint">Имя новой группы (можно ввести своё)</sys:String>
     <sys:String x:Key="S_MenuEditorAdd">Добавить</sys:String>
     <sys:String x:Key="S_MenuEditorVisibility">Показывать в меню</sys:String>
     <sys:String x:Key="S_MenuEditorMove">Перенести в группу</sys:String>

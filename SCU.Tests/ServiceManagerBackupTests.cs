@@ -6,7 +6,7 @@ namespace SCU.Tests;
 // по нему включение службы возвращается в исходный режим запуска.
 public class ServiceManagerBackupTests : IDisposable
 {
-    private readonly string _path = Path.Combine(Path.GetTempPath(), $"scu_svc_{Guid.NewGuid():N}.txt");
+    private readonly string _path = TestScratch.NewFile("scu_svc", ".txt");
 
     public void Dispose()
     {

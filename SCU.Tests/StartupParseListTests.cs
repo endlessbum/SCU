@@ -7,7 +7,7 @@ namespace SCU.Tests;
 // Парсер списка автозагрузки (tab-separated: index|source|name|command) и фильтр мусора.
 public class StartupParseListTests : IDisposable
 {
-    private readonly string _path = Path.Combine(Path.GetTempPath(), $"scu_tests_{Guid.NewGuid():N}.txt");
+    private readonly string _path = TestScratch.NewFile("scu_tests", ".txt");
 
     public void Dispose()
     {

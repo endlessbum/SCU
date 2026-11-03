@@ -15,7 +15,7 @@ public sealed class BaselineStoreTests : IDisposable
 
     public BaselineStoreTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        _directory = TestScratch.NewDir();
         Directory.CreateDirectory(_directory);
         _filePath = Path.Combine(_directory, "baseline.json");
         _logger = Logger.CreateForCurrentRun();

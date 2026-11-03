@@ -54,6 +54,10 @@
                     <Button Content="{DynamicResource S_Refresh}"
                             Command="{Binding RefreshCommand}"
                             ToolTipService.ShowOnDisabled="True" />
+                    <Button Content="{DynamicResource S_CleanAll}"
+                            Command="{Binding CleanAllCommand}"
+                            Margin="8,0,0,0"
+                            ToolTipService.ShowOnDisabled="True" />
                 </StackPanel>
             </Grid>
         </Border>

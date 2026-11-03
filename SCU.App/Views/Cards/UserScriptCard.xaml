@@ -15,12 +15,23 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource RowHeaderText}"
+                <!-- Grid вместо горизонтального StackPanel (аудит, п. 17):
+                     StackPanel измеряет ребёнка с бесконечной шириной, и
+                     TextTrimming не срабатывал — длинное имя скрипта
+                     перекрывало правую колонку с кнопками. -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Style="{StaticResource RowHeaderText}"
                                TextTrimming="CharacterEllipsis"
                                Text="{Binding Title}" />
                     <!-- Информер ⓘ: описание скрипта, если задано -->
-                    <controls:InfoGlyph Margin="6,0,0,0"
+                    <controls:InfoGlyph Grid.Column="1"
+                                        Margin="6,0,0,0"
                                         VerticalAlignment="Center"
                                         InfoText="{Binding Tooltip}">
                         <controls:InfoGlyph.Style>
@@ -35,8 +46,8 @@
                         </controls:InfoGlyph.Style>
                     </controls:InfoGlyph>
                     <!-- Скрепка закрепления карточки скрипта на «Главной» -->
-                    <controls:PinGlyph CardId="{Binding PinCardId}" />
-                </StackPanel>
+                    <controls:PinGlyph Grid.Column="2" CardId="{Binding PinCardId}" />
+                </Grid>
                 <TextBlock Style="{StaticResource RowActionText}"
                            Text="{Binding Comment}" />
                 <TextBlock Text="{Binding ResultText}">

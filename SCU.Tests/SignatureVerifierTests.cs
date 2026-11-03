@@ -35,7 +35,7 @@ public class SignatureVerifierTests
     [Fact]
     public void UnsignedFile_Fails()
     {
-        var tempFile = Path.Combine(Path.GetTempPath(), "scu_sigtest_" + Guid.NewGuid().ToString("N") + ".exe");
+        var tempFile = TestScratch.NewFile("scu_sigtest", ".exe");
         try
         {
             File.WriteAllText(tempFile, "not a signed binary, just text");
@@ -62,7 +62,7 @@ public class SignatureVerifierTests
     [Fact]
     public void TinyFile_FailsSizeCheck()
     {
-        var tempFile = Path.Combine(Path.GetTempPath(), "scu_sigtest_" + Guid.NewGuid().ToString("N") + ".exe");
+        var tempFile = TestScratch.NewFile("scu_sigtest", ".exe");
         try
         {
             File.WriteAllText(tempFile, "tiny");

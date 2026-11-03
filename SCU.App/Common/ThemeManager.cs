@@ -36,6 +36,18 @@ public enum AppAccent
     Orange = 5
 }
 
+// Поведение при закрытии главного окна (дизайн, п. 2): закрыть приложение или
+// свернуть его в трей. Выбор явный и сохраняется в settings.json — раньше фоновый
+// режим включался скрытно вместе с переводчиком раскладки.
+public enum AppCloseBehavior
+{
+    // Закрывать SCU (по умолчанию): приложение завершается.
+    Exit = 0,
+
+    // Сворачивать в трей: окно скрывается, SCU продолжает работать.
+    MinimizeToTray = 1
+}
+
 // Темизация приложения: подмена словаря Colors.Dark/Colors.Light, подстановка акцента,
 // применение режима прозрачности поверхностей и хранение выбора в %AppData%\SCU\settings.json
 // ("theme": "auto"|"light"|"dark", "accent": ..., "transparency": "transparent"|"matte").
@@ -432,7 +444,11 @@ public static class ThemeManager
     // в «Настройки → Горячие клавиши», хранятся в общем settings.json.
     public static bool GlobalHotkeysEnabled { get; internal set; } = true;
 
-    public static void SaveSettings(AppTheme theme, AppAccent accent, AppLanguage language, bool showLog, bool uacConfirmations = true, bool? onboardingShown = null, bool? animations = null, string? downloadsCleanupPath = null)
+    // Поведение при закрытии главного окна (дизайн, п. 2): закрыть приложение
+    // или свернуть в трей. Значение из settings.json; по умолчанию — закрывать.
+    public static AppCloseBehavior CloseBehavior { get; internal set; } = AppCloseBehavior.Exit;
+
+    public static void SaveSettings(AppTheme theme, AppAccent accent, AppLanguage language, bool showLog, bool uacConfirmations = true, bool? onboardingShown = null, bool? animations = null, string? downloadsCleanupPath = null, AppCloseBehavior? closeBehavior = null)
     {
         InvalidateCaches();
         try
@@ -456,7 +472,9 @@ public static class ThemeManager
                     // null — сохранить текущее значение тумблера анимаций.
                     animations = animations ?? AnimationsEnabled,
                     // null — сохранить текущее значение пути очистки загрузок.
-                    downloadsCleanupPath = downloadsCleanupPath ?? DownloadsCleanupPath
+                    downloadsCleanupPath = downloadsCleanupPath ?? DownloadsCleanupPath,
+                    // null — сохранить текущее значение поведения при закрытии.
+                    closeBehavior = (closeBehavior ?? CloseBehavior) == AppCloseBehavior.MinimizeToTray ? "tray" : "exit"
                 },
                 new JsonSerializerOptions { WriteIndented = true });
 
@@ -521,6 +539,40 @@ public static class ThemeManager
         }
 
         return true;
+    }
+
+    // Поведение при закрытии окна (дизайн, п. 2): по умолчанию — закрывать
+    // приложение. Параметр отсутствует в старых settings.json — значит, режим
+    // фонового запуска пользователь не выбирал.
+    public static AppCloseBehavior LoadCloseBehavior()
+    {
+        try
+        {
+            var json = GetSettingsText();
+            if (json.Length > 0)
+            {
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.TryGetProperty("closeBehavior", out var behavior)
+                    && behavior.ValueKind == JsonValueKind.String)
+                {
+                    var text = behavior.GetString();
+                    if (string.Equals(text, "tray", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return AppCloseBehavior.MinimizeToTray;
+                    }
+
+                    if (string.Equals(text, "exit", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return AppCloseBehavior.Exit;
+                    }
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return AppCloseBehavior.Exit;
     }
 
     // Окно знакомства с приложением: показывается при первом запуске. Флаг

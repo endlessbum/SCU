@@ -15,10 +15,19 @@ std::string Utf8(const std::wstring& text)
     const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(),
                                          static_cast<int>(text.size()),
                                          nullptr, 0, nullptr, nullptr);
+    // Аудит: при size<=0 (ошибка конвертации) аллоцировалась строка из NUL
+    // (при size<0 — size_t(size) переполнялся), второй вызов не проверялся —
+    // NUL-строка рвёт JSON-протокол. Проверяются оба вызова; при расхождении
+    // возвращается placeholder без NUL. Замечание по арифметике: вход задан
+    // явной длиной (не -1), поэтому возвращаемое значение — число байт БЕЗ
+    // терминатора, и его же передаётся как размер буфера второго вызова.
+    if (size <= 0) {
+        return "?";
+    }
     std::string result(static_cast<size_t>(size), '\0');
-    if (size > 0) {
-        WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()),
-                            result.data(), size, nullptr, nullptr);
+    if (WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()),
+                            result.data(), size, nullptr, nullptr) != size) {
+        return "?";
     }
     return result;
 }
@@ -87,22 +96,44 @@ std::string DetectionToJson(const Detection& d)
 
 } // namespace
 
-EventWriter::EventWriter()
+EventWriter::EventWriter(std::atomic<bool>* cancelFlag)
+    : cancelFlag_(cancelFlag)
 {
+    // stdout кэшируется один раз (аудит): GetStdHandle на каждую запись —
+    // лишняя работа в горячем пути прогресса.
     // stdout при запуске из GUI — пайп: кодировка консоли не применяется.
     // Пишем UTF-8 напрямую через WriteFile, минуя WideChar-слои CRT.
+    stdoutHandle_ = GetStdHandle(STD_OUTPUT_HANDLE);
+}
+
+void EventWriter::ReportWriteFailure()
+{
+    // Оба кода означают, что читающий конец пайпа закрыт (GUI умер/отвалился):
+    // события дальше идут в никуда — взводим флаг отмены, сканер остановится
+    // сам (аудит). Иные ошибки записи отменой не считаются.
+    const DWORD error = GetLastError();
+    if ((error == ERROR_NO_DATA || error == ERROR_BROKEN_PIPE) && cancelFlag_ != nullptr) {
+        cancelFlag_->store(true, std::memory_order_relaxed);
+    }
 }
 
 void EventWriter::Write(const std::string& line)
 {
     std::lock_guard lock(mutex_);
-    const HANDLE stdoutHandle = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (stdoutHandle == INVALID_HANDLE_VALUE || stdoutHandle == nullptr) {
+    if (stdoutHandle_ == INVALID_HANDLE_VALUE || stdoutHandle_ == nullptr) {
         return;
     }
+    // Событие и '\n' — одним WriteFile (аудит: меньше сисколлов); полной
+    // буферизации нет, каждая строка по-прежнему уходит целиком и атомарно.
+    std::string packet;
+    packet.reserve(line.size() + 1);
+    packet += line;
+    packet.push_back('\n');
     DWORD written = 0;
-    WriteFile(stdoutHandle, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
-    WriteFile(stdoutHandle, "\n", 1, &written, nullptr);
+    if (!WriteFile(stdoutHandle_, packet.data(), static_cast<DWORD>(packet.size()), &written, nullptr)
+        || written != packet.size()) {
+        ReportWriteFailure();
+    }
     // Flush не нужен: WriteFile на пайпе уходит в ядро сразу.
 }
 

@@ -27,7 +27,15 @@ std::wstring GetEnvironmentValueDynamic(const wchar_t* name);
 std::wstring GetTempPathDynamic();
 
 // Родительский каталог пути (без завершающего разделителя); путь без
-// разделителя возвращается как есть.
+// разделителя даёт пустой результат (fail-closed у вызывающих).
 std::wstring DirectoryOf(const std::wstring& path);
+
+// Создание каталога без следования по reparse-точкам (junction/symlink):
+// ERROR_SUCCESS — создан или уже существует как обычный каталог; существующий
+// путь с FILE_ATTRIBUTE_REPARSE_POINT (или не-каталог) — ERROR_ACCESS_DENIED,
+// иначе — код ошибки CreateDirectoryW. Общий хелпер (аудит): archive_scanner
+// (временные каталоги) и database_package (generations, junction-гонка в
+// user-writable portable-установке).
+DWORD CreateDirectoryRecursiveNoReparse(const std::wstring& path);
 
 } // namespace scan

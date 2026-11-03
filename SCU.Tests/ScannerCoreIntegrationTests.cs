@@ -1,6 +1,8 @@
 using SCU.Interop;
 using SCU.Models.Scan;
 using Xunit;
+using System.IO;
+using System.Text;
 
 namespace SCU.Tests;
 
@@ -48,7 +50,7 @@ public partial class ScannerCoreIntegrationTests
             return null;
         }
 
-        var sandbox = Path.Combine(Path.GetTempPath(), "scu-sandbox-" + Guid.NewGuid().ToString("N"));
+        var sandbox = TestScratch.NewDir("scu-sandbox-");
         Directory.CreateDirectory(sandbox);
 
         // Runtime: файлы верхнего уровня каталога бинарника; security/ не копируется —
@@ -125,6 +127,73 @@ public partial class ScannerCoreIntegrationTests
         Console.WriteLine("SKIPPED: кэш-тесты требуют elevated-прогон (ScannerCore не-elevated отключает дисковый кэш).");
         return true;
     }
+
+    // Тест-хуки ScannerCore (SCU_TEST_RUN_KEY / SCU_TEST_CANCEL_AFTER)
+    // компилируются только при -DSCU_ENABLE_TEST_HOOKS=ON. В обычной сборке
+    // рядом лежит production-бинарник без хуков, и тесты, которым хуки
+    // обязательны, не воспроизводимы (аудит, п. 28): вместо падения — явный
+    // skip с инструкцией по сборке hooks-бинарника.
+    //
+    // Имена переменных — wide-литералы C++, то есть UTF-16 в бинарнике.
+    // Поэтому ищем в обоих encodings и с обоих выравниваний: ASCII-поиск
+    // давал ложное «хуков нет», и тесты пропускались даже с hooks-сборкой
+    // (в том числе в CI).
+    private static bool SupportsTestHooks(string scannerPath)
+    {
+        try
+        {
+            var bytes = File.ReadAllBytes(scannerPath);
+            return ContainsHookMarker(bytes, "SCU_TEST_RUN_KEY")
+                && ContainsHookMarker(bytes, "SCU_TEST_CANCEL_AFTER");
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool ContainsHookMarker(byte[] bytes, string marker)
+    {
+        var ascii = Encoding.ASCII.GetBytes(marker);
+        if (IndexOf(bytes, ascii) >= 0)
+        {
+            return true;
+        }
+
+        var wide = Encoding.Unicode.GetBytes(marker);
+        // Wide-строка может начинаться с нечётного смещения — проверяем оба.
+        return IndexOf(bytes, wide) >= 0 || IndexOf(bytes, wide, 1) >= 0;
+    }
+
+    private static int IndexOf(byte[] haystack, byte[] needle, int offset = 0)
+    {
+        for (var i = offset; i + needle.Length <= haystack.Length; i++)
+        {
+            var match = true;
+            for (var j = 0; j < needle.Length; j++)
+            {
+                if (haystack[i + j] != needle[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static void SkipWithoutTestHooks(string scannerPath) =>
+        Skip.If(
+            !SupportsTestHooks(scannerPath),
+            "ScannerCore.exe собран без тест-хуков (SCU_ENABLE_TEST_HOOKS=OFF) — нужен hooks-бинарник: "
+            + "cmake -S SecurityScanner -B SecurityScanner/build -A x64 -DSCU_ENABLE_TEST_HOOKS=ON "
+            + "&& cmake --build SecurityScanner/build --config Release");
 
     // Стандартная EICAR-тестовая строка (публичный справочный образец для
     // проверки антивирусных движков; безвредна, не исполняется тестом).
@@ -256,7 +325,7 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -290,7 +359,7 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -353,7 +422,7 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -391,7 +460,7 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -425,7 +494,7 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -447,12 +516,14 @@ public partial class ScannerCoreIntegrationTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ScannerCore_PersistenceCorrelation_DetectsEicarTarget()
     {
         // Документ п. 17/18: persistence-запись коррелируется с анализом цели.
         // Test-hook SCU_TEST_RUN_KEY задаёт дополнительный Run-подобный ключ
         // в HKCU — тест создаёт его и удаляет, production-ключи не трогаются.
+        Skip.If(!TestEnvironment.RegistryWritable,
+            "HKCU-запись недоступна из хоста тестов (изолированная песочница) — real-key test-hook невозможен.");
         var scannerPath = FindScannerCore();
         if (scannerPath is null)
         {
@@ -460,8 +531,11 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
+        // Хук SCU_TEST_RUN_KEY есть только в hooks-сборке ScannerCore.
+        SkipWithoutTestHooks(scannerPath);
+
         var testKey = "Software\\SCU\\TestRun-" + Guid.NewGuid().ToString("N");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -541,7 +615,7 @@ public partial class ScannerCoreIntegrationTests
         }
 
         var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-db-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -604,7 +678,7 @@ public partial class ScannerCoreIntegrationTests
         }
 
         var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-db-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -669,7 +743,7 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-fuzz-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-fuzz-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -737,7 +811,7 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {

@@ -1,0 +1,50 @@
+<UserControl x:Class="SCU.Views.Cards.NetworkNduCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SCU.Views.Controls">
+    <Border Style="{StaticResource SectionCard}">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource BodyStrongText}" Text="{DynamicResource S_NetNduTitle}" />
+                <controls:InfoGlyph x:Name="NduInfoGlyph" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource CardIntroText}"
+                       TextWrapping="Wrap"
+                       Text="{DynamicResource S_NetNduDesc}" />
+            <!-- Активное состояние подсвечивается акцентом через DataTrigger по ActiveNduKey;
+                 нечитаемое состояние — обе кнопки без подсветки. -->
+            <WrapPanel Margin="0,8,0,0">
+                <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                    <Button Content="{DynamicResource S_NetNduDisable}"
+                            Command="{Binding NduDisableCommand}"
+                            ToolTipService.ShowOnDisabled="True">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveNduKey}" Value="disabled">
+                                        <Setter Property="Tag" Value="accent" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
+                    <Button Content="{DynamicResource S_NetNduEnable}"
+                            Command="{Binding NduEnableCommand}"
+                            ToolTipService.ShowOnDisabled="True">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveNduKey}" Value="enabled">
+                                        <Setter Property="Tag" Value="accent" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+            </WrapPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

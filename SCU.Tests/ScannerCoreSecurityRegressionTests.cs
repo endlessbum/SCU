@@ -3,6 +3,7 @@ using System.Text;
 using SCU.Interop;
 using SCU.Models.Scan;
 using Xunit;
+using System.IO;
 
 namespace SCU.Tests;
 
@@ -16,8 +17,19 @@ public partial class ScannerCoreIntegrationTests
     // Кэш и ключ переехали в доверенный каталог (ProgramData, строгий DACL —
     // подмена ключа не-elevated процессом невозможна); LocalApplicationData
     // остался только хранилищем старого кэша.
-    private static string CacheDirectory() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SCU", "scanner-cache");
+    // Читаем именно переменную окружения ProgramData — scanner.cpp строит
+    // доверенный каталог динамически из неё, и TestHostSetup может перенаправить
+    // его в песочнице; хелперы и движок должны работать с одним и тем же путём.
+    private static string CacheDirectory()
+    {
+        var programData = Environment.GetEnvironmentVariable("ProgramData");
+        if (string.IsNullOrEmpty(programData))
+        {
+            programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+        }
+
+        return Path.Combine(programData!, "SCU", "scanner-cache");
+    }
 
     private static string CacheFilePath() => Path.Combine(CacheDirectory(), "scan-cache.txt");
 
@@ -101,10 +113,50 @@ public partial class ScannerCoreIntegrationTests
         }
     }
 
+    // Изоляция кэша на тест (аудит, п. 28): ScannerCore строит путь кэша из
+    // переменной окружения ProgramData и доверяет каталогу только при строгом
+    // DACL (иначе кэш выключен fail-closed). Настоящий
+    // %ProgramData%\SCU\scanner-cache на машине может остаться с наследуемым
+    // DACL — и тогда кэш-тесты падают не из-за логики движка. Песочница даёт
+    // свежий каталог, который ScannerCore создаёт сам со строгим DACL.
+    private static IDisposable UseIsolatedProgramData()
+    {
+        var previous = Environment.GetEnvironmentVariable("ProgramData");
+        var sandbox = Directory.CreateDirectory(
+            Path.Combine(TestScratch.Root, "cache-" + Guid.NewGuid().ToString("N")[..8])).FullName;
+        Environment.SetEnvironmentVariable("ProgramData", sandbox);
+        return new ProgramDataScope(previous, sandbox);
+    }
+
+    private sealed class ProgramDataScope : IDisposable
+    {
+        private readonly string? _previous;
+        private readonly string _sandbox;
+
+        internal ProgramDataScope(string? previous, string sandbox)
+        {
+            _previous = previous;
+            _sandbox = sandbox;
+        }
+
+        public void Dispose()
+        {
+            Environment.SetEnvironmentVariable("ProgramData", _previous);
+            try
+            {
+                Directory.Delete(_sandbox, recursive: true);
+            }
+            catch (Exception)
+            {
+                // Песочница в temp — её удаление не критично для теста.
+            }
+        }
+    }
+
     private static async Task InstallSignedPackageAsync(
         string scannerPath, string keyPath, string sha256, string name, string version)
     {
-        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-db-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -179,6 +231,10 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
+        // Кэш теста изолирован от настоящего %ProgramData% (аудит, п. 28) —
+        // иначе кэш выключен (нестрогий DACL) и проверка теряет смысл.
+        using var programDataScope = UseIsolatedProgramData();
+
         var sandbox = TryCreateScannerSandbox();
         if (sandbox is null)
         {
@@ -187,7 +243,7 @@ public partial class ScannerCoreIntegrationTests
         }
 
         var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -228,6 +284,9 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
+        // Кэш теста изолирован от настоящего %ProgramData% (аудит, п. 28).
+        using var programDataScope = UseIsolatedProgramData();
+
         var sandbox = TryCreateScannerSandbox();
         if (sandbox is null)
         {
@@ -236,7 +295,7 @@ public partial class ScannerCoreIntegrationTests
         }
 
         var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -283,7 +342,10 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        // Кэш теста изолирован от настоящего %ProgramData% (аудит, п. 28).
+        using var programDataScope = UseIsolatedProgramData();
+
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -326,7 +388,11 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        // Кэш теста изолирован от настоящего %ProgramData% (аудит, п. 28) —
+        // иначе кэш выключен (нестрогий DACL) и проверка теряет смысл.
+        using var programDataScope = UseIsolatedProgramData();
+
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -363,9 +429,11 @@ public partial class ScannerCoreIntegrationTests
 
     // П. 4 аудита: persistence-цель — архив: выполняется полный archive-скан,
     // malware внутри цели прокидывается в PERSISTENCE-детект.
-    [Fact]
+    [SkippableFact]
     public async Task ScannerCore_PersistenceCorrelation_ArchiveTarget()
     {
+        Skip.IfNot(TestEnvironment.RegistryWritable,
+            "HKCU-запись недоступна из хоста тестов (изолированная песочница) — real-key test-hook невозможен.");
         var scannerPath = FindScannerCore();
         if (scannerPath is null)
         {
@@ -373,8 +441,11 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
+        // Хук SCU_TEST_RUN_KEY есть только в hooks-сборке ScannerCore.
+        SkipWithoutTestHooks(scannerPath);
+
         var testKey = "Software\\SCU\\TestRun-" + Guid.NewGuid().ToString("N");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -451,7 +522,7 @@ public partial class ScannerCoreIntegrationTests
         }
 
         var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-db-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -499,7 +570,7 @@ public partial class ScannerCoreIntegrationTests
         }
 
         var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-db-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -543,7 +614,7 @@ public partial class ScannerCoreIntegrationTests
 
     // П. 11 аудита: отмена прерывает скан тем же механизмом, что и у
     // пользователя — частичный отчёт, код 3, cancelled=true.
-    [Fact]
+    [SkippableFact]
     public async Task ScannerCore_Cancellation_StopsWithPartialResult()
     {
         var scannerPath = FindScannerCore();
@@ -553,7 +624,10 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        // Хук SCU_TEST_CANCEL_AFTER есть только в hooks-сборке ScannerCore.
+        SkipWithoutTestHooks(scannerPath);
+
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -613,7 +687,7 @@ public partial class ScannerCoreIntegrationTests
             Assert.Fail("security/database/hashes.txt не найден в песочнице — отсутствует сид SecurityScanner/database.");
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -661,7 +735,10 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        // Кэш теста изолирован от настоящего %ProgramData% (аудит, п. 28).
+        using var programDataScope = UseIsolatedProgramData();
+
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -706,7 +783,7 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -767,7 +844,7 @@ public partial class ScannerCoreIntegrationTests
         }
 
         var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-db-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -832,7 +909,7 @@ public partial class ScannerCoreIntegrationTests
             Assert.Fail("security/database/hashes.txt не найден в песочнице — отсутствует сид SecurityScanner/database.");
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-scan-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-scan-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -895,7 +972,7 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-db-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -953,7 +1030,7 @@ public partial class ScannerCoreIntegrationTests
             return;
         }
 
-        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-db-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -1007,7 +1084,7 @@ public partial class ScannerCoreIntegrationTests
         }
 
         var scannerPath = Path.Combine(sandbox, "ScannerCore.exe");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-db-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-db-test-");
         Directory.CreateDirectory(temp);
         try
         {
@@ -1061,7 +1138,7 @@ public partial class ScannerCoreIntegrationTests
         }
 
         var scannerPathInSandbox = Path.Combine(sandbox, "ScannerCore.exe");
-        var temp = Path.Combine(Path.GetTempPath(), "scu-pe-test-" + Guid.NewGuid().ToString("N"));
+        var temp = TestScratch.NewDir("scu-pe-test-");
         Directory.CreateDirectory(temp);
         try
         {

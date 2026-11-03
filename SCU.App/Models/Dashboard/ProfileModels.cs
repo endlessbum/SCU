@@ -55,4 +55,30 @@ public sealed class CustomProfileState
     public string? ActiveProfile { get; set; }
 
     public Dictionary<string, StepDesire> CustomSteps { get; set; } = [];
+
+    // Параметры переводчика ввода хранятся в том же профиле, чтобы обновления
+    // настроек не затрагивали существующий ActiveProfile/CustomSteps.
+    public LayoutTranslatorProfileSettings LayoutTranslator { get; set; } = new();
+}
+
+public sealed class LayoutTranslatorProfileSettings
+{
+    // Оставляем выключенным по умолчанию: глобальный перехват клавиатуры — opt-in.
+    public bool AutoCorrectEnabled { get; set; }
+
+    // Pause — последнее слово; Shift+Pause — выделение (или последнее слово,
+    // если выделения нет). Поддерживаемая альтернатива: Ctrl+Alt+P.
+    public string ManualHotKey { get; set; } = "Pause";
+
+    public List<string> CustomExceptions { get; set; } = [];
+
+    // Отличает миграцию старого layout-translator.json от пользовательского OFF.
+    public bool IsConfigured { get; set; }
+
+    public bool ShowCorrectionToast { get; set; } = true;
+
+    // Согласие пользователя на автозапуск SCU вместе с переводчиком (аудит, п. 12):
+    // null — вопрос ещё не задавался, true — разрешено, false — отказано.
+    // Запись Run\SCU создаётся только при явном «да».
+    public bool? AutorunConsent { get; set; }
 }

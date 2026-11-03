@@ -229,6 +229,11 @@ public partial class MenuEditorViewModel : ObservableObject
     [ObservableProperty]
     private string _newSectionGroup = string.Empty;
 
+    // Статус редактора (дизайн, п. 5): сообщает, куда добавлен раздел и
+    // что пустая группа означает группу по умолчанию.
+    [ObservableProperty]
+    private string _statusText = string.Empty;
+
     private MenuEditorGroup? _selectedGroup;
 
     public MenuEditorGroup? SelectedGroup
@@ -365,7 +370,16 @@ public partial class MenuEditorViewModel : ObservableObject
 
         // Введённый текст группы имеет приоритет над выбранной из списка.
         var group = NewSectionGroup.Trim();
-        _main.AddCustomSection(title, group.Length == 0 ? L.T("Мои утилиты") : group);
+        var defaultGroup = L.T("Мои утилиты");
+        var usingDefaultGroup = group.Length == 0;
+        _main.AddCustomSection(title, usingDefaultGroup ? defaultGroup : group);
+
+        // Явная обратная связь: пустая группа не остаётся незамеченной
+        // (дизайн, п. 5 — валидация пустой группы).
+        StatusText = usingDefaultGroup
+            ? L.T("Группа не указана — раздел «{0}» добавлен в «{1}».", title, defaultGroup)
+            : L.T("Раздел «{0}» добавлен в группу «{1}».", title, group);
+
         NewSectionTitle = string.Empty;
         RebuildTree();
     }

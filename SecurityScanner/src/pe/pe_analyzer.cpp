@@ -94,19 +94,26 @@ double SectionEntropy(HANDLE file, const SectionInfo& section)
 
 } // namespace
 
-PeAnalysis PeAnalyzer::Analyze(const std::wstring& path)
+PeAnalysis PeAnalyzer::Analyze(const std::wstring& path, HANDLE predefinedFile)
 {
     PeAnalysis result;
-    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
-                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    // Предопределённый хэндл (аудит TOCTOU) принадлежит вызывающему: анализ
+    // идёт по нему, закрывается только собственный хэндл.
+    const bool ownsFile = predefinedFile == INVALID_HANDLE_VALUE;
+    HANDLE file = ownsFile
+        ? CreateFileW(path.c_str(), GENERIC_READ,
+                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                      nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)
+        : predefinedFile;
     if (file == INVALID_HANDLE_VALUE) {
         return result;
     }
 
     LARGE_INTEGER fileSize{};
     if (!GetFileSizeEx(file, &fileSize) || fileSize.QuadPart < 64) {
-        CloseHandle(file);
+        if (ownsFile) {
+            CloseHandle(file);
+        }
         return result;
     }
     const unsigned long long totalSize = static_cast<unsigned long long>(fileSize.QuadPart);
@@ -118,13 +125,17 @@ PeAnalysis PeAnalyzer::Analyze(const std::wstring& path)
     LARGE_INTEGER zero{};
     if (!SetFilePointerEx(file, zero, nullptr, FILE_BEGIN)
         || !ReadFile(file, header.data(), kHeaderSize, &read, nullptr) || read < 64) {
-        CloseHandle(file);
+        if (ownsFile) {
+            CloseHandle(file);
+        }
         return result;
     }
 
     const auto* dosHeader = reinterpret_cast<const IMAGE_DOS_HEADER*>(header.data());
     if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
-        CloseHandle(file);
+        if (ownsFile) {
+            CloseHandle(file);
+        }
         return result;
     }
 
@@ -132,24 +143,68 @@ PeAnalysis PeAnalyzer::Analyze(const std::wstring& path)
     // «offset + size > read» выглядит безопасно, но ломается при переносе на
     // 32-битный size_t или смене типов; вычитание не переполняется никогда.
     const DWORD ntOffset = static_cast<DWORD>(dosHeader->e_lfanew);
-    if (ntOffset == 0 || ntOffset > read || sizeof(IMAGE_NT_HEADERS) > read - ntOffset) {
-        CloseHandle(file);
+    // Аудит: прежний bounds-check по sizeof(IMAGE_NT_HEADERS) (64-битный
+    // вариант, 264 байта) отбрасывал валидные PE32 с e_lfanew в хвосте
+    // 64-КиБ буфера. До чтения OptionalHeader.Magic гарантируем только
+    // Signature + FileHeader + Magic, затем дискретизация по Magic:
+    // PE32 (0x10B) → IMAGE_NT_HEADERS32, PE32+ (0x20B) → IMAGE_NT_HEADERS64.
+    constexpr DWORD kNtHeaderMinimum = FIELD_OFFSET(IMAGE_NT_HEADERS, FileHeader)
+        + sizeof(IMAGE_FILE_HEADER) + 2; // 2 байта — OptionalHeader.Magic
+    if (ntOffset == 0 || ntOffset > read || kNtHeaderMinimum > read - ntOffset) {
+        if (ownsFile) {
+            CloseHandle(file);
+        }
         return result;
     }
 
-    const auto* ntHeaders = reinterpret_cast<const IMAGE_NT_HEADERS*>(header.data() + ntOffset);
-    if (ntHeaders->Signature != IMAGE_NT_SIGNATURE) {
-        CloseHandle(file);
+    const auto* ntBase = header.data() + ntOffset;
+    if (*reinterpret_cast<const DWORD*>(ntBase) != IMAGE_NT_SIGNATURE) {
+        if (ownsFile) {
+            CloseHandle(file);
+        }
         return result;
     }
+
+    const WORD optionalMagic = *reinterpret_cast<const WORD*>(
+        ntBase + FIELD_OFFSET(IMAGE_NT_HEADERS, FileHeader) + sizeof(IMAGE_FILE_HEADER));
+    if (optionalMagic != IMAGE_NT_OPTIONAL_HDR32_MAGIC
+        && optionalMagic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+        // ROM-image (0x107) и неизвестные форматы не анализируем.
+        if (ownsFile) {
+            CloseHandle(file);
+        }
+        return result;
+    }
+    const bool isPe32Plus = optionalMagic == IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+
+    // Полный вариант-специфичный заголовок обязан помещаться в буфер: для PE32+
+    // поведение прежнее (sizeof(IMAGE_NT_HEADERS) == sizeof(IMAGE_NT_HEADERS64)),
+    // PE32 требует 248 байт вместо 264 и теперь принимается в хвосте. Поля
+    // OptionalHeader (AddressOfEntryPoint, ImageBase и т.п. — у PE32 они
+    // 32-битные) ниже не читаются; любой будущий доступ — только через
+    // вариантный тип, иначе значения PE32 исказятся.
+    const size_t ntHeadersSize = isPe32Plus ? sizeof(IMAGE_NT_HEADERS64) : sizeof(IMAGE_NT_HEADERS32);
+    if (ntHeadersSize > read - ntOffset) {
+        if (ownsFile) {
+            CloseHandle(file);
+        }
+        return result;
+    }
+    // FileHeader раскладывается одинаково у обоих вариантов — единая ссылка
+    // вместо дубля разбора.
+    const IMAGE_FILE_HEADER& fileHeader = isPe32Plus
+        ? reinterpret_cast<const IMAGE_NT_HEADERS64*>(ntBase)->FileHeader
+        : reinterpret_cast<const IMAGE_NT_HEADERS32*>(ntBase)->FileHeader;
 
     result.isPe = true;
 
-    const WORD sectionCount = ntHeaders->FileHeader.NumberOfSections;
+    const WORD sectionCount = fileHeader.NumberOfSections;
+    // Раскладка секционной таблицы одинакова для PE32 и PE32+: смещение
+    // OptionalHeader в обоих вариантах 24 (Signature + FileHeader).
     const unsigned long long sectionTableOffset =
         static_cast<unsigned long long>(ntOffset)
-        + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader)
-        + ntHeaders->FileHeader.SizeOfOptionalHeader;
+        + FIELD_OFFSET(IMAGE_NT_HEADERS32, OptionalHeader)
+        + fileHeader.SizeOfOptionalHeader;
     if (sectionTableOffset > read
         || static_cast<unsigned long long>(sectionCount) * sizeof(IMAGE_SECTION_HEADER)
                > read - sectionTableOffset) {
@@ -157,7 +212,9 @@ PeAnalysis PeAnalyzer::Analyze(const std::wstring& path)
         // (документ п. 22: безопасная обработка повреждённых PE).
         result.score += 1;
         result.signals.push_back(L"malformed-section-table");
-        CloseHandle(file);
+        if (ownsFile) {
+            CloseHandle(file);
+        }
         result.isValid = true;
         return result;
     }
@@ -204,8 +261,15 @@ PeAnalysis PeAnalyzer::Analyze(const std::wstring& path)
             }
         }
 
-        endOfRaw = std::max<unsigned long long>(
-            endOfRaw, static_cast<unsigned long long>(section.rawPointer) + section.rawSize);
+        // Аудит: endOfRaw по всем секциям позволял фиктивному заголовку с
+        // большим PointerToRawData «съесть» overlay и погасить сигнал
+        // large-overlay. Учитываем только реальные секции: ненулевой размер и
+        // целиком внутри файла.
+        const unsigned long long sectionEnd =
+            static_cast<unsigned long long>(section.rawPointer) + section.rawSize;
+        if (section.rawSize > 0 && sectionEnd <= totalSize) {
+            endOfRaw = std::max(endOfRaw, sectionEnd);
+        }
     }
 
     // Overlay: данные после последней секции. Большой overlay у исполнимых
@@ -221,7 +285,9 @@ PeAnalysis PeAnalyzer::Analyze(const std::wstring& path)
     }
 
     result.isValid = true;
-    CloseHandle(file);
+    if (ownsFile) {
+        CloseHandle(file);
+    }
     return result;
 }
 

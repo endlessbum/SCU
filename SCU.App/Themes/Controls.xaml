@@ -283,7 +283,7 @@
              ломал горизонтальные строки действий (Downloads popup оставлял
              ~22 px на имя файла). -->
         <Setter Property="MinWidth" Value="0" />
-        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="MinHeight" Value="36" />
         <Setter Property="Padding" Value="12,4" />
     </Style>
 
@@ -805,13 +805,46 @@
                                 BorderThickness="1"
                                 IsHitTestVisible="False" />
 
-                        <ContentPresenter IsHitTestVisible="False"
+                        <ContentPresenter x:Name="SelectionContent"
+                                          IsHitTestVisible="False"
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                           ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                           Margin="{TemplateBinding Padding}"
                                           HorizontalAlignment="Left"
                                           VerticalAlignment="Center" />
+
+                        <!-- Поле ввода редактируемого ComboBox (аудит, п. 8):
+                             без PART_EditableTextBox WPF не даёт вводить текст,
+                             и редактор меню не позволял создать группу или
+                             перенести раздел. Видимость переключается триггером
+                             IsEditable. -->
+                        <TextBox x:Name="PART_EditableTextBox"
+                                 Visibility="Collapsed"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Padding="0"
+                                 Margin="14,0,28,0"
+                                 MinWidth="24"
+                                 HorizontalAlignment="Stretch"
+                                 VerticalAlignment="Center"
+                                 FontSize="{TemplateBinding FontSize}"
+                                 Foreground="{TemplateBinding Foreground}"
+                                 CaretBrush="{TemplateBinding Foreground}"
+                                 IsReadOnly="{TemplateBinding IsReadOnly}"
+                                 Text="{Binding Text, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <!-- Подсказка пустого редактируемого поля (дизайн, п. 5):
+                             без неё пустая группа неотличима от «группы нет». -->
+                        <TextBlock x:Name="PlaceholderText"
+                                   IsHitTestVisible="False"
+                                   Visibility="Collapsed"
+                                   Margin="14,0,28,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="{TemplateBinding FontSize}"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   Text="{Binding Path=(ui:ComboBoxAssist.Placeholder), RelativeSource={RelativeSource TemplatedParent}}" />
 
                         <TextBlock x:Name="Chevron"
                                    IsHitTestVisible="False"
@@ -850,6 +883,28 @@
                         </Popup>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <!-- Редактируемый ComboBox: показываем поле ввода и прячем
+                             выбранный элемент (текст теперь в поле). -->
+                        <Trigger Property="IsEditable" Value="True">
+                            <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="SelectionContent" Property="Visibility" Value="Collapsed" />
+                            <!-- В редактируемом режиме клик по полю вводит текст,
+                                 а список открывает только «стрелка» справа. -->
+                            <Setter TargetName="Toggle" Property="Margin" Value="28,0,0,0" />
+                        </Trigger>
+                        <Trigger Property="IsEditable" Value="False">
+                            <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="SelectionContent" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Toggle" Property="Margin" Value="0" />
+                        </Trigger>
+                        <!-- Подсказка видна, только когда поле редактируемо и пусто. -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsEditable" Value="True" />
+                                <Condition Property="Text" Value="" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="PlaceholderText" Property="Visibility" Value="Visible" />
+                        </MultiTrigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillSecondaryBrush}" />
                         </Trigger>
@@ -1255,7 +1310,7 @@
                                                                 Margin="4,0"
                                                                 CornerRadius="2"
                                                                 HorizontalAlignment="Center"
-                                                                Background="#383838" />
+                                                                Background="{DynamicResource TertiaryTextBrush}" />
                                                         <ControlTemplate.Triggers>
                                                             <Trigger Property="IsMouseOver" Value="True">
                                                                 <Setter TargetName="ThumbBd" Property="Width" Value="6" />
@@ -1278,7 +1333,7 @@
                                                                         Margin="0,4"
                                                                         CornerRadius="2"
                                                                         VerticalAlignment="Center"
-                                                                        Background="#383838" />
+                                                                        Background="{DynamicResource TertiaryTextBrush}" />
                                                                 <ControlTemplate.Triggers>
                                                                     <Trigger Property="IsMouseOver" Value="True">
                                                                         <Setter TargetName="ThumbBdH" Property="Height" Value="6" />

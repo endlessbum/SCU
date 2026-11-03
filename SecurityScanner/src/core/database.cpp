@@ -151,6 +151,16 @@ void HashDatabase::LoadEntries(std::ifstream& file)
         }
         std::getline(stream, name);
 
+        // Аудит: legacy-база валидирует имя слабо — TAB/CR/LF в name рвали
+        // TSV-строку дискового кэша (правая часть уезжала в чужие поля).
+        // Очистка при загрузке: замена на пробел, имя остаётся читаемым в UI.
+        // ('\n' из getline не приходит, проверка — на всякий случай.)
+        for (char& c : name) {
+            if (c == '\t' || c == '\r' || c == '\n') {
+                c = ' ';
+            }
+        }
+
         const Verdict verdict = verdictText == "malware" ? Verdict::Malware
                                 : verdictText == "suspicious" ? Verdict::Suspicious
                                                               : Verdict::Clean;

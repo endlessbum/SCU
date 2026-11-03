@@ -16,7 +16,7 @@ public sealed class AppCacheServiceTests : IDisposable
 
     public AppCacheServiceTests()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "SCU.Tests", Guid.NewGuid().ToString("N"));
+        var directory = TestScratch.NewDir();
         _root = Path.Combine(directory, "local");
         _root2 = Path.Combine(directory, "roaming");
         Directory.CreateDirectory(_root);

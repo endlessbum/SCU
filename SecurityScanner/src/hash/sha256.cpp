@@ -37,7 +37,7 @@ bool ToHex(const std::vector<unsigned char>& hash, std::string& hexOut)
 
 } // namespace
 
-bool Sha256::HashFile(const std::wstring& path, std::string& hexOut)
+bool Sha256::HashHandle(HANDLE file, std::string& hexOut)
 {
     BCRYPT_ALG_HANDLE algorithm = nullptr;
     if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != STATUS_SUCCESS) {
@@ -50,7 +50,6 @@ bool Sha256::HashFile(const std::wstring& path, std::string& hexOut)
     DWORD hashSize = 0;
     DWORD bytesReturned = 0;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
-    HANDLE file = INVALID_HANDLE_VALUE;
     bool ok = false;
     std::vector<unsigned char> digest;
 
@@ -75,13 +74,15 @@ bool Sha256::HashFile(const std::wstring& path, std::string& hexOut)
             break;
         }
 
-        file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                           nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (file == INVALID_HANDLE_VALUE) {
+        // Позиция сбрасывается на начало: хэндл мог быть уже прочитан
+        // вызывающим (путь TOCTOU, аудит).
+        LARGE_INTEGER begin{};
+        if (!SetFilePointerEx(file, begin, nullptr, FILE_BEGIN)) {
             break;
         }
 
         std::vector<unsigned char> chunk(kChunkSize);
+        unsigned long long hashedBytes = 0;
         while (true) {
             DWORD read = 0;
             if (!ReadFile(file, chunk.data(), kChunkSize, &read, nullptr)) {
@@ -91,6 +92,7 @@ bool Sha256::HashFile(const std::wstring& path, std::string& hexOut)
                 ok = true;
                 break;
             }
+            hashedBytes += read;
             status = BCryptHashData(hash, chunk.data(), read, 0);
             if (status != STATUS_SUCCESS) {
                 ok = false;
@@ -98,6 +100,17 @@ bool Sha256::HashFile(const std::wstring& path, std::string& hexOut)
             }
         }
         if (!ok) {
+            break;
+        }
+
+        // Аудит: короткое чтение на усохшем файле давало «валидный» хэш
+        // снапшота, и он кэшировался. Строгое равенство «размер файла ==
+        // прогэшировано» (файл мог и вырасти): расхождение — провал хэша,
+        // вердикт пересчитывается по-настоящему, а не подменяется частичным.
+        LARGE_INTEGER actualSize{};
+        if (!GetFileSizeEx(file, &actualSize) || actualSize.QuadPart < 0
+            || static_cast<unsigned long long>(actualSize.QuadPart) != hashedBytes) {
+            ok = false;
             break;
         }
 
@@ -111,15 +124,30 @@ bool Sha256::HashFile(const std::wstring& path, std::string& hexOut)
         ok = ToHex(digest, hexOut);
     } while (false);
 
-    if (file != INVALID_HANDLE_VALUE) {
-        CloseHandle(file);
-    }
     if (hash != nullptr) {
         BCryptDestroyHash(hash);
     }
     if (algorithm != nullptr) {
         BCryptCloseAlgorithmProvider(algorithm, 0);
     }
+    return ok;
+}
+
+bool Sha256::HashFile(const std::wstring& path, std::string& hexOut, HANDLE predefinedFile)
+{
+    // Хэндл уже открыт вызывающим (аудит TOCTOU): владелец — вызывающий,
+    // повторное открытие пути не выполняется.
+    if (predefinedFile != INVALID_HANDLE_VALUE) {
+        return HashHandle(predefinedFile, hexOut);
+    }
+
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    const bool ok = HashHandle(file, hexOut);
+    CloseHandle(file);
     return ok;
 }
 
