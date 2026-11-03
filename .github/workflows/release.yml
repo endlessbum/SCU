@@ -157,14 +157,14 @@ jobs:
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { Write-Host "::error::ISCC не найден"; exit 1 }
           # Подпись установщика и деинсталлятора (SignedUninstaller в setup.iss)
-          # активируется только /DUSE_SIGNTOOL + /Ssigntool; $p Inno заменяет
+          # активируется только /DUSE_SIGNTOOL + /Ssigntool; $f Inno заменяет
           # на путь подписываемого файла. /sha1 вместо /n — без вложенных
-          # кавычек внутри /Ssigntool; $p экранируется от PowerShell.
+          # кавычек внутри /Ssigntool; $f экранируется от PowerShell.
           if ($env:HAS_CERT -eq 'true') {
             $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
               Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
             if (-not $signtool) { Write-Host "::error::signtool не найден"; exit 1 }
-            & $iscc /DUSE_SIGNTOOL "/Ssigntool=$signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /sha1 $env:SIGN_THUMBPRINT `$p" setup.iss
+            & $iscc /DUSE_SIGNTOOL "/Ssigntool=$signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /sha1 $env:SIGN_THUMBPRINT `$f" setup.iss
           } else {
             & $iscc setup.iss
           }
