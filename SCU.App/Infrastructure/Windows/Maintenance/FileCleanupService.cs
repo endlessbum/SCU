@@ -23,12 +23,13 @@ public sealed class FileCleanupService
     public async Task<Result<IReadOnlyList<CleanupItemResult>>> CleanAsync(
         IReadOnlyList<CleanupTarget> targets,
         IProgress<string>? progress,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IProgress<double>? percent = null)
     {
         try
         {
             var results = await Task.Run(
-                () => CleanAll(targets, progress, ct),
+                () => CleanAll(targets, progress, ct, percent),
                 ct).ConfigureAwait(false);
             return Result<IReadOnlyList<CleanupItemResult>>.Success(results);
         }
@@ -277,17 +278,22 @@ public sealed class FileCleanupService
     private List<CleanupItemResult> CleanAll(
         IReadOnlyList<CleanupTarget> targets,
         IProgress<string>? progress,
-        CancellationToken ct)
+        CancellationToken ct,
+        IProgress<double>? percent = null)
     {
         var results = new List<CleanupItemResult>(targets.Count);
 
-        foreach (var target in targets)
+        for (var index = 0; index < targets.Count; index++)
         {
+            var target = targets[index];
             ct.ThrowIfCancellationRequested();
 
             if (string.IsNullOrWhiteSpace(target.Directory) || !Directory.Exists(target.Directory))
             {
                 _logger.Info($"CLEAN | {target.Label} | нет папки");
+                // Пропущенная цель тоже считается выполненной: процент не должен
+                // застревать на середине из-за отсутствующей папки.
+                percent?.Report((index + 1) * 100.0 / targets.Count);
                 continue;
             }
 
@@ -329,6 +335,7 @@ public sealed class FileCleanupService
                         ? $"{target.Label}: удалено файлов {before}"
                         : $"{target.Label}: удалено {deletedFiles}, осталось {after} (занятые пропущены)";
             progress?.Report(message);
+            percent?.Report((index + 1) * 100.0 / targets.Count);
             _logger.Info($"CLEAN | {target.Label} | before={before?.ToString() ?? "error"} after={after?.ToString() ?? "error"} deleted={deletedFiles} bytes={deletedBytes}");
         }
 

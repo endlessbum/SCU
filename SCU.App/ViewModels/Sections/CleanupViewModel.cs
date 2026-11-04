@@ -34,6 +34,18 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
     [ObservableProperty]
     private string _statusText = L.T("Выберите операцию очистки.");
 
+    // Процент «Очистить всё» — для пункта «Очистить» в меню трея (справа).
+    // null — очистка не идёт, проценты скрыты. 100 шагов не ждём: значения
+    // грубые (шаг = корзина или одна цель очистки), точность до целых.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CleanupProgressText))]
+    private int? _cleanupProgressPercent;
+
+    // Готовая подпись процентов: пустая строка — очистка не идёт (в меню скрывается).
+    public string CleanupProgressText => CleanupProgressPercent is { } percent
+        ? percent.ToString(System.Globalization.CultureInfo.InvariantCulture) + "%"
+        : string.Empty;
+
     // Актуальный объём, доступный для очистки, — слева от кнопки «Очистить».
     // Пока идёт подсчёт, вместо объёма крутится индикатор (IsMeasuring*).
     [ObservableProperty]
@@ -407,6 +419,14 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
             var browserTargets = FileCleanupService.GetBrowserCacheTargets();
             var updateTargets = FileCleanupService.GetUpdateCacheTargets();
 
+            // Процент для меню трея: шаг = корзина или одна цель файловой очистки
+            // (остановка служб и восстановление бэкапа в шаги не входят — они
+            // короткие). Готовность стартует с нуля, в finally гасится в null.
+            var totalSteps = 1 + downloadsTargets.Count + tempTargets.Count
+                + browserTargets.Count + updateTargets.Count;
+            var fileTargetCount = totalSteps - 1;
+            CleanupProgressPercent = 0;
+
             try
             {
                 // Корзина очищается не файловым сервисом: EmptyRecycleBin — команда SCU.
@@ -429,6 +449,8 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
                 {
                     _logger.Error($"CLEAN | all | recycle rc={recycleResult.Code} | {recycleResult.Message}");
                 }
+
+                CleanupProgressPercent = (int)Math.Round(100.0 / totalSteps);
 
                 // Кэш обновлений очищается только при остановленных службах, а службы
                 // останавливаются только после успешного бэкапа их состояния: без
@@ -469,7 +491,11 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
 
                 IsMeasuringDownloads = IsMeasuringTemp = IsMeasuringBrowsers = IsMeasuringUpdateCache = true;
                 var progress = new Progress<string>(line => StatusText = L.S(line));
-                var result = await _cleanupService.CleanAsync(targets, progress, ct).ConfigureAwait(true);
+                // value — процент по файловым целям; переводим в общие шаги
+                // (корзина уже сделана = 1 шаг из totalSteps).
+                var filePercent = new Progress<double>(value => CleanupProgressPercent =
+                    (int)Math.Round((1 + value / 100.0 * fileTargetCount) * 100.0 / totalSteps));
+                var result = await _cleanupService.CleanAsync(targets, progress, ct, filePercent).ConfigureAwait(true);
                 cleaned = FormatCleanupResult(result);
 
                 // Отдельная строка на каждую группу целей (дизайн, п. 10): общий
@@ -509,6 +535,8 @@ public partial class CleanupViewModel : ObservableObject, IDisposable, ISectionO
                 // иначе индикаторы карточек остаются включёнными навсегда.
                 IsMeasuringRecycleBin = IsMeasuringDownloads = IsMeasuringTemp =
                     IsMeasuringBrowsers = IsMeasuringUpdateCache = false;
+                // Проценты меню трея скрываются при любом исходе.
+                CleanupProgressPercent = null;
 
                 // Восстановление служб — с токеном без отмены и раньше выставления
                 // итогового статуса, чтобы пользователь увидел его результат.

@@ -1,9 +1,9 @@
 using System.Collections.ObjectModel;
-using Microsoft.Win32;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SCU.Common;
+using SCU.Infrastructure.Windows;
 using SCU.Infrastructure.Windows.Tweaks;
 using SCU.Models;
 using SCU.Views.Controls;
@@ -242,41 +242,21 @@ public partial class InputViewModel : ObservableObject, IDisposable, ISectionOpe
         }
     }
 
-    private static string GetTranslatorAutorunOwnershipPath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "SCU",
-        "layout-translator-run-owner.txt");
-
     // Переводчик может предложить автозапуск самого SCU, но не имеет права
     // перезаписывать или удалять созданную пользователем запись Run. Удаляем
     // только точное значение, созданное нами и отмеченное ownership-файлом.
+    // Переводчик может предложить автозапуск самого SCU, но не имеет права
+    // перезаписывать или удалять созданную пользователем запись Run. Удаляем
+    // только точное значение, созданное нами и отмеченное ownership-файлом
+    // (см. ScuAutorun — той же записью управляет тумблер «Автозапуск» в «Настройках»).
     private void SetScuAutorun(bool enabled)
     {
-        const string runKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        const string valueName = "SCU";
-        var ownershipPath = GetTranslatorAutorunOwnershipPath();
+        var ownershipPath = ScuAutorun.GetOwnershipPath();
 
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(runKey, writable: true)
-                ?? Registry.CurrentUser.CreateSubKey(runKey, writable: true);
-            if (key is null)
-            {
-                _logger.Warn("INPUT | не удалось открыть раздел автозапуска SCU");
-                return;
-            }
-
-            string? currentValue = key.GetValue(valueName) as string;
-            string? ownedValue = null;
-            try
-            {
-                if (File.Exists(ownershipPath))
-                    ownedValue = File.ReadAllText(ownershipPath).Trim();
-            }
-            catch
-            {
-                // При невозможности проверить владение предпочитаем сохранить запись.
-            }
+            string? currentValue = ScuAutorun.ReadCurrentValue();
+            string? ownedValue = ScuAutorun.ReadOwnedValue();
 
             if (enabled)
             {
@@ -292,27 +272,7 @@ public partial class InputViewModel : ObservableObject, IDisposable, ISectionOpe
                     return;
                 }
 
-                var exe = Environment.ProcessPath;
-                if (string.IsNullOrWhiteSpace(exe))
-                    return;
-
-                var command = "\"" + exe + "\"";
-                // В режиме разработки приложение иногда запущено через dotnet.exe.
-                // Сохраняем путь к entry assembly, иначе Run запустил бы только CLI.
-                if (string.Equals(Path.GetFileNameWithoutExtension(exe), "dotnet", StringComparison.OrdinalIgnoreCase))
-                {
-                    var entryAssembly = System.Reflection.Assembly.GetEntryAssembly()?.Location;
-                    if (!string.IsNullOrWhiteSpace(entryAssembly) && File.Exists(entryAssembly))
-                        command += " \"" + entryAssembly + "\"";
-                }
-                var directory = Path.GetDirectoryName(ownershipPath);
-                if (!string.IsNullOrEmpty(directory))
-                    Directory.CreateDirectory(directory);
-
-                // Метка записывается до реестра: при сбое SetValue она не приведёт
-                // к удалению существующей записи, поскольку её ещё нет.
-                File.WriteAllText(ownershipPath, command);
-                key.SetValue(valueName, command, RegistryValueKind.String);
+                ScuAutorun.TryWrite(_logger);
                 return;
             }
 
@@ -324,10 +284,8 @@ public partial class InputViewModel : ObservableObject, IDisposable, ISectionOpe
             if (!string.IsNullOrWhiteSpace(currentValue)
                 && string.Equals(currentValue, ownedValue, StringComparison.OrdinalIgnoreCase))
             {
-                key.DeleteValue(valueName, throwOnMissingValue: false);
+                ScuAutorun.TryDelete(_logger);
             }
-
-            try { File.Delete(ownershipPath); } catch { }
         }
         catch (Exception ex)
         {

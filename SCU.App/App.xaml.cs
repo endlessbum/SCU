@@ -5,6 +5,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using SCU.Common;
+using SCU.Infrastructure.Windows;
 using SCU.Interop;
 
 namespace SCU;
@@ -12,6 +13,10 @@ namespace SCU;
 public partial class App : Application
 {
     public static bool RunInBackgroundOnClose { get; set; }
+
+    // Автозапуск (Run\SCU передаёт --tray): приложение стартует свёрнутым в трей.
+    // Читается один раз из аргументов командной строки при старте.
+    public static bool StartInTray { get; private set; }
     private Logger? _logger;
 
     // Один экземпляр приложения: два окна SCU одновременно правили бы реестр
@@ -42,6 +47,10 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // --tray: автозапуск после загрузки системы — окно не показываем,
+        // приложение садится в область уведомлений (см. RunStartupAsync).
+        StartInTray = e.Args.Any(a => a.Equals(ScuAutorun.TrayArg, StringComparison.OrdinalIgnoreCase));
+
         if (!TryAcquireSingleInstanceMutex())
         {
             NotifyRunningInstance();
@@ -145,9 +154,24 @@ public partial class App : Application
 
             // Все данные собраны: индикатор пропадает, окно запускается сразу,
             // логотип гаснет через 2 секунды после исчезновения индикатора.
+            // Автозапуск (--tray): окно создаётся, но сразу прячется — hwnd нужен,
+            // чтобы ожили иконка трея и глобальная горячая клавиша
+            // (SourceInitialized срабатывает на Show). Show и Hide выполняются
+            // в одном такте диспетчера без отрисовки кадра — мигания нет,
+            // заставка в этот момент всё ещё на экране.
             splash.HideProgressIndicator();
-            window.Show();
-            splash.CloseAfterFade(TimeSpan.FromSeconds(2));
+            if (StartInTray)
+            {
+                window.ShowActivated = false;
+                window.Show();
+                window.Hide();
+                splash.Close();
+            }
+            else
+            {
+                window.Show();
+                splash.CloseAfterFade(TimeSpan.FromSeconds(2));
+            }
 
             // (автовключение переводчика — через InputViewModel.InitializeAsync по предпочтению пользователя)
 

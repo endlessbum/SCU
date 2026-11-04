@@ -2,34 +2,37 @@ using SCU.Common;
 
 namespace SCU.Interop;
 
-// Команды меню иконки в области уведомлений. Числовые значения уходят в Win32
-// как идентификаторы пунктов (AppendMenu/TrackPopupMenu), поэтому они фиксированы.
+// Команды меню иконки в области уведомлений. Меню строится в MainWindow
+// (WPF ContextMenu в стиле приложения), значения в Win32 не уходят, но
+// фиксированы — на них опираются тесты модели.
 internal enum TrayMenuCommand
 {
-    ShowWindow = 1,
-    DisableTranslator = 2,
-    Exit = 3,
+    Clean = 1,
+    Scanner = 2,
+    Startup = 3,
+    Settings = 4,
+    Exit = 5,
 }
 
 // Готовый пункт меню: подпись уже переведена, доступность учитывает состояние.
-internal readonly record struct TrayMenuEntry(TrayMenuCommand Command, string Title, bool Enabled);
+// WithProgress — справа в пункте показывается процент выполнения (привязка
+// к CleanupViewModel в MainWindow), по завершении операции проценты скрываются.
+internal readonly record struct TrayMenuEntry(TrayMenuCommand Command, string Title, bool Enabled, bool WithProgress = false);
 
-// Модель меню трея. Иконка в области уведомлений — единственный штатный путь
-// завершить SCU, когда закрытие окна уходит в фоновый режим (включён перевод
-// раскладки, App.RunInBackgroundOnClose). Модель отделена от Win32-кода ради
-// тестируемости: подписи берутся из словаря в момент открытия меню, поэтому
+// Модель меню трея. Подписи берутся из словаря в момент открытия меню, поэтому
 // смена языка применяется без пересборки иконки.
 internal static class TrayMenu
 {
-    // isTranslatorBusy — идёт операция раздела «Ввод»: остановка хука недоступна.
-    internal static IReadOnlyList<TrayMenuEntry> Build(bool isTranslatorRunning, bool isTranslatorBusy)
+    // isCleanupBusy — идёт «Очистить всё»: пункт «Очистить» неактивен, но
+    // проценты продолжают обновляться, пока операция не завершится.
+    internal static IReadOnlyList<TrayMenuEntry> Build(bool isCleanupBusy)
     {
         return
         [
-            new(TrayMenuCommand.ShowWindow, L.T("Показать SCU"), Enabled: true),
-            // Включение перевода раскладки — только из UI: оно требует явного
-            // согласия пользователя (диалог карточки «Ввод»).
-            new(TrayMenuCommand.DisableTranslator, L.T("Выключить переводчик"), isTranslatorRunning && !isTranslatorBusy),
+            new(TrayMenuCommand.Clean, L.T("Очистить"), Enabled: !isCleanupBusy, WithProgress: true),
+            new(TrayMenuCommand.Scanner, L.T("Сканер"), Enabled: true),
+            new(TrayMenuCommand.Startup, L.T("Автозагрузка"), Enabled: true),
+            new(TrayMenuCommand.Settings, L.T("Настройки"), Enabled: true),
             new(TrayMenuCommand.Exit, L.T("Выход"), Enabled: true),
         ];
     }

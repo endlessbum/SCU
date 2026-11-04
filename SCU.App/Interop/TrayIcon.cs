@@ -5,13 +5,13 @@ using SCU.Common;
 
 namespace SCU.Interop;
 
-// Действия и состояние окна-владельца, нужные меню трея.
+// Действия и состояние окна-владельца, нужные иконке в области уведомлений.
+// ShowContextMenu строит меню в MainWindow (WPF ContextMenu в стиле приложения).
 internal sealed record TrayIconHost(
     Action ShowWindow,
-    Action DisableTranslator,
     Action Exit,
-    Func<bool> IsTranslatorRunning,
-    Func<bool> IsTranslatorBusy);
+    Action ShowContextMenu,
+    Func<bool> IsTranslatorRunning);
 
 // Иконка SCU в области уведомлений (аудит, п. 1). Нужна из-за фонового режима:
 // при включённом переводе раскладки закрытие главного окна не завершает
@@ -20,14 +20,13 @@ internal sealed record TrayIconHost(
 //
 // Реализация нативная (Shell_NotifyIcon), без WinForms: сообщения оболочки
 // приходят в HWND главного окна — тот же, что и у глобальной горячей клавиши.
-// Меню (TrackPopupMenu) блокирует UI-поток, пока открыто, — так же ведёт себя
-// штатный NotifyIcon из WinForms; на время показа меню это ожидаемо.
+// Меню по правой кнопке строит MainWindow (WPF, стиль приложения) — сюда
+// приходит только запрос на его открытие.
 internal sealed class TrayIcon : IDisposable
 {
     private const int TrayIconId = 1;
     private const int CallbackMessage = 0x8000 + 0x42; // WM_APP + 66
 
-    private const int WmNull = 0x0000;
     private const int WmLButtonUp = 0x0202;
     private const int WmLButtonDblClk = 0x0203;
     private const int WmRButtonUp = 0x0205;
@@ -40,13 +39,6 @@ internal sealed class TrayIcon : IDisposable
     private const int NimAdd = 0x00000000;
     private const int NimModify = 0x00000001;
     private const int NimDelete = 0x00000002;
-
-    private const uint MfString = 0x00000000;
-    private const uint MfGrayed = 0x00000001;
-    private const uint MfSeparator = 0x00000800;
-    private const uint TpmLeftAlign = 0x0000;
-    private const uint TpmRightButton = 0x0002;
-    private const uint TpmReturnCmd = 0x0100;
 
     private const uint ImageIcon = 1;
     private const uint LrLoadFromFile = 0x0010;
@@ -221,88 +213,14 @@ internal sealed class TrayIcon : IDisposable
                 break;
             case WmRButtonUp:
             case WmContextMenu:
-                ShowMenu();
+                SafeInvoke(_host.ShowContextMenu, "show context menu");
                 break;
         }
 
         return IntPtr.Zero;
     }
 
-    // Меню открывается нативно: WPF-меню требует видимого окна-владельца, а трей
-    // должен работать и когда главное окно свёрнуто или скрыто.
-    private void ShowMenu()
-    {
-        var menu = CreatePopupMenu();
-        if (menu == IntPtr.Zero)
-        {
-            _logger.Warn("TRAY | CreatePopupMenu failed");
-            return;
-        }
-
-        try
-        {
-            foreach (var entry in TrayMenu.Build(_host.IsTranslatorRunning(), _host.IsTranslatorBusy()))
-            {
-                // Разделитель перед «Выходом»: пункт завершает приложение, его
-                // не должно быть легко выбрать промахом.
-                if (entry.Command == TrayMenuCommand.Exit)
-                {
-                    AppendMenu(menu, MfSeparator, 0, text: null);
-                }
-
-                var flags = entry.Enabled ? MfString : MfString | MfGrayed;
-                if (!AppendMenu(menu, flags, (nuint)entry.Command, entry.Title))
-                {
-                    _logger.Warn("TRAY | AppendMenu failed | " + entry.Command);
-                }
-            }
-
-            GetCursorPos(out var point);
-
-            // Без foreground-окна меню не закрывается по клику вне себя и остаётся
-            // висеть поверх чужих окон (классическое требование TrackPopupMenu).
-            SetForegroundWindow(_source.Handle);
-            var command = TrackPopupMenuEx(
-                menu,
-                TpmReturnCmd | TpmRightButton | TpmLeftAlign,
-                point.X,
-                point.Y,
-                _source.Handle,
-                IntPtr.Zero);
-            PostMessage(_source.Handle, WmNull, IntPtr.Zero, IntPtr.Zero);
-
-            Dispatch(command);
-        }
-        catch (Exception exception)
-        {
-            _logger.Warn("TRAY | menu failed | " + exception.Message);
-        }
-        finally
-        {
-            DestroyMenu(menu);
-        }
-    }
-
-    private void Dispatch(int command)
-    {
-        switch ((TrayMenuCommand)command)
-        {
-            case TrayMenuCommand.ShowWindow:
-                SafeInvoke(_host.ShowWindow, "show window");
-                break;
-            case TrayMenuCommand.DisableTranslator:
-                SafeInvoke(_host.DisableTranslator, "disable translator");
-                break;
-            case TrayMenuCommand.Exit:
-                SafeInvoke(_host.Exit, "exit");
-                break;
-            default:
-                // 0 — меню закрыто без выбора пункта.
-                break;
-        }
-    }
-
-    // Команда меню приходит из сообщения оболочки: исключение здесь не должно
+    // Команда приходит из сообщения оболочки: исключение здесь не должно
     // улетать в WndProc окна и валить UI-поток.
     private void SafeInvoke(Action action, string title)
     {
@@ -402,37 +320,9 @@ internal sealed class TrayIcon : IDisposable
         public IntPtr BalloonIcon;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Point
-    {
-        public int X;
-        public int Y;
-    }
-
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool Shell_NotifyIcon(int message, ref NotifyIconData data);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern bool AppendMenu(IntPtr menu, uint flags, nuint itemId, string? text);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr CreatePopupMenu();
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool DestroyMenu(IntPtr menu);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern int TrackPopupMenuEx(
-        IntPtr menu, uint flags, int x, int y, IntPtr owner, IntPtr parameters);
-
-    [DllImport("user32.dll")]
-    private static extern bool GetCursorPos(out Point point);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hwnd);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool PostMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr LoadImage(

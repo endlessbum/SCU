@@ -153,6 +153,9 @@
     <sys:String x:Key="S_CloseBehaviorExit">Exit SCU</sys:String>
     <sys:String x:Key="S_CloseBehaviorTray">Minimize to tray</sys:String>
 
+    <sys:String x:Key="S_SettingsAutostart">Autostart</sys:String>
+    <sys:String x:Key="S_SettingsAutostartDesc">The app starts automatically with the system</sys:String>
+
     <sys:String x:Key="S_SettingsFooter">Settings are saved to %AppData%\SCU\settings.json and applied at the next launch.</sys:String>
 
     <sys:String x:Key="S_UiMenuDelay20">Menu delay: 20 ms</sys:String>

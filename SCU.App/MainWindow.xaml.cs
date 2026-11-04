@@ -234,16 +234,15 @@ public partial class MainWindow : Window
         // Иконка в области уведомлений: штатный путь завершить SCU, когда закрытие
         // окна уходит в фоновый режим (включён перевод раскладки). Ставится на тот же
         // HWND, что и глобальная горячая клавиша — иконка живёт, пока живёт окно.
+        // Контекстное меню (правая кнопка) строит MainWindow — WPF, стиль приложения.
         _trayIcon = new Interop.TrayIcon(
             source,
             _logger,
             new Interop.TrayIconHost(
                 ShowFromTray,
-                DisableTranslatorFromTray,
                 ExitFromTray,
-                () => _viewModel.Input.LayoutTranslatorOn,
-                () => _viewModel.Input.IsBusy
-                    || !_viewModel.Input.SetLayoutTranslatorCommand.CanExecute(false)));
+                ShowTrayContextMenu,
+                () => _viewModel.Input.LayoutTranslatorOn));
         _trayIcon.Show();
     }
 
@@ -269,20 +268,8 @@ public partial class MainWindow : Window
         Activate();
     }
 
-    // «Выключить переводчик» в трее: останавливает хук без диалогов — включение
-    // перевода раскладки всегда требует явного согласия и делается только из UI.
-    private void DisableTranslatorFromTray()
-    {
-        var command = _viewModel.Input.SetLayoutTranslatorCommand;
-        if (command.CanExecute(false))
-        {
-            command.Execute(false);
-            return;
-        }
-
-        // Операция раздела занята: показываем окно, чтобы пользователь видел состояние.
-        ShowFromTray();
-    }
+    // «Выключить переводчик» из трея убран по ТЗ меню: включение и выключение
+    // перевода раскладки — через карточку «Ввод» раздела.
 
     // «Выход» в трее. Фоновый режим снимается явно: иначе повторное закрытие
     // окна снова отменилось бы, и приложение осталось бы висеть в процессе.
@@ -291,6 +278,143 @@ public partial class MainWindow : Window
         _logger.Info("TRAY | exit requested");
         App.RunInBackgroundOnClose = false;
         Close();
+    }
+
+    // ===================== Контекстное меню трея =====================
+
+    // Номера разделов, открываемых из меню: «Сканер», «Автозагрузка», «Настройки».
+    private const int ScannerSectionNumber = 21;
+    private const int StartupSectionNumber = 7;
+    private const int SettingsSectionNumber = 17;
+
+    // Меню правой кнопки по иконке трея: WPF ContextMenu в стиле приложения.
+    // Трей обязан работать и когда главное окно скрыто, а попапу нужен живой
+    // PlacementTarget — меню показывается через нулевое прозрачное окно-носитель,
+    // которое закрывается вместе с меню.
+    private void ShowTrayContextMenu()
+    {
+        var host = new Window
+        {
+            Width = 0,
+            Height = 0,
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            AllowsTransparency = true,
+            Background = Brushes.Transparent,
+            Content = null,
+        };
+
+        var menu = BuildTrayContextMenu();
+        menu.PlacementTarget = host;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+        menu.Closed += (_, _) => host.Close();
+
+        host.Show();
+        menu.IsOpen = true;
+    }
+
+    private ContextMenu BuildTrayContextMenu()
+    {
+        var menu = new ContextMenu
+        {
+            Style = (Style)FindResource("TrayContextMenu"),
+            StaysOpen = false,
+        };
+
+        foreach (var entry in Interop.TrayMenu.Build(_viewModel.Cleanup.IsBusy))
+        {
+            // Разделитель перед «Выходом»: пункт завершает приложение, его
+            // не должно быть легко выбрать промахом.
+            if (entry.Command == Interop.TrayMenuCommand.Exit)
+            {
+                menu.Items.Add(new Separator());
+            }
+
+            var item = new MenuItem
+            {
+                Style = (Style)FindResource("TrayMenuItem"),
+                IsEnabled = entry.Enabled,
+            };
+
+            switch (entry.Command)
+            {
+                case Interop.TrayMenuCommand.Clean:
+                    // «Очистить всё» из раздела «Очистка системы и диск» — с его
+                    // подтверждением; DataContext у процентов — CleanupViewModel.
+                    item.DataContext = _viewModel.Cleanup;
+                    item.Header = BuildTrayCleanHeader(entry.Title);
+                    item.SetBinding(
+                        System.Windows.Controls.MenuItem.CommandProperty,
+                        new System.Windows.Data.Binding(nameof(ViewModels.Sections.CleanupViewModel.CleanAllCommand)));
+                    break;
+                case Interop.TrayMenuCommand.Scanner:
+                    item.Header = entry.Title;
+                    item.Click += (_, _) => OpenSectionFromTray(ScannerSectionNumber);
+                    break;
+                case Interop.TrayMenuCommand.Startup:
+                    item.Header = entry.Title;
+                    item.Click += (_, _) => OpenSectionFromTray(StartupSectionNumber);
+                    break;
+                case Interop.TrayMenuCommand.Settings:
+                    item.Header = entry.Title;
+                    item.Click += (_, _) => OpenSectionFromTray(SettingsSectionNumber);
+                    break;
+                case Interop.TrayMenuCommand.Exit:
+                    item.Header = entry.Title;
+                    item.Click += (_, _) => ExitFromTray();
+                    break;
+            }
+
+            menu.Items.Add(item);
+        }
+
+        return menu;
+    }
+
+    // Заголовок пункта «Очистить»: название слева, проценты справа. Проценты
+    // привязаны к CleanupViewModel и скрываются, когда очистка не идёт.
+    private static System.Windows.Controls.Grid BuildTrayCleanHeader(string title)
+    {
+        var header = new System.Windows.Controls.Grid();
+        header.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto });
+
+        var titleText = new TextBlock { Text = title, FontSize = 14 };
+        System.Windows.Controls.Grid.SetColumn(titleText, 0);
+        header.Children.Add(titleText);
+
+        var percent = new TextBlock
+        {
+            FontSize = 13,
+            Margin = new Thickness(16, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        percent.SetBinding(
+            TextBlock.TextProperty,
+            new System.Windows.Data.Binding(nameof(ViewModels.Sections.CleanupViewModel.CleanupProgressText)));
+        var percentStyle = new Style(typeof(TextBlock));
+        var emptyTrigger = new DataTrigger
+        {
+            Binding = new System.Windows.Data.Binding(nameof(ViewModels.Sections.CleanupViewModel.CleanupProgressText)),
+            Value = string.Empty,
+        };
+        emptyTrigger.Setters.Add(new Setter(TextBlock.VisibilityProperty, Visibility.Collapsed));
+        percentStyle.Triggers.Add(emptyTrigger);
+        percent.Style = percentStyle;
+        System.Windows.Controls.Grid.SetColumn(percent, 1);
+        header.Children.Add(percent);
+
+        return header;
+    }
+
+    // Пункты навигации: окно поднимается из фонового режима и открывается
+    // на выбранном разделе — тот же механизм, что у клика по сайдбару.
+    private void OpenSectionFromTray(int sectionNumber)
+    {
+        ShowFromTray();
+        _viewModel.SelectSectionByNumber(sectionNumber);
     }
 
     private void OnThemeApplied(bool isDark)

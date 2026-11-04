@@ -254,6 +254,29 @@
                 </Grid>
             </Border>
 
+            <!-- Автозапуск: источник истины — запись "SCU" в HKCU Run, поэтому
+                 привязка OneWay + команда, а не TwoWay (факт читается из реестра). -->
+            <Border Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource RowHeaderText}"
+                                   Text="{DynamicResource S_SettingsAutostart}" />
+                        <TextBlock Style="{StaticResource RowActionText}"
+                                   Text="{DynamicResource S_SettingsAutostartDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="1"
+                                  VerticalAlignment="Center"
+                                  Style="{StaticResource SystemToggleSwitch}"
+                                  AutomationProperties.Name="{DynamicResource S_SettingsAutostart}"
+                                  IsChecked="{Binding IsAutostartEnabled, Mode=OneWay}"
+                                  Command="{Binding ToggleAutostartCommand}" />
+                </Grid>
+            </Border>
+
             <Border Style="{StaticResource SectionCard}">
                 <Grid>
                     <Grid.ColumnDefinitions>

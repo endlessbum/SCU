@@ -11,40 +11,14 @@
             <TextBlock Style="{StaticResource CardIntroText}"
                        TextWrapping="Wrap"
                        Text="{DynamicResource S_NetNduDesc}" />
-            <!-- Активное состояние подсвечивается акцентом через DataTrigger по ActiveNduKey;
-                 нечитаемое состояние — обе кнопки без подсветки. -->
-            <WrapPanel Margin="0,8,0,0">
-                <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
-                    <Button Content="{DynamicResource S_NetNduDisable}"
-                            Command="{Binding NduDisableCommand}"
-                            ToolTipService.ShowOnDisabled="True">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ActiveNduKey}" Value="disabled">
-                                        <Setter Property="Tag" Value="accent" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,8,8">
-                    <Button Content="{DynamicResource S_NetNduEnable}"
-                            Command="{Binding NduEnableCommand}"
-                            ToolTipService.ShowOnDisabled="True">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource AccentPresetButton}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ActiveNduKey}" Value="enabled">
-                                        <Setter Property="Tag" Value="accent" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                </StackPanel>
-            </WrapPanel>
+            <!-- Тумблер: включен — сбор статистики идёт, выключен — отключён.
+                 Состояние не прочитано (ActiveNduKey=null) — тумблер отключён. -->
+            <ToggleButton Margin="0,8,0,0"
+                          HorizontalAlignment="Left"
+                          Style="{StaticResource SystemToggleSwitch}"
+                          AutomationProperties.Name="{DynamicResource S_NetNduTitle}"
+                          IsChecked="{Binding IsNduEnabled, Mode=OneWay}"
+                          Command="{Binding NduToggleCommand}" />
         </StackPanel>
     </Border>
 </UserControl>

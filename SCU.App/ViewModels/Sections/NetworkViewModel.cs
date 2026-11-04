@@ -38,8 +38,7 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
     [NotifyCanExecuteChangedFor(nameof(NetBiosDhcpCommand))]
     [NotifyCanExecuteChangedFor(nameof(FlushNetBiosCacheCommand))]
     [NotifyCanExecuteChangedFor(nameof(FlushDnsCommand))]
-    [NotifyCanExecuteChangedFor(nameof(NduDisableCommand))]
-    [NotifyCanExecuteChangedFor(nameof(NduEnableCommand))]
+    [NotifyCanExecuteChangedFor(nameof(NduToggleCommand))]
     [NotifyCanExecuteChangedFor(nameof(RemoveMinCifraCertCommand))]
     [NotifyCanExecuteChangedFor(nameof(GamingProfileCommand))]
     [NotifyCanExecuteChangedFor(nameof(RollbackGamingProfileCommand))]
@@ -97,10 +96,15 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
     [ObservableProperty]
     private string? _activeNetBiosKey;
 
-    // Подсветка NDU-кнопок: "disabled"/"enabled" — фактический Start из реестра,
-    // null — состояние не прочитано (кнопки без подсветки, честное «неизвестно»).
+    // Состояние NDU: "disabled"/"enabled" — фактический Start из реестра,
+    // null — состояние не прочитано (тумблер отключён, честное «неизвестно»).
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsNduEnabled))]
+    [NotifyCanExecuteChangedFor(nameof(NduToggleCommand))]
     private string? _activeNduKey;
+
+    // Положение тумблера NDU: включен = сбор статистики идёт.
+    public bool IsNduEnabled => ActiveNduKey == "enabled";
 
     // В бэкапе профиля адаптера есть что откатывать — видна кнопка «Откатить».
     [ObservableProperty]
@@ -448,55 +452,63 @@ public partial class NetworkViewModel : ObservableObject, IDisposable, ISectionO
     // Служба NDU (Network Data Usage): отключение сбрасывает статистику трафика
     // («Использование данных», лимиты) — потому подтверждение; включение —
     // восстановление, диалог не нужен (как «Восстановить исходное» у QoS).
-    [RelayCommand(CanExecute = nameof(CanModify))]
-    private async Task NduDisableAsync()
+    // Тумблер: направление по фактическому состоянию ActiveNduKey.
+    [RelayCommand(CanExecute = nameof(CanToggleNdu))]
+    private async Task NduToggleAsync()
     {
-        if (!_dialogs.Ask(
-                L.T("Отключение службы NDU"),
-                L.T("Служба перестанет собирать статистику трафика: экран «Использование данных» и лимиты трафика перестанут обновляться. Исходный режим запуска сохраняется в бэкап. Продолжить?"),
-                L.T("Отключить")))
+        if (ActiveNduKey == "enabled")
         {
-            return;
+            if (!_dialogs.Ask(
+                    L.T("Отключение службы NDU"),
+                    L.T("Служба перестанет собирать статистику трафика: экран «Использование данных» и лимиты трафика перестанут обновляться. Исходный режим запуска сохраняется в бэкап. Продолжить?"),
+                    L.T("Отключить")))
+            {
+                // Отказ от подтверждения: клик уже локально перевернул IsChecked,
+                // а привязка OneWay сама не перечитается — возвращаем тумблер.
+                OnPropertyChanged(nameof(IsNduEnabled));
+                return;
+            }
+
+            await RunExclusiveAsync("отключение NDU", async ct =>
+            {
+                StatusText = L.T("Отключение службы NDU…");
+                var result = await TaskRunner.RunBlocking(_networkService.DisableNdu, ct).ConfigureAwait(true);
+                StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
+                if (result.IsSuccess)
+                {
+                    _history.Enqueue(new HistoryEvent(
+                        DateTime.Now,
+                        L.T("Сеть"),
+                        L.T("Служба NDU отключена"),
+                        HistoryEvent.StatusOk));
+                }
+
+                await RefreshNduAsync(ct).ConfigureAwait(true);
+            }).ConfigureAwait(true);
         }
-
-        await RunExclusiveAsync("отключение NDU", async ct =>
+        else
         {
-            StatusText = L.T("Отключение службы NDU…");
-            var result = await TaskRunner.RunBlocking(_networkService.DisableNdu, ct).ConfigureAwait(true);
-            StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
-            if (result.IsSuccess)
+            await RunExclusiveAsync("включение NDU", async ct =>
             {
-                _history.Enqueue(new HistoryEvent(
-                    DateTime.Now,
-                    L.T("Сеть"),
-                    L.T("Служба NDU отключена"),
-                    HistoryEvent.StatusOk));
-            }
+                StatusText = L.T("Включение службы NDU…");
+                var result = await TaskRunner.RunBlocking(_networkService.EnableNdu, ct).ConfigureAwait(true);
+                StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
+                if (result.IsSuccess)
+                {
+                    _history.Enqueue(new HistoryEvent(
+                        DateTime.Now,
+                        L.T("Сеть"),
+                        L.T("Служба NDU включена"),
+                        HistoryEvent.StatusOk));
+                }
 
-            await RefreshNduAsync(ct).ConfigureAwait(true);
-        }).ConfigureAwait(true);
+                await RefreshNduAsync(ct).ConfigureAwait(true);
+            }).ConfigureAwait(true);
+        }
     }
 
-    [RelayCommand(CanExecute = nameof(CanModify))]
-    private async Task NduEnableAsync()
-    {
-        await RunExclusiveAsync("включение NDU", async ct =>
-        {
-            StatusText = L.T("Включение службы NDU…");
-            var result = await TaskRunner.RunBlocking(_networkService.EnableNdu, ct).ConfigureAwait(true);
-            StatusText = result.IsSuccess ? L.S(result.Message) : L.T("Ошибка: {0}", result.Message);
-            if (result.IsSuccess)
-            {
-                _history.Enqueue(new HistoryEvent(
-                    DateTime.Now,
-                    L.T("Сеть"),
-                    L.T("Служба NDU включена"),
-                    HistoryEvent.StatusOk));
-            }
-
-            await RefreshNduAsync(ct).ConfigureAwait(true);
-        }).ConfigureAwait(true);
-    }
+    // Состояние не прочитано (null) — направление переключения неизвестно, тумблер отключён.
+    private bool CanToggleNdu() => CanModify() && ActiveNduKey is not null;
 
     private bool CanRemoveMinCifraCert() => CanModify() && IsMinCifraCertInstalled;
 

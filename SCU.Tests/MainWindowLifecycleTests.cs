@@ -73,32 +73,36 @@ public sealed class MainWindowLifecycleTests
     }
 
     [Fact]
-    public void TrayMenu_HasExitAndShow_AlwaysAvailable()
+    public void TrayMenu_HasAllSpecifiedItems_ExitAlwaysAvailable()
     {
-        var entries = TrayMenu.Build(isTranslatorRunning: false, isTranslatorBusy: false);
+        var entries = TrayMenu.Build(isCleanupBusy: false);
 
-        var show = entries.Single(entry => entry.Command == TrayMenuCommand.ShowWindow);
+        Assert.Equal(
+            [TrayMenuCommand.Clean, TrayMenuCommand.Scanner, TrayMenuCommand.Startup, TrayMenuCommand.Settings, TrayMenuCommand.Exit],
+            entries.Select(entry => entry.Command).ToArray());
+
+        var clean = entries.Single(entry => entry.Command == TrayMenuCommand.Clean);
         var exit = entries.Single(entry => entry.Command == TrayMenuCommand.Exit);
-        var disable = entries.Single(entry => entry.Command == TrayMenuCommand.DisableTranslator);
+
+        // «Очистить» показывает проценты выполнения справа.
+        Assert.True(clean.WithProgress);
 
         // Без «Выхода» в трее пользователь не может завершить SCU, пока закрытие
         // окна уходит в фоновый режим.
-        Assert.True(show.Enabled);
         Assert.True(exit.Enabled);
-
-        // Останавливать нечего: пункт недоступен, пока перевод не включён.
-        Assert.False(disable.Enabled);
     }
 
     [Fact]
-    public void TrayMenu_DisableTranslator_EnabledOnlyWhileRunningAndIdle()
+    public void TrayMenu_Clean_DisabledOnlyWhileCleanupBusy()
     {
-        Assert.True(TrayMenu.Build(isTranslatorRunning: true, isTranslatorBusy: false)
-            .Single(entry => entry.Command == TrayMenuCommand.DisableTranslator).Enabled);
+        Assert.True(TrayMenu.Build(isCleanupBusy: false)
+            .Single(entry => entry.Command == TrayMenuCommand.Clean).Enabled);
 
-        // Идёт операция раздела «Ввод» — команда не выполнится.
-        Assert.False(TrayMenu.Build(isTranslatorRunning: true, isTranslatorBusy: true)
-            .Single(entry => entry.Command == TrayMenuCommand.DisableTranslator).Enabled);
+        // Идёт «Очистить всё»: пункт неактивен, проценты продолжают показываться.
+        var entry = TrayMenu.Build(isCleanupBusy: true)
+            .Single(item => item.Command == TrayMenuCommand.Clean);
+        Assert.False(entry.Enabled);
+        Assert.True(entry.WithProgress);
     }
 
     [Fact]
@@ -109,12 +113,12 @@ public sealed class MainWindowLifecycleTests
         {
             L.SetLanguage(AppLanguage.En, notify: false);
 
-            var titles = TrayMenu.Build(isTranslatorRunning: true, isTranslatorBusy: false)
+            var titles = TrayMenu.Build(isCleanupBusy: false)
                 .Select(entry => entry.Title)
                 .ToArray();
 
             // Guard от выпадения строк трея из EN-словаря: L.T вернул бы русский ключ.
-            Assert.Equal(["Show SCU", "Disable layout translator", "Exit"], titles);
+            Assert.Equal(["Clean up", "Scanner", "Startup", "Settings", "Exit"], titles);
         }
         finally
         {
@@ -130,11 +134,11 @@ public sealed class MainWindowLifecycleTests
         {
             L.SetLanguage(AppLanguage.Ru, notify: false);
 
-            var titles = TrayMenu.Build(isTranslatorRunning: true, isTranslatorBusy: false)
+            var titles = TrayMenu.Build(isCleanupBusy: false)
                 .Select(entry => entry.Title)
                 .ToArray();
 
-            Assert.Equal(["Показать SCU", "Выключить переводчик", "Выход"], titles);
+            Assert.Equal(["Очистить", "Сканер", "Автозагрузка", "Настройки", "Выход"], titles);
         }
         finally
         {

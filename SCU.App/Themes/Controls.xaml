@@ -1021,6 +1021,66 @@
         </Setter>
     </Style>
 
+    <!-- ===================== Меню иконки в области уведомлений ===================== -->
+    <!-- Контекстное меню трея: та же поверхность, что у попапов (PopupBackgroundBrush,
+         радиус 12, тонкая обводка), пункты 36 px с мягким скруглением и спокойным
+         ховером — как пункты списков. Строится кодом MainWindow по модели TrayMenu. -->
+    <Style x:Key="TrayContextMenu" TargetType="ContextMenu">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Margin="8"
+                            Padding="6"
+                            CornerRadius="12"
+                            Background="{DynamicResource PopupBackgroundBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeBrush}"
+                            BorderThickness="1">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="16"
+                                              ShadowDepth="2"
+                                              Direction="270"
+                                              Opacity="0.28"
+                                              Color="#000000" />
+                        </Border.Effect>
+                        <StackPanel IsItemsHost="True" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="TrayMenuItem" TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Bd"
+                            MinHeight="36"
+                            CornerRadius="8"
+                            Padding="12,8"
+                            Background="Transparent">
+                        <ContentPresenter ContentSource="Header"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillSecondaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===================== Списки ===================== -->
     <Style TargetType="ListBox">
         <Setter Property="Background" Value="Transparent" />

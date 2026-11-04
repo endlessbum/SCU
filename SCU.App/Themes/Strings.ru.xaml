@@ -154,6 +154,9 @@
     <sys:String x:Key="S_CloseBehaviorExit">Закрывать SCU</sys:String>
     <sys:String x:Key="S_CloseBehaviorTray">Сворачивать в трей</sys:String>
 
+    <sys:String x:Key="S_SettingsAutostart">Автозапуск</sys:String>
+    <sys:String x:Key="S_SettingsAutostartDesc">Приложение запускается автоматически со стартом системы</sys:String>
+
     <sys:String x:Key="S_SettingsFooter">Настройки сохраняются в %AppData%\SCU\settings.json и применяются при следующем запуске.</sys:String>
 
     <sys:String x:Key="S_UiMenuDelay20">Задержка меню: 20 мс</sys:String>

@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using SCU.AppCore.AI;
 using SCU.AppCore.Help;
 using SCU.Common;
+using SCU.Infrastructure.Windows;
 using SCU.Interop;
 using SCU.Models;
 using SCU.Models.AI;
@@ -764,6 +765,34 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
         ThemeManager.CloseBehavior = behavior;
         ThemeManager.SaveSettings(ThemeMode, AccentMode, Language, ShowLog, UacConfirmations, closeBehavior: behavior);
         App.RunInBackgroundOnClose = behavior == AppCloseBehavior.MinimizeToTray;
+    }
+
+    // Автозапуск с системой: источник истины — запись "SCU" в HKCU Run, а не
+    // settings.json (изменения записи вне приложения видны после перезапуска).
+    // Читается один раз при создании модели.
+    [ObservableProperty]
+    private bool isAutostartEnabled = ScuAutorun.IsEnabled();
+
+    // Тумблер «Автозапуск» в «Настройках»: пишет/удаляет запись Run\SCU
+    // (HKCU — права администратора не нужны). Включённая запись содержит
+    // --tray: после загрузки системы SCU садится свёрнутым в трей.
+    [RelayCommand]
+    private void ToggleAutostart()
+    {
+        if (IsAutostartEnabled)
+        {
+            ScuAutorun.TryDelete(_logger);
+        }
+        else
+        {
+            ScuAutorun.TryWrite(_logger);
+        }
+
+        // Клик тумблера локально перевернул IsChecked (привязка OneWay):
+        // перечитываем факт из реестра и поднимаем PropertyChanged всегда —
+        // при сбое записи тумблер вернётся в фактическое положение.
+        IsAutostartEnabled = ScuAutorun.IsEnabled();
+        OnPropertyChanged(nameof(IsAutostartEnabled));
     }
 
     [ObservableProperty]
