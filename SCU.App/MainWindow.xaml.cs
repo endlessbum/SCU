@@ -34,12 +34,21 @@ public partial class MainWindow : Window
     private void OnWindowClosing(object? sender, CancelEventArgs e)
     {
         // Поведение при закрытии — явный выбор пользователя (дизайн, п. 2):
-        // «Закрывать SCU» или «Сворачивать в трей». Раньше фоновый режим
-        // включался скрытно вместе с переводчиком раскладки.
+        // «Закрывать SCU» или «Сворачивать в трей».
         if (App.RunInBackgroundOnClose)
         {
+            // Завершение сеанса Windows (выход/выключение) не блокируем:
+            // отмена закрытия заставляла ОС показывать «приложение
+            // препятствует завершению работы».
+            if (App.IsSessionEnding)
+            {
+                return;
+            }
+
+            // Окно скрывается полностью: исчезает из панели задач и Alt+Tab,
+            // остаются иконка трея и глобальная горячая клавиша.
             e.Cancel = true;
-            WindowState = WindowState.Minimized;
+            Hide();
         }
     }
 
@@ -59,9 +68,6 @@ public partial class MainWindow : Window
 
         // Блок журнала скрывается тумблером в «Настройках»: меню и контент занимают всю высоту.
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        // Состояние перевода раскладки отражается в подсказке трея (карточка
-        // «Ввод» меняет его и из UI, и из меню трея).
-        _viewModel.Input.PropertyChanged += OnInputPropertyChanged;
         UpdateJournalLayout(_viewModel.ShowLog);
 
         // Стартовая тема из настроек — до подписки, чтобы DWM-хуки не срабатывали до SourceInitialized.
@@ -69,8 +75,8 @@ public partial class MainWindow : Window
         ThemeManager.ApplyTheme(_viewModel.ThemeMode);
         ThemeManager.ThemeApplied += OnThemeApplied;
 
-        // Фоновый режим (сворачивание в трей) — по выбору пользователя в
-        // настройках, а не по факту включения переводчика (дизайн, п. 2).
+        // Фоновый режим (сворачивание в трей) — по выбору пользователя
+        // в настройках (дизайн, п. 2).
         App.RunInBackgroundOnClose = ThemeManager.CloseBehavior == AppCloseBehavior.MinimizeToTray;
 
         // Значок окна (панель задач, Alt+Tab) красится цветом иконки (отдельная
@@ -232,7 +238,7 @@ public partial class MainWindow : Window
         WindowEffects.ApplyCaptionColor(this, isDark);
 
         // Иконка в области уведомлений: штатный путь завершить SCU, когда закрытие
-        // окна уходит в фоновый режим (включён перевод раскладки). Ставится на тот же
+        // окна уходит в фоновый режим (сворачивание в трей). Ставится на тот же
         // HWND, что и глобальная горячая клавиша — иконка живёт, пока живёт окно.
         // Контекстное меню (правая кнопка) строит MainWindow — WPF, стиль приложения.
         _trayIcon = new Interop.TrayIcon(
@@ -241,20 +247,15 @@ public partial class MainWindow : Window
             new Interop.TrayIconHost(
                 ShowFromTray,
                 ExitFromTray,
-                ShowTrayContextMenu,
-                () => _viewModel.Input.LayoutTranslatorOn));
+                ShowTrayContextMenu));
         _trayIcon.Show();
     }
 
     private Interop.TrayIcon? _trayIcon;
 
-    private void OnInputPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(ViewModels.Sections.InputViewModel.LayoutTranslatorOn))
-        {
-            _trayIcon?.RefreshState();
-        }
-    }
+    // Открытое сейчас меню трея: нужно, чтобы повторный правый клик по иконке
+    // закрывал предыдущее меню синхронно, до построения нового.
+    private System.Windows.Controls.ContextMenu? _openTrayMenu;
 
     // «Показать SCU»: окно поднимается из фонового режима (свёрнутое — разворачивается).
     private void ShowFromTray()
@@ -266,10 +267,12 @@ public partial class MainWindow : Window
         }
 
         Activate();
-    }
 
-    // «Выключить переводчик» из трея убран по ТЗ меню: включение и выключение
-    // перевода раскладки — через карточку «Ввод» раздела.
+        // Окно знакомства откладывается до первого подъёма окна: при старте
+        // с --tray оно не должно выскочить на логоне. ShowOnce сам no-op,
+        // если знакомство уже показано.
+        Dispatcher.BeginInvoke(() => Views.OnboardingWindow.ShowOnce(this));
+    }
 
     // «Выход» в трее. Фоновый режим снимается явно: иначе повторное закрытие
     // окна снова отменилось бы, и приложение осталось бы висеть в процессе.
@@ -293,6 +296,11 @@ public partial class MainWindow : Window
     // которое закрывается вместе с меню.
     private void ShowTrayContextMenu()
     {
+        // Повторный правый клик по иконке: предыдущее меню закрывается
+        // синхронно (его Closed-обработчик снимет хук и закроет окно-носитель),
+        // иначе на мгновение висели бы два меню.
+        _openTrayMenu?.IsOpen = false;
+
         var host = new Window
         {
             Width = 0,
@@ -309,10 +317,59 @@ public partial class MainWindow : Window
         var menu = BuildTrayContextMenu();
         menu.PlacementTarget = host;
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
-        menu.Closed += (_, _) => host.Close();
 
-        host.Show();
-        menu.IsOpen = true;
+        // Скрытие по клику мимо меню. StaysOpen=false закрывает меню только по
+        // нажатиям внутри приложения; когда главное окно скрыто в трее, клики
+        // по рабочему столу и чужим окнам до WPF не доходят — на время жизни
+        // меню ставится низкоуровневый хук мыши, закрывающий его извне попапа.
+        OutsideMouseHook? outsideHook = null;
+        menu.Opened += (_, _) =>
+        {
+            // Если HWND попапа не достался — хук не ставится, остаётся
+            // штатное поведение StaysOpen=false: деградация, не падение.
+            if (PresentationSource.FromVisual(menu) is HwndSource popup)
+            {
+                outsideHook = new OutsideMouseHook(popup.Handle);
+                if (!outsideHook.Installed)
+                {
+                    _logger.Warn("TRAY | outside mouse hook not installed");
+                }
+
+                outsideHook.OutsideMouseDown += () =>
+                    Dispatcher.BeginInvoke(() => menu.IsOpen = false);
+            }
+        };
+        menu.Closed += (_, _) =>
+        {
+            outsideHook?.Dispose();
+            if (_openTrayMenu == menu)
+            {
+                _openTrayMenu = null;
+            }
+
+            host.Close();
+        };
+
+        _openTrayMenu = menu;
+        try
+        {
+            host.Show();
+            menu.IsOpen = true;
+        }
+        catch
+        {
+            // Попап не открылся — Closed не поднимется: снимаем хук и убираем
+            // окно-носитель сами, иначе они копятся с каждым сбоем. Ошибку
+            // перебрасываем: SafeInvoke в TrayIcon залогирует её.
+            outsideHook?.Dispose();
+            if (_openTrayMenu == menu)
+            {
+                _openTrayMenu = null;
+            }
+
+            host.Close();
+            throw;
+        }
     }
 
     private ContextMenu BuildTrayContextMenu()
@@ -325,13 +382,6 @@ public partial class MainWindow : Window
 
         foreach (var entry in Interop.TrayMenu.Build(_viewModel.Cleanup.IsBusy))
         {
-            // Разделитель перед «Выходом»: пункт завершает приложение, его
-            // не должно быть легко выбрать промахом.
-            if (entry.Command == Interop.TrayMenuCommand.Exit)
-            {
-                menu.Items.Add(new Separator());
-            }
-
             var item = new MenuItem
             {
                 Style = (Style)FindResource("TrayMenuItem"),
@@ -381,14 +431,14 @@ public partial class MainWindow : Window
         header.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto });
 
-        var titleText = new TextBlock { Text = title, FontSize = 14 };
+        var titleText = new TextBlock { Text = title, FontSize = 12 };
         System.Windows.Controls.Grid.SetColumn(titleText, 0);
         header.Children.Add(titleText);
 
         var percent = new TextBlock
         {
-            FontSize = 13,
-            Margin = new Thickness(16, 0, 0, 0),
+            FontSize = 11,
+            Margin = new Thickness(12, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
         percent.SetBinding(
@@ -530,8 +580,12 @@ public partial class MainWindow : Window
         Topmost = false;
         Focus();
         // Окно знакомства при первом запуске: после отрисовки главного окна
-        // (BeginInvoke), чтобы размывался уже видимый интерфейс.
-        Dispatcher.BeginInvoke(() => Views.OnboardingWindow.ShowOnce(this));
+        // (BeginInvoke), чтобы размывался уже видимый интерфейс. При старте
+        // с --tray не показываем — знакомство отложено до ShowFromTray.
+        if (!App.StartInTray)
+        {
+            Dispatcher.BeginInvoke(() => Views.OnboardingWindow.ShowOnce(this));
+        }
     }
 
     // Первичная загрузка данных всех вкладок. Вызывается из App до первого показа
@@ -892,10 +946,10 @@ public partial class MainWindow : Window
     }
 
     // Закрытие главного окна. Порядок обязателен: base.OnClosing(e) поднимает
-    // событие Closing, обработчик которого при включённом переводе раскладки
+    // событие Closing, обработчик которого при включённом фоновом режиме
     // (App.RunInBackgroundOnClose) отменяет закрытие и сворачивает окно. Пока
     // e.Cancel не проверен, освобождать ресурсы нельзя — иначе процесс остаётся
-    // жив, но UI, переводчик, подписки и глобальные горячие клавиши уже мертвы,
+    // жив, но UI, подписки и глобальные горячие клавиши уже мертвы,
     // и повторное закрытие окна снова отменяется (аудит, п. 1).
     protected override void OnClosing(CancelEventArgs e)
     {
@@ -920,7 +974,6 @@ public partial class MainWindow : Window
         Loaded -= OnLoaded;
         _viewModel.MenuApplied -= OnMenuApplied;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-        _viewModel.Input.PropertyChanged -= OnInputPropertyChanged;
         if (_sectionHighlight is { } highlight)
         {
             _viewModel.SectionHighlightRequested -= highlight.OnSectionHighlightRequested;

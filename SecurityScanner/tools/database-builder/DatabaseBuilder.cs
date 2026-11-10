@@ -12,6 +12,13 @@
 //                                   [--source <имя|url>]...   (по умолчанию — внешние дампы)
 //   dotnet run DatabaseBuilder.cs -- build --key <private.pem> --hashes <hashes.txt>
 //                                   --version 2026.09.25 --out <package.zip>
+//   dotnet run DatabaseBuilder.cs -- signseed --key <private.pem> --dir <seed-dir>
+//
+// signseed подписывает seed-базу на диске (SecurityScanner/database): пишет
+// hashes.txt.sig — ту же подпись, что в пакете (ECDSA P-256 над
+// SHA-256(hashes.txt || db-version.json), r||s 64 байта). ScannerCore при
+// загрузке базы требует валидную подпись (fail-closed, OBS-05 п. 3
+// аудита 2026-11-04), поэтому seed поставляется подписанным.
 //
 // fetch собирает hashes.txt из публичных дампов SHA256 (MalwareBazaar recent и
 // безключевые GitHub-агрегаторы): строки, совпавшие с ^[0-9a-fA-F]{64}$,
@@ -29,7 +36,7 @@ using System.Text;
 
 if (args.Length == 0)
 {
-    Console.Error.WriteLine("usage: genkeys <dir> | fetch --out <txt> [--source <name|url>]... | build --key <pem> --hashes <txt> --version <v> --out <zip>");
+    Console.Error.WriteLine("usage: genkeys <dir> | fetch --out <txt> [--source <name|url>]... | build --key <pem> --hashes <txt> --version <v> --out <zip> | signseed --key <pem> --dir <seed-dir>");
     return 2;
 }
 
@@ -38,6 +45,7 @@ switch (args[0])
     case "genkeys": return RunGenKeys(args);
     case "fetch": return RunFetch(args);
     case "build": return RunBuild(args);
+    case "signseed": return RunSignSeed(args);
     default:
         Console.Error.WriteLine($"unknown command {args[0]}");
         return 2;
@@ -294,6 +302,49 @@ static void WriteEntry(ZipArchive zip, string name, byte[] content)
     var entry = zip.CreateEntry(name, CompressionLevel.Optimal);
     using var entryStream = entry.Open();
     entryStream.Write(content);
+}
+
+// Подпись seed-базы на диске: те же байты подписи, что легли бы в пакет.
+// db-version.json подписывается как есть — seed-метаданные не пересобираются.
+static int RunSignSeed(string[] args)
+{
+    string? keyPath = null, dir = null;
+    for (var i = 1; i < args.Length - 1; i += 2)
+    {
+        switch (args[i])
+        {
+            case "--key": keyPath = args[i + 1]; break;
+            case "--dir": dir = args[i + 1]; break;
+        }
+    }
+
+    if (keyPath is null || dir is null)
+    {
+        Console.Error.WriteLine("signseed: --key and --dir are required");
+        return 2;
+    }
+
+    var hashesBytes = File.ReadAllBytes(Path.Combine(dir, "hashes.txt"));
+    var versionBytes = File.ReadAllBytes(Path.Combine(dir, "db-version.json"));
+
+    using var ecdsa = ECDsa.Create();
+    ecdsa.ImportFromPem(File.ReadAllText(keyPath));
+
+    var payload = new byte[hashesBytes.Length + versionBytes.Length];
+    hashesBytes.CopyTo(payload, 0);
+    versionBytes.CopyTo(payload, hashesBytes.Length);
+
+    var signature = ecdsa.SignData(payload, HashAlgorithmName.SHA256);
+    if (signature.Length != 64)
+    {
+        Console.Error.WriteLine("signseed: unexpected signature length");
+        return 2;
+    }
+
+    var signaturePath = Path.Combine(dir, "hashes.txt.sig");
+    File.WriteAllBytes(signaturePath, signature);
+    Console.WriteLine($"seed signed: {signaturePath}");
+    return 0;
 }
 
 static int CountEntries(byte[] bytes)

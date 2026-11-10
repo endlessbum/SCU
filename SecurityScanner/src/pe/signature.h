@@ -26,6 +26,14 @@ public:
     // точное совпадение отпечатка доказывает неизменность подписи.
     // false, если подписи нет или сертификат не извлечён.
     static bool GetSigningCertHash(const std::wstring& path, std::string& sha1ThumbprintUpperHex);
+
+    // Полная проверка встроенной подписи БЕЗ доверенного корня: подпись
+    // SignedData валидна И MessageDigest из SPC_INDIRECT_DATA совпадает с
+    // фактическим Authenticode-дайджестом файла (OBS-05 п. 1, аудит
+    // 2026-11-04: pin-режим сверял только отпечаток — подмена содержимого при
+    // целой подписи проходила). Пара с GetSigningCertHash: отпечаток +
+    // дайджест вместе доказывают, что байты подписаны тем же сертификатом.
+    static bool VerifyEmbeddedDigest(const std::wstring& path);
 };
 
 } // namespace scan

@@ -388,24 +388,6 @@
     <sys:String x:Key="S_EmptyStateStartup">Приложений в автозагрузке нет</sys:String>
     <!-- Ввод: сноска к карточкам со звёздочкой (ускорение мыши, залипание клавиш) -->
     <sys:String x:Key="S_InputAsteriskNote">* Включение отключает параметр</sys:String>
-
-    <!-- Ввод: карточка «Перевод раскладки» (автозамена в стиле Punto Switcher) -->
-    <sys:String x:Key="S_LayoutTranslatorTitle">Перевод раскладки</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorDesc">Автоматически определяет, что текст набирается в неверной раскладке (русский текст английскими буквами и наоборот), и исправляет последнее слово по разделителю. Корректирует только слова с высокой языковой уверенностью; корректный текст не меняется.</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorInfo">Работает только пока SCU запущена и карточка включена. Исправляет слово после пробела, Enter или знака препинания. Распознанные поля пароля не корректируются; абсолютная защита ввода не гарантируется.</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorOn">Перевод раскладки включён.</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorOff">Перевод раскладки выключен.</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorConfirm">Включить автоматический перевод раскладки?\nПрограмма будет перехватывать нажатия клавиш в активном окне и исправлять слова, набранные в неверной раскладке. Корректный текст не меняется, распознанные поля пароля пропускаются.</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorHotKeyLabel">Горячая клавиша ручной конвертации</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorHotKeyPause">Pause</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorHotKeyCtrlAltP">Ctrl+Alt+P</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorHotKeyHelp">Pause — конвертировать последнее слово; Shift+Pause — выделенный текст.</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorToastLabel">Показывать уведомление после автокоррекции</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorExceptionsLabel">Исключения автокоррекции</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorExceptionPlaceholder">Введите слово, домен или токен</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorAddException">Добавить</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorRemoveException">Удалить исключение</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorEnable">Включить</sys:String>
 <sys:String x:Key="S_PrivacyAsteriskNote">* Включение отключает параметр</sys:String>
 
     <!-- ===================== Раздел 0 «Состояние ПК»: большой выключатель ===================== -->

@@ -14,6 +14,11 @@ public partial class App : Application
 {
     public static bool RunInBackgroundOnClose { get; set; }
 
+    // Идёт завершение сеанса Windows (выход/выключение): закрытие окна не
+    // отменяем, иначе ОС показывает «приложение препятствует завершению работы».
+    // Ставится в OnStartup подпиской на SessionEnding.
+    public static bool IsSessionEnding { get; private set; }
+
     // Автозапуск (Run\SCU передаёт --tray): приложение стартует свёрнутым в трей.
     // Читается один раз из аргументов командной строки при старте.
     public static bool StartInTray { get; private set; }
@@ -61,6 +66,7 @@ public partial class App : Application
         StartAlreadyRunningListener();
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
+        SessionEnding += (_, _) => IsSessionEnding = true;
 
         // Цвет заставки читается ДО её создания (п. 3 запроса): логотип красится
         // в тот же цвет, что задан настройкой «Цвет иконки приложения».
@@ -82,7 +88,9 @@ public partial class App : Application
         {
             base.OnStartup(e);
 
-            if (splash is null)
+            // Автозапуск (--tray): заставка не создаётся — при старте системы
+            // приложение не показывает ни одного окна и молча садится в трей.
+            if (splash is null && !StartInTray)
             {
                 splash = new SplashWindow();
                 splash.Show();
@@ -149,7 +157,7 @@ public partial class App : Application
             // Данные всех вкладок собираются, пока главное окно ещё не показано;
             // на экране заставка с индикатором загрузки (0% — левый край логотипа,
             // 100% — правый). Прогресс — доля завершённых разделов.
-            var progress = new Progress<double>(p => splash.SetProgress(p));
+            var progress = new Progress<double>(p => splash?.SetProgress(p));
             await window.InitializeDataAsync(progress).ConfigureAwait(true);
 
             // Все данные собраны: индикатор пропадает, окно запускается сразу,
@@ -159,21 +167,27 @@ public partial class App : Application
             // (SourceInitialized срабатывает на Show). Show и Hide выполняются
             // в одном такте диспетчера без отрисовки кадра — мигания нет,
             // заставка в этот момент всё ещё на экране.
-            splash.HideProgressIndicator();
+            splash?.HideProgressIndicator();
             if (StartInTray)
             {
+                // WPF запрещает Show при ShowActivated=false и WindowState=Maximized
+                // (в XAML окно развёрнутое) — на время скрытого показа состояние
+                // сбрасывается в Normal. После Hide возвращается Maximized: WPF
+                // кэширует состояние скрытого окна и применит его при следующем
+                // Show — подъём из трея снова развёрнутый.
                 window.ShowActivated = false;
+                window.WindowState = WindowState.Normal;
                 window.Show();
                 window.Hide();
-                splash.Close();
+                window.WindowState = WindowState.Maximized;
+                window.ShowActivated = true;
+                splash?.Close();
             }
             else
             {
                 window.Show();
                 splash.CloseAfterFade(TimeSpan.FromSeconds(2));
             }
-
-            // (автовключение переводчика — через InputViewModel.InitializeAsync по предпочтению пользователя)
 
             // Бэнчмарк запускается автоматически при старте, в фоне — стартовые
             // данные разделов уже собраны, окно отзывчиво во время сканирования.
@@ -325,6 +339,13 @@ public partial class App : Application
         if (MainWindow is not { } window)
         {
             return;
+        }
+
+        // Окно может быть скрыто (хоткей, закрытие в трей): Activate на
+        // невидимом окне ничего не покажет пользователю.
+        if (!window.IsVisible)
+        {
+            window.Show();
         }
 
         if (window.WindowState == WindowState.Minimized)

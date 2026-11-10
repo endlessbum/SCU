@@ -22,7 +22,11 @@ std::wstring ResolveDatabaseDir(const std::wstring& databaseDir);
 
 class HashDatabase {
 public:
-    HashDatabase();
+    // devUnsignedOk — только dev-сборки без пина (ScannerRunner передаёт
+    // --dev-unsigned-ok исключительно при HasSigningPin == false): разрешает
+    // загрузку базы БЕЗ подписи. Подписанная, но не сошедшаяся база отклоняется
+    // всегда, включая dev.
+    explicit HashDatabase(bool devUnsignedOk = false);
 
     bool Lookup(const std::string& sha256Hex, Verdict& verdict, std::wstring& name) const;
     bool IsEmpty() const { return entries_.empty(); }
@@ -31,9 +35,14 @@ public:
     const std::wstring& Version() const { return version_; }
     const std::wstring& Date() const { return date_; }
 
+    // Непусто, если внешняя база НЕ загружена из-за подписи (fail-closed,
+    // OBS-05 п. 3): отсутствует hashes.txt.sig (прод) или подпись не сошлась.
+    // Сканер сообщает это событием error; работает только встроенный минимум.
+    const std::wstring& SignatureError() const { return signatureError_; }
+
 private:
     void LoadVersionInfo(const std::wstring& activeDir);
-    void LoadEntries(std::ifstream& file);
+    void LoadEntries(std::istream& file);
 
     struct Entry {
         Verdict verdict;
@@ -43,6 +52,7 @@ private:
     std::wstring databaseDir_;
     std::wstring version_;
     std::wstring date_;
+    std::wstring signatureError_;
 };
 
 } // namespace scan

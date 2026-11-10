@@ -136,14 +136,16 @@ public sealed class RestorePointService
         string mountPoint, System.Text.StringBuilder volumeName, uint bufferLength);
 
     // Создание точки без идентификатора (используется там, где id не нужен).
-    // Общая логика — в CreateCheckpointCoreAsync; дублирования с WithId-версией нет.
-    public Task<Result> CreateCheckpointAsync(string description, CancellationToken ct = default) =>
-        CreateCheckpointCoreAsync(description, ct);
+    // Логика общая с WithId-версией: создание + регистрация в store приложения
+    // (OBS-04, аудит 2026-11-04: раньше только WithId-путь трекал точки, из-за чего
+    // точки из этого пути и драйверные не учитывались лимитом хранения).
+    public async Task<Result> CreateCheckpointAsync(string description, CancellationToken ct = default) =>
+        (await CreateCheckpointTrackedAsync(description, ct, ModifySettingsRestorePointType).ConfigureAwait(false)).Result;
 
     // Точка типа 10 «установка драйвера»: перед обновлением драйверов из раздела
     // «Драйверы» — семантически верный тип, откатится именно на замену драйвера.
-    public Task<Result> CreateDriverCheckpointAsync(string description, CancellationToken ct = default) =>
-        CreateCheckpointCoreAsync(description, ct, DriverInstallRestorePointType);
+    public async Task<Result> CreateDriverCheckpointAsync(string description, CancellationToken ct = default) =>
+        (await CreateCheckpointTrackedAsync(description, ct, DriverInstallRestorePointType).ConfigureAwait(false)).Result;
 
     // Создание точки с надёжным идентификатором: до создания читается список
     // SequenceNumber, после — повторно; новой считается та, которой не было в списке
@@ -152,11 +154,21 @@ public sealed class RestorePointService
     // не видно) — выдумывать идентификатор нельзя.
     public async Task<Result<string?>> CreateCheckpointWithIdAsync(string description, CancellationToken ct = default)
     {
+        var (result, id) = await CreateCheckpointTrackedAsync(description, ct, ModifySettingsRestorePointType).ConfigureAwait(false);
+        return result.IsSuccess ? Result<string?>.Success(id) : Result<string?>.Failure(result.Message, result.Code);
+    }
+
+    // Общий путь всех трёх созданий: core-создание + детекция номера новой точки
+    // (before/after) + трекинг в store с подрезкой по лимиту. Дублирование
+    // before/after-логики между путями создания устранено (OBS-04).
+    private async Task<(Result Result, string? Id)> CreateCheckpointTrackedAsync(
+        string description, CancellationToken ct, int restorePointType)
+    {
         var beforeKnown = TryQuerySequenceNumbers(out var before);
-        var core = await CreateCheckpointCoreAsync(description, ct).ConfigureAwait(false);
+        var core = await CreateCheckpointCoreAsync(description, ct, restorePointType).ConfigureAwait(false);
         if (!core.IsSuccess)
         {
-            return Result<string?>.Failure(core.Message, core.Code);
+            return (core, null);
         }
 
         string? id = null;
@@ -171,7 +183,7 @@ public sealed class RestorePointService
         }
 
         _logger.Info("RP | create id | " + (id ?? "(не определён)"));
-        return Result<string?>.Success(id);
+        return (core, id);
     }
 
     // Новый идентификатор = SequenceNumber из after, которого не было в before.
@@ -493,7 +505,13 @@ public sealed class RestorePointService
                 return [];
             }
 
-            return JsonSerializer.Deserialize<List<AppRestorePointRecord>>(File.ReadAllText(path)) ?? [];
+            // OBS-04 (аудит 2026-11-04): store читается из %AppData% без проверки
+            // происхождения, а записи уходят в SRRemoveRestorePoint. Битые записи
+            // (нулевой/отрицательный номер, пустое описание) отбрасываются при загрузке.
+            var records = JsonSerializer.Deserialize<List<AppRestorePointRecord>>(File.ReadAllText(path)) ?? [];
+            return records
+                .Where(record => record.SequenceNumber > 0 && !string.IsNullOrWhiteSpace(record.Description))
+                .ToList();
         }
         catch
         {
@@ -547,6 +565,21 @@ public sealed class RestorePointService
     {
         try
         {
+            // OBS-04 (аудит 2026-11-04): SRRemoveRestorePoint принимает только номер,
+            // а store читается из %AppData% без проверки происхождения — подменённая
+            // запись могла бы указать на чужую точку (комментарий R-01 обещал, что
+            // «точки Windows не трогаются», но принадлежность ничем не проверялась).
+            // Перед удалением сверяем фактическое описание точки в системном
+            // хранилище с описанием из записи: нет точки или описания — удаление
+            // не выполняется, запись выписывается из store как несовпадающая.
+            if (!TryQueryRestorePointDescriptions(out var points)
+                || !points.TryGetValue(record.SequenceNumber, out var actualDescription)
+                || !string.Equals(actualDescription, record.Description, StringComparison.Ordinal))
+            {
+                _logger.Warn($"RP | stale point ownership mismatch | seq={record.SequenceNumber} — удаление не выполняется");
+                return;
+            }
+
             var code = SRRemoveRestorePoint((uint)record.SequenceNumber);
             if (code == 0)
             {
@@ -560,6 +593,38 @@ public sealed class RestorePointService
         catch (Exception exception)
         {
             _logger.Warn($"RP | SRRemoveRestorePoint failed | seq={record.SequenceNumber} | {exception.Message}");
+        }
+    }
+
+    // Описания точек системного хранилища по SequenceNumber. false = WMI недоступен:
+    // в этом случае удаление устаревших точек не выполняется (нечем подтвердить
+    // принадлежность) — fail-closed, запись всё равно выписывается из store.
+    private bool TryQueryRestorePointDescriptions(out IReadOnlyDictionary<int, string> points)
+    {
+        try
+        {
+            var map = new Dictionary<int, string>();
+            using var searcher = new ManagementObjectSearcher(
+                "root\\default",
+                "SELECT SequenceNumber, Description FROM SystemRestore");
+            using var results = searcher.Get();
+            foreach (var point in results.OfType<ManagementObject>())
+            {
+                using (point)
+                {
+                    var sequence = Convert.ToInt32(point["SequenceNumber"], CultureInfo.InvariantCulture);
+                    map[sequence] = point["Description"] as string ?? string.Empty;
+                }
+            }
+
+            points = map;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn("RP | point description list failed | " + exception.Message);
+            points = new Dictionary<int, string>();
+            return false;
         }
     }
 }

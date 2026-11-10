@@ -6,9 +6,7 @@ using SCU.Common;
 namespace SCU.Infrastructure.Windows;
 
 // Автозапуск SCU: значение "SCU" в HKCU\Software\Microsoft\Windows\CurrentVersion\Run.
-// Записью управляют два места — тумблер «Автозапуск» в «Настройках» и согласие
-// из переводчика раскладки (раздел «Ввод»); логика собрана здесь, чтобы оба
-// писали одну и ту же команду и не спорили между собой.
+// Записью управляет тумблер «Автозапуск» в «Настройках».
 internal static class ScuAutorun
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -17,13 +15,6 @@ internal static class ScuAutorun
     // Аргумент старта в трее: автозапуск происходит после загрузки системы —
     // окно не должно выезжать на экран, приложение садится в область уведомлений.
     public const string TrayArg = "--tray";
-
-    // Метка владения: значение, записанное нами последним. Без неё чужие записи
-    // (пользовательские или от старых версий) не трогаем.
-    public static string GetOwnershipPath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "SCU",
-        "layout-translator-run-owner.txt");
 
     public static string? ReadCurrentValue()
     {
@@ -38,29 +29,15 @@ internal static class ScuAutorun
         }
     }
 
-    public static string? ReadOwnedValue()
-    {
-        try
-        {
-            var path = GetOwnershipPath();
-            return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     // Автозапуск включён: запись "SCU" в Run существует и непуста. Источник
-    // истины для тумблера «Настроек» и для проверок переводчика.
+    // истины для тумблера «Настроек».
     public static bool IsEnabled()
     {
         var value = ReadCurrentValue();
         return !string.IsNullOrWhiteSpace(value);
     }
 
-    // Включение: команда Run + метка владения. Метка пишется до реестра — при
-    // сбое SetValue она не превратит ещё не созданную запись в «чужую».
+    // Включение: команда Run с аргументом старта в трее.
     public static bool TryWrite(Logger? logger = null)
     {
         try
@@ -80,14 +57,6 @@ internal static class ScuAutorun
                 return false;
             }
 
-            var ownershipPath = GetOwnershipPath();
-            var directory = Path.GetDirectoryName(ownershipPath);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            File.WriteAllText(ownershipPath, command);
             key.SetValue(ValueName, command, RegistryValueKind.String);
             return true;
         }
@@ -98,17 +67,13 @@ internal static class ScuAutorun
         }
     }
 
-    // Выключение: запись и метка удаляются всегда. Вызывается только по явному
-    // действию пользователя (тумблер «Настроек» или уже проверенное владение
-    // у переводчика) — чужие записи тут не защищаются.
+    // Выключение: запись Run\SCU удаляется по явному действию пользователя.
     public static bool TryDelete(Logger? logger = null)
     {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
             key?.DeleteValue(ValueName, throwOnMissingValue: false);
-
-            try { File.Delete(GetOwnershipPath()); } catch { }
             return true;
         }
         catch (Exception ex)
@@ -119,26 +84,33 @@ internal static class ScuAutorun
     }
 
     // Команда Run: путь к exe + аргумент старта в трее. В режиме разработки
-    // приложение запущено через dotnet.exe — добавляем путь к entry assembly,
-    // иначе Run запустил бы только CLI.
-    public static string? BuildCommand()
+    // приложение запущено через dotnet.exe — добавляем путь к entry assembly
+    // ПЕРЕД аргументом: dotnet CLI трактует всё после пути приложения как его
+    // аргументы, а «--tray» до пути считает своей опцией и падает (автозапуск
+    // молча не срабатывал, тумблер при этом показывал «включён»).
+    // exePath — точка для тестов; null берёт текущий процесс.
+    public static string? BuildCommand(string? exePath = null)
     {
-        var exe = Environment.ProcessPath;
+        var exe = exePath ?? Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(exe))
         {
             return null;
         }
 
-        var command = "\"" + exe + "\" " + TrayArg;
+        var command = "\"" + exe + "\"";
         if (string.Equals(Path.GetFileNameWithoutExtension(exe), "dotnet", StringComparison.OrdinalIgnoreCase))
         {
             var entryAssembly = Assembly.GetEntryAssembly()?.Location;
-            if (!string.IsNullOrWhiteSpace(entryAssembly) && File.Exists(entryAssembly))
+            if (string.IsNullOrWhiteSpace(entryAssembly) || !File.Exists(entryAssembly))
             {
-                command += " \"" + entryAssembly + "\"";
+                // Команду не строим: TryWrite вернёт false и тумблер не
+                // покажет «включён» для заведомо нерабочей записи.
+                return null;
             }
+
+            command += " \"" + entryAssembly + "\"";
         }
 
-        return command;
+        return command + " " + TrayArg;
     }
 }

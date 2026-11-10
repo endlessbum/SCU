@@ -87,4 +87,41 @@ public sealed class RestorePointStoreTests
             }
         }
     }
+
+    // OBS-04 (аудит 2026-11-04): записи store читаются без проверки происхождения,
+    // поэтому битые записи (ноль/отрицательный номер, пустое описание) отбрасываются
+    // при загрузке и не могут уйти в SRRemoveRestorePoint.
+    [Fact]
+    public void TrackedStore_Load_InvalidRecordsAreDropped()
+    {
+        var directory = TestScratch.NewDir();
+        try
+        {
+            var path = Path.Combine(directory, "restore_points.json");
+            const string json = """
+            [
+              { "SequenceNumber": 0, "CreatedAt": "2026-09-20T12:00:00", "Description": "нулевая" },
+              { "SequenceNumber": -5, "CreatedAt": "2026-09-20T12:00:00", "Description": "отрицательная" },
+              { "SequenceNumber": 137, "CreatedAt": "2026-09-20T12:00:00", "Description": "" },
+              { "SequenceNumber": 42, "CreatedAt": "2026-09-20T12:00:00", "Description": "SCU: перед чисткой" }
+            ]
+            """;
+            File.WriteAllText(path, json);
+
+            var loaded = RestorePointService.LoadTrackedRestorePoints(path);
+
+            var restored = Assert.Single(loaded);
+            Assert.Equal(42, restored.SequenceNumber);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch
+            {
+            }
+        }
+    }
 }

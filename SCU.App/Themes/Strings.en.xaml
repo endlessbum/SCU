@@ -385,24 +385,6 @@
     <sys:String x:Key="S_EmptyStateStartup">No startup apps</sys:String>
     <!-- Input: footnote for asterisked cards (mouse acceleration, sticky keys) -->
     <sys:String x:Key="S_InputAsteriskNote">* Enabling disables the setting</sys:String>
-
-    <!-- Input: "Keyboard layout translator" card (Punto Switcher-like autocorrection) -->
-    <sys:String x:Key="S_LayoutTranslatorTitle">Keyboard layout translator</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorDesc">Automatically detects text typed in the wrong keyboard layout (Russian text with English letters and vice versa) and corrects the last word at a delimiter. Corrects only words with high language confidence; correct text is left unchanged.</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorInfo">Works only while SCU is running and the card is enabled. Corrects a word after Space, Enter or punctuation. Recognized password fields are skipped; absolute input protection is not guaranteed.</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorOn">Keyboard layout translator enabled</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorOff">Keyboard layout translator disabled</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorConfirm">Enable automatic keyboard layout translation?\nThe program will intercept keystrokes in the active window and correct words typed in the wrong layout. Correct text is not changed, recognized password fields are skipped.</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorHotKeyLabel">Manual conversion hotkey</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorHotKeyPause">Pause</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorHotKeyCtrlAltP">Ctrl+Alt+P</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorHotKeyHelp">Pause converts the last word; Shift+Pause converts selected text.</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorToastLabel">Show a notification after automatic correction</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorExceptionsLabel">Automatic-correction exceptions</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorExceptionPlaceholder">Enter a word, domain, or token</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorAddException">Add</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorRemoveException">Remove exception</sys:String>
-    <sys:String x:Key="S_LayoutTranslatorEnable">Enable</sys:String>
 <sys:String x:Key="S_PrivacyAsteriskNote">* Enabling disables the setting</sys:String>
 
     <!-- ===================== Dashboard: one-click apply switch ===================== -->

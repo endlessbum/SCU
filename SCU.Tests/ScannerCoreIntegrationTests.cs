@@ -863,4 +863,114 @@ public partial class ScannerCoreIntegrationTests
 
         return null;
     }
+
+    // OBS-05 п. 3 (аудит 2026-11-04): hashes.txt/db-version.json читались с диска
+    // без проверки — подменяющий мог активировать собственную «детекцию» записью
+    // в пользовательский файл базы. Теперь подпись активной базы обязательна:
+    // подмена hashes.txt при сохранённой hashes.txt.sig отклоняет ВСЮ внешнюю
+    // базу (fail-closed) — подменённая запись не детектируется, сканер сообщает
+    // событием error.
+    // OBS-05 п. 1 (аудит 2026-11-04): pin-режим сверял только отпечаток сертификата —
+    // подмена содержимого при целой подписи проходила. Теперь pin-ветка дополнительно
+    // проверяет дайджест подписи (CryptCATAdminCalcHashFromFileHandle2 против
+    // MessageDigest из SPC_INDIRECT_DATA): подменённый бинарь не проходит
+    // самопроверку и не начинает скан. В dev-режиме (пин пустой) тот же тест
+    // отклоняется веткой WinVerifyTrust — message в обоих случаях про signature.
+    [Fact]
+    public async Task ScannerCore_TamperedBinary_FailsIntegrityCheck()
+    {
+        var scannerPath = FindScannerCore();
+        if (scannerPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var sandbox = TestScratch.NewDir("scu-pin-tamper-");
+        Directory.CreateDirectory(sandbox);
+        try
+        {
+            var copy = Path.Combine(sandbox, "ScannerCore.exe");
+            File.Copy(scannerPath, copy);
+
+            // Один байт в DOS-stub (до PE-заголовка): содержимое меняется,
+            // PE-структуры и таблица подписи остаются на месте.
+            var bytes = await File.ReadAllBytesAsync(copy);
+            Assert.True(bytes.Length >= 0x60, "ScannerCore.exe слишком мал для теста подмены");
+            bytes[0x50] ^= 0xFF;
+            await File.WriteAllBytesAsync(copy, bytes);
+
+            var (_, events) = await RunScannerAsync(copy, startInfo =>
+            {
+                startInfo.ArgumentList.Add("scan");
+                startInfo.ArgumentList.Add("--mode");
+                startInfo.ArgumentList.Add("file");
+                startInfo.ArgumentList.Add("--path");
+                startInfo.ArgumentList.Add(sandbox);
+            });
+
+            Assert.Contains(events, e => e.Kind == ScanEventKind.Error
+                && (e.Message ?? string.Empty).Contains("signature", StringComparison.OrdinalIgnoreCase));
+            // Скан не начался: события started быть не должно.
+            Assert.DoesNotContain(events, e => e.Kind == ScanEventKind.Started);
+        }
+        finally
+        {
+            try { Directory.Delete(sandbox, recursive: true); } catch { /* не критично */ }
+        }
+    }
+
+    [Fact]
+    public async Task ScannerCore_TamperedDatabase_FailsClosed()
+    {
+        var scannerPath = FindScannerCore();
+        if (scannerPath is null)
+        {
+            ReportSkip();
+            return;
+        }
+
+        var sandbox = TryCreateScannerSandbox();
+        Assert.NotNull(sandbox);
+
+        try
+        {
+            // Сканер — копия из песочницы: база читается рядом с бинарем, значит
+            // проверяется именно подменённая копия, а не база возле тестовой DLL.
+            var sandboxScanner = Path.Combine(sandbox!, "ScannerCore.exe");
+
+            // Файл-жертва с фиксированным содержимым; её хеш дописывается в
+            // hashes.txt, а hashes.txt.sig остаётся от исходного seed —
+            // верификация обязана провалиться.
+            var target = Path.Combine(sandbox!, "tampered-db-target.txt");
+            const string content = "SCU-DBSIG-TAMPER-TEST-CONTENT";
+            await File.WriteAllTextAsync(target, content);
+            var sha = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content)))
+                .ToLowerInvariant();
+            var databaseDir = Path.Combine(sandbox!, "security", "database");
+            await File.AppendAllTextAsync(
+                Path.Combine(databaseDir, "hashes.txt"), sha + "\tmalware\tTamperedEntry\n");
+
+            var (_, events) = await RunScannerAsync(sandboxScanner, startInfo =>
+            {
+                startInfo.ArgumentList.Add("scan");
+                startInfo.ArgumentList.Add("--mode");
+                startInfo.ArgumentList.Add("file");
+                startInfo.ArgumentList.Add("--path");
+                startInfo.ArgumentList.Add(target);
+            });
+
+            // Fail-closed: внешняя база не загружена — событие error про подпись,
+            // подменённая запись НЕ детектируется.
+            Assert.Contains(events, e => e.Kind == ScanEventKind.Error
+                && (e.Message ?? string.Empty).Contains("signature", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(events, e => e.Kind == ScanEventKind.Detection
+                && (e.Detection?.Path ?? string.Empty).EndsWith("tampered-db-target.txt", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            try { Directory.Delete(sandbox!, recursive: true); } catch { /* не критично */ }
+        }
+    }
 }

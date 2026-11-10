@@ -136,6 +136,13 @@ bool SelfIntegrityCheck(const scan::ScanOptions& options, scan::EventWriter& eve
             events.Error(L"integrity: ScannerCore.exe signing certificate does not match the pinned thumbprint");
             return false;
         }
+        // OBS-05 п. 1 (аудит 2026-11-04): отпечаток совпал — подпись всё ещё могла
+        // не покрывать текущие байты (подмена содержимого при целой подписи).
+        // Проверяем дайджест: fail-closed при любом расхождении.
+        if (!scan::SignatureVerifier::VerifyEmbeddedDigest(selfPathStr)) {
+            events.Error(L"integrity: ScannerCore.exe content does not match its embedded signature");
+            return false;
+        }
         return true;
     }
 
@@ -229,11 +236,20 @@ int wmain(int argc, wchar_t** argv)
 
     scan::ComponentAllowlist allowlist;
     allowlist.AddRuntimeComponents();
-    scan::HashDatabase database;
+    // devUnsignedOk доходит и до базы: без пина (dev-сборка) допустима база без
+    // подписи; пин-сборка всегда требует подписанную базу (OBS-05 п. 3).
+    scan::HashDatabase database(options.devUnsignedOk);
     scan::Scanner scanner(events, allowlist, database);
 
     events.Started(kEngineVersion, options.mode == scan::ScanMode::File ? "file" : "custom",
                    database.Version(), database.Date());
+
+    // Fail-closed по базе (OBS-05 п. 3): внешний набор не загружен — вызываемая
+    // сторона обязана узнать об этом, а не получить «тихий» скан без сигнатур.
+    if (!database.SignatureError().empty()) {
+        events.Error(L"database: " + database.SignatureError()
+                     + L" — external entries are not loaded");
+    }
 
     scan::ScanStats stats;
     std::vector<scan::Detection> detections;

@@ -10,13 +10,12 @@ namespace SCU.Interop;
 internal sealed record TrayIconHost(
     Action ShowWindow,
     Action Exit,
-    Action ShowContextMenu,
-    Func<bool> IsTranslatorRunning);
+    Action ShowContextMenu);
 
 // Иконка SCU в области уведомлений (аудит, п. 1). Нужна из-за фонового режима:
-// при включённом переводе раскладки закрытие главного окна не завершает
-// приложение, и без трея у пользователя не оставалось штатного «Выход» —
-// процесс можно было снять только Диспетчером задач.
+// при сворачивании в трей закрытие главного окна не завершает приложение,
+// и без трея у пользователя не оставалось штатного «Выход» — процесс можно
+// было снять только Диспетчером задач.
 //
 // Реализация нативная (Shell_NotifyIcon), без WinForms: сообщения оболочки
 // приходят в HWND главного окна — тот же, что и у глобальной горячей клавиши.
@@ -100,11 +99,20 @@ internal sealed class TrayIcon : IDisposable
         _added = true;
     }
 
-    // Иконка выбрана другим цветом пресета (ThemeManager.IconAccent).
+    // Иконка выбрана другим цветом пресета (ThemeManager.IconAccent). Если
+    // иконка не стоит (сбой ADD при старте — explorer ещё не готов на логоне),
+    // смена пресета повторяет постановку: иначе иконка не появилась бы до
+    // следующего перезапуска Explorer или приложения.
     internal void RefreshIcon()
     {
-        if (_disposed || !_added)
+        if (_disposed)
         {
+            return;
+        }
+
+        if (!_added)
+        {
+            Show();
             return;
         }
 
@@ -135,22 +143,6 @@ internal sealed class TrayIcon : IDisposable
         if (previousOwned)
         {
             DestroyIcon(previous);
-        }
-    }
-
-    // Состояние перевода раскладки изменилось: обновляем подсказку иконки.
-    internal void RefreshState()
-    {
-        if (_disposed || !_added)
-        {
-            return;
-        }
-
-        var data = CreateData(_icon);
-        if (!Shell_NotifyIcon(NimModify, ref data))
-        {
-            // Подсказка — не критично: сама иконка и меню продолжают работать.
-            _logger.Warn("TRAY | Shell_NotifyIcon tooltip modify failed");
         }
     }
 
@@ -244,14 +236,9 @@ internal sealed class TrayIcon : IDisposable
             Flags = NifMessage | NifIcon | NifTip,
             CallbackMessage = CallbackMessage,
             Icon = icon,
-            Tip = BuildTooltip(),
+            Tip = "SCU",
         };
     }
-
-    // Подсказка показывает, что приложение продолжает работать в фоне именно
-    // из-за включённого перевода раскладки.
-    private string BuildTooltip() =>
-        _host.IsTranslatorRunning() ? "SCU — " + L.T("Перевод раскладки включён.") : "SCU";
 
     // Иконка — из набора окрашенных по пресету .ico (Assets\Icons, тот же, что у
     // ярлыков). Резервы: иконка самого exe, затем системная — чтобы «Выход» в трее
@@ -277,12 +264,17 @@ internal sealed class TrayIcon : IDisposable
 
         var executable = Environment.ProcessPath;
         if (!string.IsNullOrEmpty(executable)
-            && ExtractIconEx(executable, 0, out _, out var small, 1) == 1
-            && small != IntPtr.Zero)
+            && ExtractIconEx(executable, 0, out var large, out var small, 1) == 1)
         {
-            icon = small;
-            owned = true;
-            return true;
+            // Извлекаем пару large+small: трей берёт small, large обязан быть
+            // уничтожен — иначе утечка GDI-хэндла на каждый вызов.
+            DestroyIcon(large);
+            if (small != IntPtr.Zero)
+            {
+                icon = small;
+                owned = true;
+                return true;
+            }
         }
 
         // Системная иконка принадлежит оболочке: DestroyIcon для неё не вызываем.

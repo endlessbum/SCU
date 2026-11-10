@@ -575,38 +575,7 @@ internal static partial class LocalizationDictionaries
         ["Отключение Game Bar и DVR…"] = "Disabling Game Bar and DVR…",
         ["Game Bar и DVR"] = "Game Bar and DVR",
         ["Отключить Game Bar и фоновую запись (DVR)?\nGame Mode останется включённым — это полезно для игр."] = "Disable Game Bar and background recording (DVR)?\nGame Mode stays enabled — it is useful for games.",
-        ["Перевод раскладки"] = "Keyboard layout translator",
-        ["Автоматически определяет, что текст набирается в неверной раскладке (русский текст английскими буквами и наоборот), и исправляет последнее слово по разделителю."] = "Automatically detects text typed in the wrong keyboard layout (Russian text with English letters and vice versa) and corrects the last word at a delimiter.",
-        ["Работает только в активном окне и только при включённой карточке. Исправляет слово после пробела, Enter или знака препинания. Пароли и ввод в повышенных правах (администратор) не перехватываются."] = "Works only in the active window and only while the card is enabled. Corrects a word after Space, Enter or punctuation. Passwords and elevated (administrator) input are not intercepted.",
-        ["Перевод раскладки включён."] = "Keyboard layout translator enabled.",
-        ["Перевод раскладки выключен."] = "Keyboard layout translator disabled.",
-        ["Перевод раскладки не включён."] = "Keyboard layout translator was not enabled.",
-        ["Перевод раскладки: включение…"] = "Keyboard layout translator: starting…",
-        ["Перевод раскладки: выключение…"] = "Keyboard layout translator: stopping…",
-        ["Ошибка перевода раскладки: {0} (код {1})"] = "Keyboard layout translator error: {0} (code {1})",
-        ["Включить автоматический перевод раскладки?\nПрограмма будет перехватывать нажатия клавиш в активном окне и исправлять слова, набранные в неверной раскладке. Корректный текст не меняется, распознанные поля пароля пропускаются."] = "Enable automatic keyboard layout translation?\nThe app will intercept keystrokes in the active window and correct words typed in the wrong layout. Correct text is not changed, and recognized password fields are skipped.",
-        ["Не удалось выполнить ручную конвертацию."] = "Could not perform manual conversion.",
-        // Автозапуск SCU вместе с переводчиком (аудит, п. 12) — только с согласия.
-        ["Автозапуск SCU"] = "SCU autostart",
-        ["Перевод раскладки работает, пока запущена SCU. Добавить SCU в автозагрузку Windows, чтобы переводчик включался вместе с системой?"] =
-            "The keyboard layout translator works while SCU is running. Add SCU to Windows startup so the translator starts with the system?",
         ["Добавить"] = "Add",
-        ["Перевод раскладки включён, но горячие клавиши заняты другим приложением."] = "Keyboard layout translator is enabled, but its hotkeys are already in use.",
-        ["Исключение должно быть одним токеном длиной не более 64 символов."] = "An exception must be a single token no longer than 64 characters.",
-        ["Можно добавить не более 200 исключений."] = "You can add up to 200 exceptions.",
-        ["Исключение добавлено."] = "Exception added.",
-        ["Исключение удалено."] = "Exception removed.",
-        ["Ручная конвертация должна запускаться на UI-потоке."] = "Manual conversion must run on the UI thread.",
-        ["Ручная конвертация отключена в поле пароля."] = "Manual conversion is disabled in password fields.",
-        ["Не удалось выделить последнее слово."] = "Could not select the previous word.",
-        ["Не удалось скопировать текст для конвертации."] = "Could not copy text for conversion.",
-        ["Текст для конвертации не найден."] = "No text to convert was found.",
-        ["Текст смешанный, пустой или не требует смены раскладки."] = "The text is mixed, empty, or does not need layout conversion.",
-        ["Не удалось вставить преобразованный текст."] = "Could not paste the converted text.",
-        ["Ручная конвертация выполнена."] = "Manual conversion completed.",
-        ["Ошибка ручной конвертации: {0}"] = "Manual conversion failed: {0}",
-        ["Слово исправлено. Для отмены нажмите Ctrl+Z."] = "Word corrected. Press Ctrl+Z to undo.",
-        ["Включить автоматический перевод раскладки?\nПрограмма будет перехватывать нажатия клавиш и исправлять слова, набранные в неверной раскладке."] = "Enable automatic keyboard layout translation?\nThe program will intercept keystrokes and correct words typed in the wrong layout.",
         ["Перезапуск проводника"] = "Restarting Explorer",
         ["Задержка меню: {0} мс…"] = "Menu delay: {0} ms…",
 
@@ -1640,8 +1609,8 @@ internal static partial class LocalizationDictionaries
 
         // ===================== Трей (область уведомлений) =====================
         // Пункты меню иконки трея: «Выход» — единственный штатный путь завершить
-        // SCU, когда закрытие окна уходит в фоновый режим (включён перевод
-        // раскладки); «Очистить» запускает «Очистить всё» раздела очистки.
+        // SCU, когда закрытие окна уходит в фоновый режим (сворачивание в трей);
+        // «Очистить» запускает «Очистить всё» раздела очистки.
         // Подписи «Очистить»/«Сканер»/«Автозагрузка» уже есть в общих словарях.
         ["Настройки"] = "Settings",
         ["Выход"] = "Exit",
@@ -1651,11 +1620,9 @@ internal static partial class LocalizationDictionaries
         // префикс («Не удалось прочитать »), и остаток оставался русским.
         ["Модель вернула пустой ответ — повторите запрос."] = "The model returned an empty response — repeat the request.",
         ["Не удалось прочитать текущее состояние: {0}"] = "Failed to read the current state: {0}",
-        ["Слово исправлено."] = "Word corrected.",
         ["Проверка завершена, но журнал не сохранён на диск — подробности в журнале."] = "The check finished, but the log was not saved to disk — see the log for details.",
         ["Проверка завершена, но снимок и журнал не сохранены на диск — подробности в журнале."] = "The check finished, but the snapshot and the log were not saved to disk — see the log for details.",
         ["Настройки не сохранены на диск — подробности в журнале."] = "Settings were not saved to disk — see the log for details.",
-        ["Перевод раскладки включён. Горячая клавиша ручной конвертации: {0}."] = "Keyboard layout translator enabled. Manual conversion hotkey: {0}.",
         ["Пропущено состояний: {0}."] = "Skipped states: {0}.",
         ["системный том"] = "system volume",
         ["На системе несколько файлов подкачки. Размер будет применён ко ВСЕМ перечисленным томам."] = "The system has several page files. The size will be applied to ALL listed volumes.",

@@ -1033,17 +1033,20 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ContextMenu">
-                    <Border Margin="8"
-                            Padding="6"
-                            CornerRadius="12"
+                    <!-- Компактное меню: небольшой внутренний отступ и лёгкая
+                         тень, внешние поля нужны, чтобы тень не обрезалась
+                         границами попапа. -->
+                    <Border Margin="6"
+                            Padding="4"
+                            CornerRadius="10"
                             Background="{DynamicResource PopupBackgroundBrush}"
                             BorderBrush="{DynamicResource ControlStrokeBrush}"
                             BorderThickness="1">
                         <Border.Effect>
-                            <DropShadowEffect BlurRadius="16"
-                                              ShadowDepth="2"
+                            <DropShadowEffect BlurRadius="10"
+                                              ShadowDepth="1"
                                               Direction="270"
-                                              Opacity="0.28"
+                                              Opacity="0.24"
                                               Color="#000000" />
                         </Border.Effect>
                         <StackPanel IsItemsHost="True" />
@@ -1055,15 +1058,15 @@
 
     <Style x:Key="TrayMenuItem" TargetType="MenuItem">
         <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="MenuItem">
                     <Border x:Name="Bd"
-                            MinHeight="36"
-                            CornerRadius="8"
-                            Padding="12,8"
+                            MinHeight="28"
+                            CornerRadius="6"
+                            Padding="10,5"
                             Background="Transparent">
                         <ContentPresenter ContentSource="Header"
                                           VerticalAlignment="Center" />

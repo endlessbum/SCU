@@ -7,26 +7,43 @@ namespace SCU.AppCore;
 // Правило: в каталоге хранятся MaxFilesPerDirectory самых свежих файлов; более старые
 // удаляются при создании нового (и контрольным обходом на старте приложения).
 // Файловые логи (Logger) и history.json имеют собственные лимиты — сюда не входят.
-// Исключение — каталог startup (аудит: P1, потеря файлов пользователя): его
-// file_*.bak — ПЕРЕМЕЩЁННЫЕ файлы автозагрузки, Move-Item сохраняет их исходный
-// (обычно старый) LastWriteTime, поэтому mtime-based retention удалял бы самые
-// нужные бэкапы первыми, а manifest.json продолжал бы на них ссылаться —
-// восстановление элемента становилось невозможным навсегда. Жизненный цикл
-// startup-бэкапов управляется манифестом, а не счётчиком свежести.
+// Исключения (аудит 2026-11-04, OBS-02):
+//  - каталог startup (аудит: P1, потеря файлов пользователя): его
+//    file_*.bak — ПЕРЕМЕЩЁННЫЕ файлы автозагрузки, Move-Item сохраняет их исходный
+//    (обычно старый) LastWriteTime, поэтому mtime-based retention удалял бы самые
+//    нужные бэкапы первыми, а manifest.json продолжал бы на них ссылаться —
+//    восстановление элемента становилось невозможным навсегда. Жизненный цикл
+//    startup-бэкапов управляется манифестом, а не счётчиком свежести.
+//  - одноразовые снимки исходного состояния твиков (имена из RetentionExemptFileNames):
+//    RegistryHelper.Apply создаёт их только если файла ещё нет, поэтому после удаления
+//    они не восстанавливаются — исходное состояние для отката терялось бы навсегда,
+//    вытесненное свежими накоплениями pagefile-бэкапов.
 public static class BackupRetention
 {
     public const int MaxFilesPerDirectory = 10;
     private const string RetentionExemptDirectory = "startup";
 
+    // Одноразовые снимки исходного состояния: не подлежат mtime-удалению.
+    // pagefile_backup_latest.json — «текущая» копия для быстрого отката
+    // (PowerService.PageFile), остальные — снимки RegistryHelper.Apply.
+    public static readonly IReadOnlySet<string> RetentionExemptFileNames = new HashSet<string>(
+        ["8dot3names.json", "lastaccess.json", "prefetcher.json", "plans.json", "pagefile_backup_latest.json"],
+        StringComparer.OrdinalIgnoreCase);
+
     public static string BackupRoot => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "SCU", "backup");
 
-    // Оставить MaxFilesPerDirectory самых свежих файлов каталога, остальные удалить.
+    // Оставить самые свежие файлы каталога (maxFiles ?? MaxFilesPerDirectory),
+    // остальные удалить. Файлы из RetentionExemptFileNames не удаляются никогда.
     // Любой сбой (нет каталога, файл занят) не роняет вызывающую операцию: бэкап
     // важнее уборки. Сортировка по LastWriteTimeUtc, при равенстве — по имени (стабильно).
     // rootDirectory — если задан, каталог обязан лежать внутри него (канонический путь).
-    public static void Enforce(string? directory, Logger? logger = null, string? rootDirectory = null)
+    public static void Enforce(
+        string? directory,
+        Logger? logger = null,
+        string? rootDirectory = null,
+        int? maxFiles = null)
     {
         if (IsRetentionExempt(directory, logger))
         {
@@ -48,14 +65,17 @@ public static class BackupRetention
                 return;
             }
 
+            var limit = Math.Max(0, maxFiles ?? MaxFilesPerDirectory);
             var stale = Directory.EnumerateFiles(directory)
                 .Select(path => new FileInfo(path))
                 // Ссылки (reparse point) не считаем и не удаляем: их адресат — чужой
                 // файл, а mtime ссылки не отражает свежесть бэкапа.
                 .Where(file => (file.Attributes & FileAttributes.ReparsePoint) == 0)
+                // Одноразовые снимки исходного состояния не удаляются по свежести (OBS-02).
+                .Where(file => !RetentionExemptFileNames.Contains(file.Name))
                 .OrderByDescending(file => file.LastWriteTimeUtc)
                 .ThenBy(file => file.Name, StringComparer.OrdinalIgnoreCase)
-                .Skip(MaxFilesPerDirectory)
+                .Skip(limit)
                 .ToList();
 
             foreach (var file in stale)
@@ -79,7 +99,9 @@ public static class BackupRetention
     }
 
     // Контрольный обход всех подкаталогов backup-корня (страховка от накопления,
-    // оставшегося от прежних версий приложения).
+    // оставшегося от прежних версий приложения). Обход рекурсивный (OBS-02):
+    // накопительные бэкапы pagefile живут в backup\power\pagefile — без рекурсии
+    // вложенный каталог не посещался бы вовсе.
     public static void EnforceAll(string? rootDirectory = null, Logger? logger = null)
     {
         try
@@ -90,7 +112,7 @@ public static class BackupRetention
                 return;
             }
 
-            foreach (var directory in Directory.EnumerateDirectories(root))
+            foreach (var directory in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
             {
                 if (IsRetentionExempt(directory, logger))
                 {

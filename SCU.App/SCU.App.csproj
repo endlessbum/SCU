@@ -19,7 +19,7 @@
     <RootNamespace>SCU</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <!-- Версия сборки: показывается в «Настройки → О приложении» (три части). -->
-    <Version>3.2.0</Version>
+    <Version>3.2.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -48,22 +48,6 @@
          таргетом PublishAccentIcons ниже. -->
     <None Update="Assets\Icons\*.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Assets\Dictionaries\en.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </None>
-    <None Update="Assets\Dictionaries\ru.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </None>
-    <None Update="Assets\Dictionaries\SCOWL-COPYRIGHT.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </None>
-    <None Update="Assets\Dictionaries\SOURCES.md">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
   </ItemGroup>
   <ItemGroup>

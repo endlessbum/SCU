@@ -120,3 +120,25 @@ public class AdapterProfileManagerTests
         Assert.Equal(restartsFailed, rf);
     }
 }
+
+// OBS-03 (аудит 2026-11-04): приёмка существующего бэкапа по формату каждой строки —
+// усечённый/битый файл не должен «узакониваться» наличием хотя бы одной строки ADAPTER|.
+public class AdapterBackupLineValidationTests
+{
+    [Theory]
+    [InlineData("ADAPTER|Ethernet|*RSS|1", true)]
+    [InlineData("ADAPTER|Ethernet|*EEE|-", true)]
+    [InlineData("ADAPTER|Ethernet|*RSS|", true)]              // пустое значение — допустимо (restore пропустит по $key/$value '-')
+    [InlineData("ADAPTER|Ethernet|*RSS|1|2|3", true)]          // значение содержит '|' — split с limit 4
+    [InlineData("ADAPTER|Ethernet|*RSS", false)]               // нет значения
+    [InlineData("ADAPTER|Ethernet", false)]                    // нет keyword и значения
+    [InlineData("ADAPTER||*RSS|1", false)]                     // пустое имя адаптера
+    [InlineData("ADAPTER|Ethernet||1", false)]                 // пустой keyword
+    [InlineData("BACKUP_TOTAL|2|2", false)]                    // чужой префикс
+    [InlineData("ADAPTER_FAIL|Ethernet|boom", false)]
+    [InlineData("", false)]                                    // пустая строка — не запись
+    public void IsValidAdapterBackupLine_ChecksAllFourFields(string line, bool expected)
+    {
+        Assert.Equal(expected, AdapterProfileManager.IsValidAdapterBackupLine(line));
+    }
+}

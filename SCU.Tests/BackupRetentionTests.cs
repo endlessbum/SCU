@@ -126,4 +126,61 @@ public sealed class BackupRetentionTests : IDisposable
             }
         }
     }
+
+    // OBS-02 (аудит 2026-11-04): одноразовые снимки исходного состояния твиков
+    // не удаляются по свежести, даже когда вытесняются накоплениями.
+    [Fact]
+    public void Enforce_ExemptSnapshotFiles_AreNeverDeleted()
+    {
+        // 15 накопительных файлов + 5 одноразовых снимков (самые старые).
+        for (var i = 0; i < BackupRetention.MaxFilesPerDirectory + 5; i++)
+        {
+            CreateFile($"pagefile_backup_{i:D4}.json", i);
+        }
+
+        var exemptPaths = new List<string>();
+        foreach (var name in BackupRetention.RetentionExemptFileNames)
+        {
+            exemptPaths.Add(CreateFile(name, 1000));
+        }
+
+        BackupRetention.Enforce(_directory);
+
+        var remaining = Directory.GetFiles(_directory);
+        Assert.Equal(BackupRetention.MaxFilesPerDirectory + exemptPaths.Count, remaining.Length);
+        foreach (var path in exemptPaths)
+        {
+            Assert.Contains(path, remaining);
+        }
+    }
+
+    // OBS-02: вложенные подкаталоги (backup\power\pagefile) обходятся рекурсивно.
+    [Fact]
+    public void EnforceAll_WalksNestedSubdirectories()
+    {
+        var power = Path.Combine(_directory, "power");
+        var pagefile = Path.Combine(power, "pagefile");
+        Directory.CreateDirectory(pagefile);
+        for (var i = 0; i < BackupRetention.MaxFilesPerDirectory + 4; i++)
+        {
+            File.WriteAllText(Path.Combine(pagefile, $"pagefile_backup_{i:D4}.json"), "x");
+        }
+
+        BackupRetention.EnforceAll(_directory);
+
+        Assert.Equal(BackupRetention.MaxFilesPerDirectory, Directory.GetFiles(pagefile).Length);
+    }
+
+    [Fact]
+    public void Enforce_CustomLimit_KeepsOnlyRequestedCount()
+    {
+        for (var i = 0; i < BackupRetention.MaxFilesPerDirectory; i++)
+        {
+            CreateFile($"pagefile_backup_{i:D4}.json", i);
+        }
+
+        BackupRetention.Enforce(_directory, null, null, 5);
+
+        Assert.Equal(5, Directory.GetFiles(_directory).Length);
+    }
 }

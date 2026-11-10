@@ -14,12 +14,21 @@
 // только для диагностики в заголовке — сам payload содержит полную версию.
 
 #include <windows.h>
+#include <bcrypt.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
+
+#include "pe/signature.h"
+
+#pragma comment(lib, "bcrypt.lib")
+
+#ifndef STATUS_SUCCESS
+#define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
+#endif
 
 #ifndef APP_SEMVER
 #define APP_SEMVER "0.0.0"
@@ -49,15 +58,35 @@ std::wstring GetTempDirectory()
     return std::wstring(path, len);
 }
 
-std::wstring MakeTempFileName(const std::wstring& dir)
+// OBS-08 (аудит 2026-11-04): GetTempFileNameW создавал предсказуемое имя, затем
+// CreateFileW(CREATE_ALWAYS) переоткрывал его — между двумя вызовами файл мог
+// быть удалён и заменён ссылкой. Теперь имя криптослучайное, файл создаётся
+// эксклюзивно (CREATE_NEW) сразу под удерживаемым дескриптором — reopen-окна нет.
+bool MakeExclusiveTempFile(const std::wstring& dir, std::wstring& path, HANDLE& handle)
 {
-    wchar_t name[MAX_PATH];
-    UINT unique = GetTempFileNameW(dir.c_str(), L"SCU", 0, name);
-    if (unique == 0)
+    for (int attempt = 0; attempt < 64; ++attempt)
     {
-        return L"";
+        unsigned long long random = 0;
+        if (BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(&random), sizeof(random),
+                            BCRYPT_USE_SYSTEM_PREFERRED_RNG) != STATUS_SUCCESS)
+        {
+            return false;
+        }
+        wchar_t name[40];
+        swprintf_s(name, L"SCU_%016llX.exe", random);
+        path = dir + L"\\" + name;
+        handle = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                             nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (handle != INVALID_HANDLE_VALUE)
+        {
+            return true;
+        }
+        if (GetLastError() != ERROR_FILE_EXISTS)
+        {
+            return false;
+        }
     }
-    return std::wstring(name, wcslen(name));
+    return false;
 }
 
 std::vector<uint8_t> ReadFileBytes(HANDLE file, uint64_t offset, uint64_t size)
@@ -332,15 +361,16 @@ int main()
 
     CloseHandle(selfFile);
 
-    // 6. Сохраняем payload во временный файл
+    // 6. Сохраняем payload во временный файл — эксклюзивно, под нашим дескриптором.
     const std::wstring tempDir = GetTempDirectory();
     if (tempDir.empty())
     {
         return ShowError(L"Не удалось определить временный каталог.");
     }
 
-    const std::wstring tempFile = MakeTempFileName(tempDir);
-    if (tempFile.empty())
+    std::wstring tempFile;
+    HANDLE tempHandle = INVALID_HANDLE_VALUE;
+    if (!MakeExclusiveTempFile(tempDir, tempFile, tempHandle))
     {
         return ShowError(L"Не удалось создать временный файл.");
     }
@@ -349,20 +379,6 @@ int main()
     // образ на чтение, а для всех прочих процессов доступ на запись/удаление/
     // переименование остаётся закрыт, пока наш хэндл не закрыт (аудит
     // SetupLauncher: окно подмены между записью и запуском).
-    HANDLE tempHandle = CreateFileW(
-        tempFile.c_str(),
-        GENERIC_WRITE,
-        FILE_SHARE_READ,
-        nullptr,
-        CREATE_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
-
-    if (tempHandle == INVALID_HANDLE_VALUE)
-    {
-        return ShowError(L"Не удалось открыть временный файл для записи.");
-    }
-
     if (!WriteFileBytes(tempHandle, payload))
     {
         CloseHandle(tempHandle);
@@ -370,6 +386,29 @@ int main()
         return ShowError(L"Не удалось записать payload во временный файл.");
     }
     FlushFileBuffers(tempHandle);
+
+    // 6b. OBS-08 (аудит 2026-11-04): payload получает повышенные права
+    // (PrivilegesRequired=admin) и раньше не верифицировался вовсе. Проверяем:
+    // (а) отпечаток сертификата подписи payload совпадает с отпечатком
+    // собственной подписи обёртки (self-pin — работает без доверенного корня);
+    // (б) подпись покрывает текущие байты payload (дайджест). Неподписанная
+    // обёртка (dev-сборка) проверку не наследует — как и ScannerCore в dev.
+    std::string ownThumbprint;
+    if (scan::SignatureVerifier::GetSigningCertHash(GetOwnPath(), ownThumbprint)
+        && !ownThumbprint.empty())
+    {
+        std::string payloadThumbprint;
+        const bool payloadTrusted =
+            scan::SignatureVerifier::GetSigningCertHash(tempFile, payloadThumbprint)
+            && _stricmp(payloadThumbprint.c_str(), ownThumbprint.c_str()) == 0
+            && scan::SignatureVerifier::VerifyEmbeddedDigest(tempFile);
+        if (!payloadTrusted)
+        {
+            CloseHandle(tempHandle);
+            DeleteFileW(tempFile.c_str());
+            return ShowError(L"Подпись установщика не подтверждена — запуск отменён.");
+        }
+    }
 
     // 7. Запускаем payload
     const std::wstring cmdLine = BuildCommandLine(tempFile);

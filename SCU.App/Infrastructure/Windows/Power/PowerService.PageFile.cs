@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Management;
 using Microsoft.Win32;
+using SCU.AppCore;
 using SCU.Common;
 using SCU.Interop;
 using SCU.Models;
@@ -10,6 +11,9 @@ namespace SCU.Infrastructure.Windows.Power;
 // Файл подкачки и crash dump (п. 13 аудита: зона ответственности).
 public sealed partial class PowerService
 {
+    // OBS-02: сколько штампованных pagefile-бэкапов держать в backup\power\pagefile.
+    public const int PageFileBackupsToKeep = 5;
+
     // Файл подкачки: отключение автозатем управления и фиксация размера (аналог :PFApply).
     // Изменения применяются после перезагрузки. Прежние настройки сохраняются в бэкап,
     // путь берётся существующий (или системный диск) — не жёстко C:\.
@@ -204,9 +208,12 @@ public sealed partial class PowerService
             }
 
             var pagingFiles = key.GetValue("PagingFiles") as string[] ?? [];
+            // OBS-02 (аудит 2026-11-04): pagefile-бэкапы накапливаются и вытесняли
+            // свежестью одноразовые снимки твиков из общего backup\power. Отдельный
+            // подкаталог со своим лимитом (BackupRetention.Enforce ниже) разводит их.
             var dir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "SCU", "backup", "power");
+                "SCU", "backup", "power", "pagefile");
             Directory.CreateDirectory(dir);
 
             // M-09: разрешение секунды недостаточно — два изменения в пределах
@@ -260,6 +267,11 @@ public sealed partial class PowerService
             }
 
             _logger.Info("PAGEFILE | backup -> " + backupFile);
+
+            // Лимит подкаталога — 5 штампованных копий (последние изменения важнее
+            // истории); pagefile_backup_latest.json exempt по имени и не удаляется.
+            BackupRetention.Enforce(dir, _logger, BackupRetention.BackupRoot, PageFileBackupsToKeep);
+
             return Result.Success(L.T("Бэкап сохранён: {0}", Path.GetFileName(backupFile)));
         }
         catch (Exception exception)

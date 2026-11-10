@@ -349,6 +349,18 @@ foreach ($adapter in $adapters) {
         return parts.Length > 1 ? parts[1] : string.Empty;
     }
 
+    // Корректная строка бэкапа: "ADAPTER|<имя>|<keyword>|<значение>". Значение может
+    // содержать '|', поэтому split с limit 4 — как в restore-скрипте (см. разбор
+    // AdapterProfileRestoreScript). Пустые имя адаптера или keyword не допускаются.
+    internal static bool IsValidAdapterBackupLine(string line)
+    {
+        var parts = line.Split('|', 4);
+        return parts.Length == 4
+            && parts[0] == "ADAPTER"
+            && parts[1].Trim().Length > 0
+            && parts[2].Trim().Length > 0;
+    }
+
     // null — бэкап полный, применение профиля разрешено (SCU-01); иначе — причина
     // неполноты. Полнота сверяется по фактическим строкам: каждый адаптер из
     // BACKUP_TOTAL обязан быть представлен хотя бы одной строкой ADAPTER|.
@@ -460,15 +472,19 @@ Write-Output ("BACKUP_TOTAL|{0}|{1}" -f $total, $ok)
             {
                 // Повторное применение бэкап не перезаписывает: в нём значения ДО
                 // первой правки. Но и повреждённый существующий принимать нельзя —
-                // откат по нему не покроет все адаптеры.
+                // откат по нему не покроет все адаптеры. Раньше достаточно было
+                // одной строки ADAPTER| (OBS-03, аудит 2026-11-04): усечённый файл
+                // проходил проверку. Теперь каждая непустая строка обязана быть
+                // корректной записью ADAPTER|<имя>|<keyword>|<значение>.
                 var existing = File.ReadAllLines(AdapterProfileBackupFile);
-                if (existing.Any(line => line.StartsWith("ADAPTER|", StringComparison.Ordinal)))
+                if (existing.Where(line => line.Length > 0).All(IsValidAdapterBackupLine)
+                    && existing.Any(line => line.Length > 0))
                 {
                     return Result.Success("Бэкап уже существует.");
                 }
 
                 return Result.Failure(
-                    "Существующий бэкап профиля повреждён (нет строк ADAPTER|). Удалите его вручную или выполните «Откатить».");
+                    "Существующий бэкап профиля повреждён (битый формат строк ADAPTER|). Удалите его вручную или выполните «Откатить».");
             }
 
             var result = await _runner
@@ -502,7 +518,20 @@ Write-Output ("BACKUP_TOTAL|{0}|{1}" -f $total, $ok)
             }
 
             Directory.CreateDirectory(BackupDirectory);
-            File.WriteAllLines(AdapterProfileBackupFile, parse.AdapterLines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            // OBS-03 (аудит 2026-11-04): прямая запись оставляла бы усечённый файл при
+            // сбое/отмене посреди WriteAllLines — temp+move делает замену атомарной
+            // (тот же паттерн, что JsonStateFile).
+            var tempFile = AdapterProfileBackupFile + ".tmp";
+            try
+            {
+                File.WriteAllLines(tempFile, parse.AdapterLines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+                File.Move(tempFile, AdapterProfileBackupFile, overwrite: true);
+            }
+            catch
+            {
+                try { File.Delete(tempFile); } catch { /* не критично */ }
+                throw;
+            }
             _logger.Info($"NET | adapter profile backup | {parse.AdapterLines.Count} строк | адаптеров {parse.ExpectedAdapters}");
             return Result.Success("Бэкап сохранён.");
         }

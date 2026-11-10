@@ -8,7 +8,15 @@ if(NOT DEFINED APP_SEMVER)
     set(APP_SEMVER "0.0.0")
 endif()
 
-add_executable(SCU_Install src/main.cpp)
+# Проверка подписи payload переиспользует источник движка (pe/signature.cpp):
+# self-pin + проверка дайджеста без доверенного корня (OBS-08 / F-07,
+# аудит 2026-11-04). Файл самодостаточен (только wincrypt/wintrust/bcrypt,
+# библиотеки линкуются через #pragma comment).
+add_executable(SCU_Install
+    src/main.cpp
+    ../SecurityScanner/src/pe/signature.cpp)
+
+target_include_directories(SCU_Install PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../SecurityScanner/src)
 
 target_compile_definitions(SCU_Install PRIVATE APP_SEMVER="${APP_SEMVER}")
 

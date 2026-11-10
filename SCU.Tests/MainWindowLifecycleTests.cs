@@ -4,9 +4,9 @@ using Xunit;
 
 namespace SCU.Tests;
 
-// Аудит, п. 1: закрытие главного окна при включённом переводе раскладки.
+// Аудит, п. 1: закрытие главного окна при включённом фоновом режиме.
 // Два инварианта: ресурсы окна не освобождаются, если закрытие отменено
-// (фоновый режим), и в трее есть штатный «Выход» из этого режима.
+// (сворачивание в трей), и в трее есть штатный «Выход» из этого режима.
 [Collection("LocalizationSequential")]
 public sealed class MainWindowLifecycleTests
 {
@@ -19,8 +19,8 @@ public sealed class MainWindowLifecycleTests
         shutdown.ReleaseIfClosing(cancelled: true);
 
         // Ключевая регрессия: отменённое закрытие не должно убивать ресурсы —
-        // иначе окно остаётся на экране, но переводчик, подписки и горячие
-        // клавиши уже мертвы, а процесс не завершается.
+        // иначе окно остаётся на экране, но подписки и горячие клавиши уже
+        // мертвы, а процесс не завершается.
         Assert.Equal(0, released);
         Assert.False(shutdown.Released);
 
@@ -37,7 +37,7 @@ public sealed class MainWindowLifecycleTests
         var shutdown = new WindowShutdown(() => released++);
 
         // OnClosing (не отменено) и OnClosed вызывают освобождение оба —
-        // Dispose ViewModel/переводчика должен выполниться ровно один раз.
+        // Dispose ViewModel должен выполниться ровно один раз.
         shutdown.ReleaseIfClosing(cancelled: false);
         shutdown.Release();
 

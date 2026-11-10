@@ -754,8 +754,7 @@ public partial class MainViewModel : ObservableObject, IDisposable, IScuAiEnviro
 
     // Поведение при закрытии главного окна (дизайн, п. 2): 0 = «Закрывать SCU»,
     // 1 = «Сворачивать в трей». Выбор сохраняется в settings.json и сразу
-    // применяется — фоновый режим включает/выключает пользователь, а не
-    // переводчик раскладки.
+    // применяется.
     [ObservableProperty]
     private int closeBehaviorIndex;
 

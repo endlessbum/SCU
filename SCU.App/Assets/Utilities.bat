@@ -34,7 +34,13 @@ set "BACKUP_SVC=%BAK_SVC%\services_backup.txt"
 set "BACKUP_TASKS=%BAK_TASKS%\tasks_backup.txt"
 set "BACKUP_STARTUP=%BAK_STARTUP%"
 set "LIST_STARTUP=%TEMP%\startup_list.tsv"
-set "TMPDIR=%TEMP%\DX_VC_Install"
+rem OBS-07 (аудит 2026-11-04): PowerShell вызывается только абсолютным путём —
+rem голое имя разрешалось через PATH/текущий каталог, и при повышенном батнике
+rem подмена интерпретатора обходила и admin-гейт, и проверку подписи.
+set "PSXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+rem Случайное имя каталога: предсказуемый DX_VC_Install позволял подменить
+rem установщик до запуска с повышенными правами.
+set "TMPDIR=%TEMP%\DX_VC_%RANDOM%%RANDOM%"
 set "RegAdv=HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
 set "RegExp=HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer"
 set "RegDeskIcons=HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
@@ -50,8 +56,10 @@ if not exist "%BAK_TASKS%" mkdir "%BAK_TASKS%" >nul 2>&1
 if not exist "%BAK_STARTUP%" mkdir "%BAK_STARTUP%" >nul 2>&1
 if not exist "%BAK_REG%" mkdir "%BAK_REG%" >nul 2>&1
 if not exist "%BAK_NET%" mkdir "%BAK_NET%" >nul 2>&1
+rem Каталоги прошлых запусков (DX_VC_*) больше не переиспользуются — подчищаем старше суток.
+call :CleanupOldTmpDirs
 
-for /f "delims=" %%a in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HH-mm-ss" 2^>nul') do set "STAMP=%%a"
+for /f "delims=" %%a in ('%PSXE% -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HH-mm-ss" 2^>nul') do set "STAMP=%%a"
 if not defined STAMP set "STAMP=unknown"
 set "LOGFILE=%LOGDIR%\SCU_%STAMP%.log"
 set "LOGFOUND="
@@ -103,7 +111,7 @@ rem ------------------------------------------------------ права админ
 set "ISADMIN=0"
 net session >nul 2>&1 && set "ISADMIN=1"
 if "%ISADMIN%"=="0" (
-    for /f "delims=" %%a in ('powershell -NoProfile -Command "try { if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { 'True' } } catch {}" 2^>nul') do (
+    for /f "delims=" %%a in ('%PSXE% -NoProfile -Command "try { if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { 'True' } } catch {}" 2^>nul') do (
         if /i "%%a"=="True" set "ISADMIN=1"
     )
 )
@@ -122,7 +130,7 @@ if "%ISADMIN%"=="0" (
     if /i "!el!"=="y" (
         set "RELAUNCH_BAT=%~f0"
         set "RELAUNCH_DIR=%~dp0"
-        powershell -NoProfile -Command "try { Start-Process -FilePath $env:RELAUNCH_BAT -WorkingDirectory $env:RELAUNCH_DIR -Verb RunAs -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
+        %PSXE% -NoProfile -Command "try { Start-Process -FilePath $env:RELAUNCH_BAT -WorkingDirectory $env:RELAUNCH_DIR -Verb RunAs -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
         set "UACRC=!errorlevel!"
     )
     rem Проверка UAC после выхода из блока
@@ -375,19 +383,19 @@ echo ============================================================
 echo.
 ) > "%REPORT%"
 echo  • Система...
-powershell -NoProfile -Command "Get-CimInstance Win32_OperatingSystem | ForEach-Object { '--- СИСТЕМА И WINDOWS ---'; '  ОС:             '+$_.Caption; '  Версия:         '+$_.Version; '  Сборка:         '+$_.BuildNumber; '  Архитектура:    '+$_.OSArchitecture; '  Установка:      '+$_.InstallDate; '  Последний запуск: '+$_.LastBootUpTime }; $cs=Get-CimInstance Win32_ComputerSystem; '  Компьютер:      '+$cs.Name; '  Пользователь:   '+$env:USERNAME; '  Производитель:  '+$cs.Manufacturer; '  Модель:         '+$cs.Model; $b=Get-CimInstance Win32_BIOS; '  BIOS:           '+$b.Manufacturer+' '+$b.SMBIOSBIOSVersion; '  Дата BIOS:      '+$b.ReleaseDate; ''" >> "%REPORT%" 2>nul
+%PSXE% -NoProfile -Command "Get-CimInstance Win32_OperatingSystem | ForEach-Object { '--- СИСТЕМА И WINDOWS ---'; '  ОС:             '+$_.Caption; '  Версия:         '+$_.Version; '  Сборка:         '+$_.BuildNumber; '  Архитектура:    '+$_.OSArchitecture; '  Установка:      '+$_.InstallDate; '  Последний запуск: '+$_.LastBootUpTime }; $cs=Get-CimInstance Win32_ComputerSystem; '  Компьютер:      '+$cs.Name; '  Пользователь:   '+$env:USERNAME; '  Производитель:  '+$cs.Manufacturer; '  Модель:         '+$cs.Model; $b=Get-CimInstance Win32_BIOS; '  BIOS:           '+$b.Manufacturer+' '+$b.SMBIOSBIOSVersion; '  Дата BIOS:      '+$b.ReleaseDate; ''" >> "%REPORT%" 2>nul
 echo  • Процессор...
-powershell -NoProfile -Command "Get-CimInstance Win32_Processor | ForEach-Object { '--- ПРОЦЕССОР ---'; '  Имя:            '+$_.Name.Trim(); '  Ядра/потоки:    '+$_.NumberOfCores+' / '+$_.NumberOfLogicalProcessors; '  Частота:        '+$_.MaxClockSpeed+' МГц'; '  Сокет:          '+$_.SocketDesignation }; $bb=Get-CimInstance Win32_BaseBoard; '--- МАТЕРИНСКАЯ ПЛАТА ---'; '  Плата:          '+$bb.Manufacturer+' '+$bb.Product; '  Версия:         '+$bb.Version; '  S/N:            '+$bb.SerialNumber; ''" >> "%REPORT%" 2>nul
+%PSXE% -NoProfile -Command "Get-CimInstance Win32_Processor | ForEach-Object { '--- ПРОЦЕССОР ---'; '  Имя:            '+$_.Name.Trim(); '  Ядра/потоки:    '+$_.NumberOfCores+' / '+$_.NumberOfLogicalProcessors; '  Частота:        '+$_.MaxClockSpeed+' МГц'; '  Сокет:          '+$_.SocketDesignation }; $bb=Get-CimInstance Win32_BaseBoard; '--- МАТЕРИНСКАЯ ПЛАТА ---'; '  Плата:          '+$bb.Manufacturer+' '+$bb.Product; '  Версия:         '+$bb.Version; '  S/N:            '+$bb.SerialNumber; ''" >> "%REPORT%" 2>nul
 echo  • Память...
-powershell -NoProfile -Command "$cs=Get-CimInstance Win32_ComputerSystem; '--- ОЗУ ---'; '  Всего:          '+[math]::Round($cs.TotalPhysicalMemory/1GB,2)+' ГБ'; $i=1; Get-CimInstance Win32_PhysicalMemory | ForEach-Object { $m=$_.ConfiguredClockSpeed; if(-not $m){$m=$_.Speed}; '  Модуль '+$i+':      '+[math]::Round($_.Capacity/1GB,2)+' ГБ  '+$m+' МГц  '+$_.Manufacturer.Trim()+' '+$_.PartNumber.Trim(); $i++ }; ''" >> "%REPORT%" 2>nul
+%PSXE% -NoProfile -Command "$cs=Get-CimInstance Win32_ComputerSystem; '--- ОЗУ ---'; '  Всего:          '+[math]::Round($cs.TotalPhysicalMemory/1GB,2)+' ГБ'; $i=1; Get-CimInstance Win32_PhysicalMemory | ForEach-Object { $m=$_.ConfiguredClockSpeed; if(-not $m){$m=$_.Speed}; '  Модуль '+$i+':      '+[math]::Round($_.Capacity/1GB,2)+' ГБ  '+$m+' МГц  '+$_.Manufacturer.Trim()+' '+$_.PartNumber.Trim(); $i++ }; ''" >> "%REPORT%" 2>nul
 echo  • Видео...
-powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | ForEach-Object { '--- ВИДЕО ---'; '  Карта:          '+$_.Name; '  Драйвер:        '+$_.DriverVersion; '  Дата:           '+$_.DriverDate; if($_.CurrentHorizontalResolution){'  Разрешение:     '+$_.CurrentHorizontalResolution+'x'+$_.CurrentVerticalResolution}; '' }" >> "%REPORT%" 2>nul
+%PSXE% -NoProfile -Command "Get-CimInstance Win32_VideoController | ForEach-Object { '--- ВИДЕО ---'; '  Карта:          '+$_.Name; '  Драйвер:        '+$_.DriverVersion; '  Дата:           '+$_.DriverDate; if($_.CurrentHorizontalResolution){'  Разрешение:     '+$_.CurrentHorizontalResolution+'x'+$_.CurrentVerticalResolution}; '' }" >> "%REPORT%" 2>nul
 echo  • Диски...
-powershell -NoProfile -Command "Get-CimInstance Win32_DiskDrive | ForEach-Object { '--- ДИСК ---'; '  '+$_.Model.Trim()+'  '+[math]::Round($_.Size/1GB,2)+' ГБ  ('+$_.InterfaceType+')' }; '  Тома:'; Get-CimInstance Win32_LogicalDisk | Where-Object {$_.DriveType -eq 3} | ForEach-Object { '    '+$_.DeviceID+'  '+[math]::Round($_.Size/1GB,2)+' ГБ, свободно '+[math]::Round($_.FreeSpace/1GB,2)+' ГБ  '+$_.FileSystem }; ''" >> "%REPORT%" 2>nul
+%PSXE% -NoProfile -Command "Get-CimInstance Win32_DiskDrive | ForEach-Object { '--- ДИСК ---'; '  '+$_.Model.Trim()+'  '+[math]::Round($_.Size/1GB,2)+' ГБ  ('+$_.InterfaceType+')' }; '  Тома:'; Get-CimInstance Win32_LogicalDisk | Where-Object {$_.DriveType -eq 3} | ForEach-Object { '    '+$_.DeviceID+'  '+[math]::Round($_.Size/1GB,2)+' ГБ, свободно '+[math]::Round($_.FreeSpace/1GB,2)+' ГБ  '+$_.FileSystem }; ''" >> "%REPORT%" 2>nul
 echo  • Сеть...
-powershell -NoProfile -Command "Get-CimInstance Win32_NetworkAdapter | Where-Object {$_.PhysicalAdapter -and $_.MACAddress} | ForEach-Object { '--- СЕТЬ ---'; '  '+$_.Name+'  MAC '+$_.MACAddress }; Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object {$_.IPEnabled} | ForEach-Object { $ip=($_.IPAddress -join ', '); $gw=($_.DefaultIPGateway -join ', '); '  '+$_.Description; '    IP: '+$ip+'  Шлюз: '+$gw }; ''" >> "%REPORT%" 2>nul
+%PSXE% -NoProfile -Command "Get-CimInstance Win32_NetworkAdapter | Where-Object {$_.PhysicalAdapter -and $_.MACAddress} | ForEach-Object { '--- СЕТЬ ---'; '  '+$_.Name+'  MAC '+$_.MACAddress }; Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object {$_.IPEnabled} | ForEach-Object { $ip=($_.IPAddress -join ', '); $gw=($_.DefaultIPGateway -join ', '); '  '+$_.Description; '    IP: '+$ip+'  Шлюз: '+$gw }; ''" >> "%REPORT%" 2>nul
 echo  • Периферия...
-powershell -NoProfile -Command "'--- ПЕРИФЕРИЯ ---'; '  Клавиатуры:'; Get-CimInstance Win32_Keyboard -EA 0 | ForEach-Object { '    '+$_.Name }; '  Мыши:'; Get-CimInstance Win32_PointingDevice -EA 0 | ForEach-Object { '    '+$_.Name }; '  Мониторы:'; Get-CimInstance Win32_DesktopMonitor -EA 0 | ForEach-Object { if($_.Name){'    '+$_.Name} }; '  Аудио:'; Get-CimInstance Win32_SoundDevice -EA 0 | ForEach-Object { '    '+$_.Name }; '  Принтеры:'; $p=@(Get-CimInstance Win32_Printer -EA 0); if($p){$p|ForEach-Object{'    '+$_.Name}}else{'    (нет)'}; ''" >> "%REPORT%" 2>nul
+%PSXE% -NoProfile -Command "'--- ПЕРИФЕРИЯ ---'; '  Клавиатуры:'; Get-CimInstance Win32_Keyboard -EA 0 | ForEach-Object { '    '+$_.Name }; '  Мыши:'; Get-CimInstance Win32_PointingDevice -EA 0 | ForEach-Object { '    '+$_.Name }; '  Мониторы:'; Get-CimInstance Win32_DesktopMonitor -EA 0 | ForEach-Object { if($_.Name){'    '+$_.Name} }; '  Аудио:'; Get-CimInstance Win32_SoundDevice -EA 0 | ForEach-Object { '    '+$_.Name }; '  Принтеры:'; $p=@(Get-CimInstance Win32_Printer -EA 0); if($p){$p|ForEach-Object{'    '+$_.Name}}else{'    (нет)'}; ''" >> "%REPORT%" 2>nul
 echo. >> "%REPORT%"
 echo ============================================================ >> "%REPORT%"
 cls
@@ -407,43 +415,43 @@ goto InfoMenu
 
 :InfoOS
 call :Hdr "СИСТЕМА И WINDOWS"
-powershell -NoProfile -Command "$os=Get-CimInstance Win32_OperatingSystem; $cs=Get-CimInstance Win32_ComputerSystem; $bios=Get-CimInstance Win32_BIOS; Write-Host '  Имя компьютера:     ' -NoNewline; Write-Host $cs.Name -ForegroundColor Cyan; Write-Host '  Пользователь:       ' -NoNewline; Write-Host $env:USERNAME -ForegroundColor Cyan; Write-Host '  ОС:                 ' -NoNewline; Write-Host $os.Caption -ForegroundColor Cyan; Write-Host '  Версия:             ' -NoNewline; Write-Host $os.Version -ForegroundColor Cyan; Write-Host '  Сборка:             ' -NoNewline; Write-Host $os.BuildNumber -ForegroundColor Cyan; Write-Host '  Архитектура:        ' -NoNewline; Write-Host $os.OSArchitecture -ForegroundColor Cyan; Write-Host '  Дата установки:     ' -NoNewline; Write-Host $os.InstallDate -ForegroundColor Cyan; Write-Host '  Последний запуск:   ' -NoNewline; Write-Host $os.LastBootUpTime -ForegroundColor Cyan; Write-Host '  Производитель ПК:   ' -NoNewline; Write-Host $cs.Manufacturer -ForegroundColor Cyan; Write-Host '  Модель ПК:          ' -NoNewline; Write-Host $cs.Model -ForegroundColor Cyan; Write-Host '  BIOS:               ' -NoNewline; Write-Host ($bios.Manufacturer+' '+$bios.SMBIOSBIOSVersion) -ForegroundColor Cyan; Write-Host '  Дата BIOS:          ' -NoNewline; Write-Host $bios.ReleaseDate -ForegroundColor Cyan;"
+%PSXE% -NoProfile -Command "$os=Get-CimInstance Win32_OperatingSystem; $cs=Get-CimInstance Win32_ComputerSystem; $bios=Get-CimInstance Win32_BIOS; Write-Host '  Имя компьютера:     ' -NoNewline; Write-Host $cs.Name -ForegroundColor Cyan; Write-Host '  Пользователь:       ' -NoNewline; Write-Host $env:USERNAME -ForegroundColor Cyan; Write-Host '  ОС:                 ' -NoNewline; Write-Host $os.Caption -ForegroundColor Cyan; Write-Host '  Версия:             ' -NoNewline; Write-Host $os.Version -ForegroundColor Cyan; Write-Host '  Сборка:             ' -NoNewline; Write-Host $os.BuildNumber -ForegroundColor Cyan; Write-Host '  Архитектура:        ' -NoNewline; Write-Host $os.OSArchitecture -ForegroundColor Cyan; Write-Host '  Дата установки:     ' -NoNewline; Write-Host $os.InstallDate -ForegroundColor Cyan; Write-Host '  Последний запуск:   ' -NoNewline; Write-Host $os.LastBootUpTime -ForegroundColor Cyan; Write-Host '  Производитель ПК:   ' -NoNewline; Write-Host $cs.Manufacturer -ForegroundColor Cyan; Write-Host '  Модель ПК:          ' -NoNewline; Write-Host $cs.Model -ForegroundColor Cyan; Write-Host '  BIOS:               ' -NoNewline; Write-Host ($bios.Manufacturer+' '+$bios.SMBIOSBIOSVersion) -ForegroundColor Cyan; Write-Host '  Дата BIOS:          ' -NoNewline; Write-Host $bios.ReleaseDate -ForegroundColor Cyan;"
 call :PauseBack
 goto InfoMenu
 
 :InfoCPU
 call :Hdr "ПРОЦЕССОР И МАТЕРИНСКАЯ ПЛАТА"
-powershell -NoProfile -Command "$cpu=Get-CimInstance Win32_Processor; $bb=Get-CimInstance Win32_BaseBoard; foreach($c in $cpu){ Write-Host '  Процессор:          ' -NoNewline; Write-Host $c.Name.Trim() -ForegroundColor Cyan; Write-Host '  Ядра / потоки:      ' -NoNewline; Write-Host ($c.NumberOfCores.ToString()+' / '+$c.NumberOfLogicalProcessors) -ForegroundColor Cyan; Write-Host '  Макс. частота:      ' -NoNewline; Write-Host ($c.MaxClockSpeed.ToString()+' МГц') -ForegroundColor Cyan; Write-Host '  Сокет:              ' -NoNewline; Write-Host $c.SocketDesignation -ForegroundColor Cyan }; Write-Host '  Мат. плата:         ' -NoNewline; Write-Host ($bb.Manufacturer+' '+$bb.Product) -ForegroundColor Cyan; Write-Host '  Версия платы:       ' -NoNewline; Write-Host $bb.Version -ForegroundColor Cyan; Write-Host '  Серийный номер:     ' -NoNewline; Write-Host $bb.SerialNumber -ForegroundColor Cyan;"
+%PSXE% -NoProfile -Command "$cpu=Get-CimInstance Win32_Processor; $bb=Get-CimInstance Win32_BaseBoard; foreach($c in $cpu){ Write-Host '  Процессор:          ' -NoNewline; Write-Host $c.Name.Trim() -ForegroundColor Cyan; Write-Host '  Ядра / потоки:      ' -NoNewline; Write-Host ($c.NumberOfCores.ToString()+' / '+$c.NumberOfLogicalProcessors) -ForegroundColor Cyan; Write-Host '  Макс. частота:      ' -NoNewline; Write-Host ($c.MaxClockSpeed.ToString()+' МГц') -ForegroundColor Cyan; Write-Host '  Сокет:              ' -NoNewline; Write-Host $c.SocketDesignation -ForegroundColor Cyan }; Write-Host '  Мат. плата:         ' -NoNewline; Write-Host ($bb.Manufacturer+' '+$bb.Product) -ForegroundColor Cyan; Write-Host '  Версия платы:       ' -NoNewline; Write-Host $bb.Version -ForegroundColor Cyan; Write-Host '  Серийный номер:     ' -NoNewline; Write-Host $bb.SerialNumber -ForegroundColor Cyan;"
 call :PauseBack
 goto InfoMenu
 
 :InfoRAM
 call :Hdr "ОПЕРАТИВНАЯ ПАМЯТЬ"
-powershell -NoProfile -Command "$cs=Get-CimInstance Win32_ComputerSystem; $total=[math]::Round($cs.TotalPhysicalMemory/1GB,2); Write-Host ('  Всего ОЗУ:          '+$total.ToString()+' ГБ') -ForegroundColor Cyan; $i=1; Get-CimInstance Win32_PhysicalMemory | ForEach-Object { $gb=[math]::Round($_.Capacity/1GB,2); $mhz=$_.ConfiguredClockSpeed; if(-not $mhz){$mhz=$_.Speed}; Write-Host ('  Модуль '+$i+':  '+$gb+' ГБ  '+$mhz+' МГц  '+$_.Manufacturer.Trim()+'  '+$_.PartNumber.Trim()) -ForegroundColor Cyan; $i++ }"
+%PSXE% -NoProfile -Command "$cs=Get-CimInstance Win32_ComputerSystem; $total=[math]::Round($cs.TotalPhysicalMemory/1GB,2); Write-Host ('  Всего ОЗУ:          '+$total.ToString()+' ГБ') -ForegroundColor Cyan; $i=1; Get-CimInstance Win32_PhysicalMemory | ForEach-Object { $gb=[math]::Round($_.Capacity/1GB,2); $mhz=$_.ConfiguredClockSpeed; if(-not $mhz){$mhz=$_.Speed}; Write-Host ('  Модуль '+$i+':  '+$gb+' ГБ  '+$mhz+' МГц  '+$_.Manufacturer.Trim()+'  '+$_.PartNumber.Trim()) -ForegroundColor Cyan; $i++ }"
 call :PauseBack
 goto InfoMenu
 
 :InfoGPU
 call :Hdr "ВИДЕОКАРТА"
-powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | ForEach-Object { Write-Host '  Видеокарта:         ' -NoNewline; Write-Host $_.Name -ForegroundColor Cyan; Write-Host '  Драйвер:            ' -NoNewline; Write-Host $_.DriverVersion -ForegroundColor Cyan; Write-Host '  Дата драйвера:      ' -NoNewline; Write-Host $_.DriverDate -ForegroundColor Cyan; if($_.CurrentHorizontalResolution){ Write-Host '  Разрешение:         ' -NoNewline; Write-Host ($_.CurrentHorizontalResolution.ToString()+' x '+$_.CurrentVerticalResolution) -ForegroundColor Cyan }; Write-Host '' }"
+%PSXE% -NoProfile -Command "Get-CimInstance Win32_VideoController | ForEach-Object { Write-Host '  Видеокарта:         ' -NoNewline; Write-Host $_.Name -ForegroundColor Cyan; Write-Host '  Драйвер:            ' -NoNewline; Write-Host $_.DriverVersion -ForegroundColor Cyan; Write-Host '  Дата драйвера:      ' -NoNewline; Write-Host $_.DriverDate -ForegroundColor Cyan; if($_.CurrentHorizontalResolution){ Write-Host '  Разрешение:         ' -NoNewline; Write-Host ($_.CurrentHorizontalResolution.ToString()+' x '+$_.CurrentVerticalResolution) -ForegroundColor Cyan }; Write-Host '' }"
 call :PauseBack
 goto InfoMenu
 
 :InfoDisk
 call :Hdr "ДИСКИ"
-powershell -NoProfile -Command "Get-CimInstance Win32_DiskDrive | ForEach-Object { $gb=[math]::Round($_.Size/1GB,2); Write-Host ('  '+$_.Model.Trim()+'  —  '+$gb+' ГБ  ('+$_.InterfaceType+')') -ForegroundColor Cyan }; Write-Host '  Логические тома:'; Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 } | ForEach-Object { $free=[math]::Round($_.FreeSpace/1GB,2); $total=[math]::Round($_.Size/1GB,2); Write-Host ('    '+$_.DeviceID+'  '+$total+' ГБ (свободно '+$free+' ГБ)  '+$_.FileSystem) -ForegroundColor Cyan }"
+%PSXE% -NoProfile -Command "Get-CimInstance Win32_DiskDrive | ForEach-Object { $gb=[math]::Round($_.Size/1GB,2); Write-Host ('  '+$_.Model.Trim()+'  —  '+$gb+' ГБ  ('+$_.InterfaceType+')') -ForegroundColor Cyan }; Write-Host '  Логические тома:'; Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 } | ForEach-Object { $free=[math]::Round($_.FreeSpace/1GB,2); $total=[math]::Round($_.Size/1GB,2); Write-Host ('    '+$_.DeviceID+'  '+$total+' ГБ (свободно '+$free+' ГБ)  '+$_.FileSystem) -ForegroundColor Cyan }"
 call :PauseBack
 goto InfoMenu
 
 :InfoNet
 call :Hdr "СЕТЬ"
-powershell -NoProfile -Command "Get-CimInstance Win32_NetworkAdapter | Where-Object { $_.PhysicalAdapter -eq $true -and $_.MACAddress } | ForEach-Object { Write-Host ('  '+$_.Name+'  MAC: '+$_.MACAddress) -ForegroundColor Cyan }; Write-Host '  IP-адреса:'; Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true } | ForEach-Object { $ip=if($_.IPAddress){$_.IPAddress -join ', '}else{'-'}; $gw=if($_.DefaultIPGateway){$_.DefaultIPGateway -join ', '}else{'-'}; Write-Host ('    '+$_.Description) -ForegroundColor DarkGray; Write-Host ('    IP: '+$ip+'  Шлюз: '+$gw) -ForegroundColor Cyan }"
+%PSXE% -NoProfile -Command "Get-CimInstance Win32_NetworkAdapter | Where-Object { $_.PhysicalAdapter -eq $true -and $_.MACAddress } | ForEach-Object { Write-Host ('  '+$_.Name+'  MAC: '+$_.MACAddress) -ForegroundColor Cyan }; Write-Host '  IP-адреса:'; Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true } | ForEach-Object { $ip=if($_.IPAddress){$_.IPAddress -join ', '}else{'-'}; $gw=if($_.DefaultIPGateway){$_.DefaultIPGateway -join ', '}else{'-'}; Write-Host ('    '+$_.Description) -ForegroundColor DarkGray; Write-Host ('    IP: '+$ip+'  Шлюз: '+$gw) -ForegroundColor Cyan }"
 call :PauseBack
 goto InfoMenu
 
 :InfoPeriph
 call :Hdr "ПЕРИФЕРИЯ"
-powershell -NoProfile -Command "Write-Host '  Клавиатуры:'; Get-CimInstance Win32_Keyboard -EA 0 | ForEach-Object { Write-Host ('    '+$_.Name) -ForegroundColor Cyan }; Write-Host '  Мыши:'; Get-CimInstance Win32_PointingDevice -EA 0 | ForEach-Object { Write-Host ('    '+$_.Name) -ForegroundColor Cyan }; Write-Host '  Мониторы:'; Get-CimInstance Win32_DesktopMonitor -EA 0 | ForEach-Object { if($_.Name){ Write-Host ('    '+$_.Name) -ForegroundColor Cyan } }; Write-Host '  Аудио:'; Get-CimInstance Win32_SoundDevice -EA 0 | ForEach-Object { Write-Host ('    '+$_.Name) -ForegroundColor Cyan }; Write-Host '  Принтеры:'; $p=@(Get-CimInstance Win32_Printer -EA 0); if($p.Count -gt 0){ $p | ForEach-Object { Write-Host ('    '+$_.Name) -ForegroundColor Cyan } } else { Write-Host '    (нет)' -ForegroundColor DarkGray }"
+%PSXE% -NoProfile -Command "Write-Host '  Клавиатуры:'; Get-CimInstance Win32_Keyboard -EA 0 | ForEach-Object { Write-Host ('    '+$_.Name) -ForegroundColor Cyan }; Write-Host '  Мыши:'; Get-CimInstance Win32_PointingDevice -EA 0 | ForEach-Object { Write-Host ('    '+$_.Name) -ForegroundColor Cyan }; Write-Host '  Мониторы:'; Get-CimInstance Win32_DesktopMonitor -EA 0 | ForEach-Object { if($_.Name){ Write-Host ('    '+$_.Name) -ForegroundColor Cyan } }; Write-Host '  Аудио:'; Get-CimInstance Win32_SoundDevice -EA 0 | ForEach-Object { Write-Host ('    '+$_.Name) -ForegroundColor Cyan }; Write-Host '  Принтеры:'; $p=@(Get-CimInstance Win32_Printer -EA 0); if($p.Count -gt 0){ $p | ForEach-Object { Write-Host ('    '+$_.Name) -ForegroundColor Cyan } } else { Write-Host '    (нет)' -ForegroundColor DarkGray }"
 call :PauseBack
 goto InfoMenu
 
@@ -506,7 +514,7 @@ set "DLRC=!errorlevel!"
 if "!DLRC!"=="0" if exist "%~2" goto DownloadFileOK
 set "DL_URL=%~1"
 set "DL_FILE=%~2"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -Uri $env:DL_URL -OutFile $env:DL_FILE -UseBasicParsing -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
+%PSXE% -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -Uri $env:DL_URL -OutFile $env:DL_FILE -UseBasicParsing -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
 set "DLRC=!errorlevel!"
 if not "!DLRC!"=="0" goto DownloadFileFail
 if not exist "%~2" goto DownloadFileFail
@@ -520,6 +528,23 @@ exit /b 0
 call :Log "GET-FAIL | %~1 | rc=!DLRC! | file=%~2"
 if exist "%~2" del /f /q "%~2" >nul 2>&1
 exit /b 1
+
+rem Каталог под установщики: случайное имя + (при повышенном запуске) урезанный
+rem DACL — наследование отключено, запись/чтение только SYSTEM и Администраторы
+rem (SID — чтобы не зависеть от локализованных имён групп). Окно подмены
+rem скачанного установщика между проверкой подписи и запуском закрывается:
+rem стандартный пользователь уже не может заменить файл (OBS-07, аудит 2026-11-04).
+rem На неповышенном запуске DACL не трогаем — иначе текущий пользователь потерял бы
+rem доступ к собственному каталогу и загрузки сломались бы.
+:EnsureTmpDir
+if not exist "%TMPDIR%" mkdir "%TMPDIR%" >nul 2>&1
+net session >nul 2>&1 && icacls "%TMPDIR%" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" >nul 2>&1
+exit /b 0
+
+rem Прошлые запуски оставляли DX_VC_* в %TEMP% (каталог больше не переиспользуется).
+:CleanupOldTmpDirs
+%PSXE% -NoProfile -Command "try { Get-ChildItem -LiteralPath $env:TEMP -Filter 'DX_VC_*' -Directory -ErrorAction SilentlyContinue | Where-Object { $_.CreationTime -lt (Get-Date).AddDays(-1) } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue } catch {}" >nul 2>&1
+exit /b 0
 
 :VerifyFile
 rem %1 = файл, %2 = подпись. Размер + Authenticode + издатель Microsoft.
@@ -538,10 +563,14 @@ if not exist "%SCRIPT_PS%" (
     exit /b 1
 )
 set "VERIFY_PATH=%~1"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action VerifyExe -Path "%VERIFY_PATH%" >"%TEMP%\sigcheck.txt" 2>&1
+rem Уникальное имя результата: фиксированный %TEMP%\sigcheck.txt перезаписывался
+rem любым процессом того же пользователя между записью и чтением (OBS-07).
+set "SIGCHECK_TXT=%TEMP%\sigcheck_%RANDOM%%RANDOM%.txt"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action VerifyExe -Path "%VERIFY_PATH%" >"%SIGCHECK_TXT%" 2>&1
 set "SIGRC=!errorlevel!"
 set "SIGMSG="
-if exist "%TEMP%\sigcheck.txt" set /p "SIGMSG="<"%TEMP%\sigcheck.txt"
+if exist "%SIGCHECK_TXT%" set /p "SIGMSG="<"%SIGCHECK_TXT%"
+del "%SIGCHECK_TXT%" >nul 2>&1
 if not "!SIGRC!"=="0" (
     call :Err "%~2: проверка не пройдена (!SIGMSG!)"
     exit /b 1
@@ -552,7 +581,7 @@ exit /b 0
 
 :DoDirectX
 call :Hdr "DIRECTX"
-if not exist "%TMPDIR%" mkdir "%TMPDIR%" >nul 2>&1
+call :EnsureTmpDir
 set "DXFILE=%TMPDIR%\dxwebsetup.exe"
 echo  %Yellow%Скачиваю dxwebsetup.exe...%Reset%
 call :DownloadFile "https://download.microsoft.com/download/1/7/1/1718CCC4-6315-4D8E-9543-8E28A4E18C4C/dxwebsetup.exe" "%DXFILE%"
@@ -571,7 +600,7 @@ exit /b 1
 
 :DoVC
 call :Hdr "VISUAL C++ REDISTRIBUTABLE"
-if not exist "%TMPDIR%" mkdir "%TMPDIR%" >nul 2>&1
+call :EnsureTmpDir
 set "VC64=%TMPDIR%\vc_redist.x64.exe"
 set "VC86=%TMPDIR%\vc_redist.x86.exe"
 set "VC64READY=0"
@@ -638,7 +667,7 @@ exit /b 1
 
 :DoNET
 call :Hdr ".NET DESKTOP RUNTIME"
-if not exist "%TMPDIR%" mkdir "%TMPDIR%" >nul 2>&1
+call :EnsureTmpDir
 set "NETFAIL=0"
 echo  %Gray%Проверяю установленные версии...%Reset%
 for %%V in (10 9 8) do call :DotnetHas %%V && call :Ok "Desktop Runtime %%V уже установлен"
@@ -766,7 +795,7 @@ rem кавычках powershell апостроф в пути исполнялс�
 set "CNT=0"
 set "SCU_CF_DIR=%~1"
 set "SCU_CF_FILTER=%~2"
-for /f %%a in ('powershell -NoProfile -Command "try { (Get-ChildItem -LiteralPath $env:SCU_CF_DIR -Filter $env:SCU_CF_FILTER -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object).Count } catch { 0 }" 2^>nul') do set "CNT=%%a"
+for /f %%a in ('%PSXE% -NoProfile -Command "try { (Get-ChildItem -LiteralPath $env:SCU_CF_DIR -Filter $env:SCU_CF_FILTER -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object).Count } catch { 0 }" 2^>nul') do set "CNT=%%a"
 exit /b
 
 :CleanDirContents
@@ -801,7 +830,7 @@ exit /b
 call :Hdr "ОЧИСТКА КОРЗИНЫ"
 echo  %Yellow%Очищаю корзину...%Reset%
 if exist "%SCRIPT_PS%" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action EmptyRecycleBin
+    %PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action EmptyRecycleBin
     if "!errorlevel!"=="0" (call :Ok "Корзина очищена") else (call :Err "Корзина не очищена (код !errorlevel!)")
 ) else (
     call :Warn "SCU.ps1 не найден — очистка корзины недоступна."
@@ -887,7 +916,7 @@ if not exist "%SCRIPT_PS%" (
     call :Err "SCU.ps1 не найден — очистка без бэкапа служб отменена."
     exit /b 1
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesBackup -OutFile "%BAK_SVC%\wu_backup.txt" -Services "%WU_SVCS%"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesBackup -OutFile "%BAK_SVC%\wu_backup.txt" -Services "%WU_SVCS%"
 set "WUBKRC=!errorlevel!"
 if not "!WUBKRC!"=="0" (
     call :Err "Не удалось сохранить состояние служб (код !WUBKRC!) — остановка служб отменена."
@@ -943,7 +972,7 @@ set "DRC=!errorlevel!"
 if "!DRC!"=="0" (call :Ok "старые компоненты удалены") else (call :Err "DISM завершился с кодом !DRC!" & set "WFAIL=1")
 echo.
 echo  • Восстановление исходного состояния служб
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BAK_SVC%\wu_backup.txt"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BAK_SVC%\wu_backup.txt"
 set "WURC=!errorlevel!"
 if "!WURC!"=="0" (call :Ok "исходное состояние служб восстановлено") else (call :Warn "часть служб не удалось вернуть — см. лог" & set "WFAIL=1")
 echo.
@@ -1122,7 +1151,7 @@ if "%choice%"=="1" (
     vssadmin list shadows
     echo.
     echo  %Gray%Точки восстановления:%Reset%
-    powershell -NoProfile -Command "try { Get-ComputerRestorePoint -ErrorAction Stop | Select-Object CreationTime, Description, SequenceNumber | Format-Table -AutoSize } catch { Write-Host '  (точки восстановления недоступны или защита отключена)' }"
+    %PSXE% -NoProfile -Command "try { Get-ComputerRestorePoint -ErrorAction Stop | Select-Object CreationTime, Description, SequenceNumber | Format-Table -AutoSize } catch { Write-Host '  (точки восстановления недоступны или защита отключена)' }"
 )
 if "%choice%"=="2" (
     echo.
@@ -1163,7 +1192,7 @@ if not exist "%SCRIPT_PS%" (
     call :Err "SCU.ps1 не найден — очистка Delivery Optimization отменена."
     exit /b 1
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesBackup -OutFile "%BAK_SVC%\dosvc_backup.txt" -Services "dosvc"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesBackup -OutFile "%BAK_SVC%\dosvc_backup.txt" -Services "dosvc"
 set "DOBKRC=!errorlevel!"
 if not "!DOBKRC!"=="0" (
     call :Err "Не удалось сохранить состояние dosvc (код !DOBKRC!) — остановка службы отменена."
@@ -1187,7 +1216,7 @@ call :CleanDirContents "%ProgramData%\Microsoft\Windows\DeliveryOptimization\Cac
 call :CleanDirContents "%SystemRoot%\SoftwareDistribution\DeliveryOptimization" "DO: SoftwareDistribution"
 echo.
 if exist "%SCRIPT_PS%" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BAK_SVC%\dosvc_backup.txt"
+    %PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BAK_SVC%\dosvc_backup.txt"
     if "!errorlevel!"=="0" (call :Ok "исходное состояние службы dosvc восстановлено") else (call :Warn "dosvc: не удалось полностью восстановить состояние")
 ) else (
     net start dosvc >nul 2>&1
@@ -1216,7 +1245,7 @@ if not exist "%SCRIPT_PS%" (
     call :Err "SCU.ps1 не найден — шаг Delivery Optimization пропущен."
     set "DOFAIL=1"
 ) else (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesBackup -OutFile "%BAK_SVC%\dosvc_backup.txt" -Services "dosvc"
+    %PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesBackup -OutFile "%BAK_SVC%\dosvc_backup.txt" -Services "dosvc"
     set "DOBKRC=!errorlevel!"
     if not "!DOBKRC!"=="0" (
         call :Err "Не удалось сохранить состояние dosvc (код !DOBKRC!) — шаг пропущен."
@@ -1229,7 +1258,7 @@ if not exist "%SCRIPT_PS%" (
         sc stop dosvc >nul 2>&1
         call :CleanDirContents "%SystemRoot%\ServiceProfiles\NetworkService\AppData\Local\Microsoft\Windows\DeliveryOptimization\Cache" "DO: NetworkService cache"
         call :CleanDirContents "%ProgramData%\Microsoft\Windows\DeliveryOptimization\Cache" "DO: ProgramData cache"
-        powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BAK_SVC%\dosvc_backup.txt"
+        %PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BAK_SVC%\dosvc_backup.txt"
         set "DORC=!errorlevel!"
         if not "!DORC!"=="0" (call :Err "dosvc: не удалось полностью восстановить состояние (код !DORC!)" & set "DOFAIL=1") else call :Ok "исходное состояние dosvc восстановлено"
     )
@@ -1443,7 +1472,7 @@ taskkill /f /im msedgewebview2.exe >nul 2>&1
 set "EDGE_SETUP_FILE=%TEMP%\SCU_edge_setup.txt"
 if exist "!EDGE_SETUP_FILE!" del /f /q "!EDGE_SETUP_FILE!" >nul 2>&1
 set "EDGE_SETUP="
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$paths=@();$pf=[Environment]::GetEnvironmentVariable('ProgramFiles');$pfx=[Environment]::GetEnvironmentVariable('ProgramFiles(x86)');if($pf){$paths+=Join-Path $pf 'Microsoft\Edge\Application'};if($pfx){$paths+=Join-Path $pfx 'Microsoft\Edge\Application'};foreach($d in $paths){if($d -and (Test-Path -LiteralPath $d)){ $f=Get-ChildItem -LiteralPath $d -Filter setup.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1;if($f){$f.FullName;break}}}" >"!EDGE_SETUP_FILE!" 2>nul
+%PSXE% -NoProfile -ExecutionPolicy Bypass -Command "$paths=@();$pf=[Environment]::GetEnvironmentVariable('ProgramFiles');$pfx=[Environment]::GetEnvironmentVariable('ProgramFiles(x86)');if($pf){$paths+=Join-Path $pf 'Microsoft\Edge\Application'};if($pfx){$paths+=Join-Path $pfx 'Microsoft\Edge\Application'};foreach($d in $paths){if($d -and (Test-Path -LiteralPath $d)){ $f=Get-ChildItem -LiteralPath $d -Filter setup.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1;if($f){$f.FullName;break}}}" >"!EDGE_SETUP_FILE!" 2>nul
 if exist "!EDGE_SETUP_FILE!" set /p "EDGE_SETUP="<"!EDGE_SETUP_FILE!"
 if exist "!EDGE_SETUP_FILE!" del /f /q "!EDGE_SETUP_FILE!" >nul 2>&1
 if defined EDGE_SETUP (
@@ -1457,7 +1486,7 @@ if defined EDGE_SETUP (
 winget uninstall --name "Microsoft Edge" --silent --accept-source-agreements >nul 2>&1
 set "WRC=!errorlevel!"
 call :Log "WINGET | Microsoft Edge | rc=!WRC!"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try {$left=0;foreach($a in @(Get-AppxPackage -AllUsers -ErrorAction Stop)){if($a.Name -like '*MicrosoftEdge*'){$left++}};$files=0;$pf=[Environment]::GetEnvironmentVariable('ProgramFiles');$pfx=[Environment]::GetEnvironmentVariable('ProgramFiles(x86)');foreach($d in @($pf,$pfx)){if($d){$f=Join-Path $d 'Microsoft\Edge\Application\msedge.exe';if(Test-Path -LiteralPath $f){$files++}}};if($left -eq 0 -and $files -eq 0){exit 0};exit 1}catch{exit 2}"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -Command "try {$left=0;foreach($a in @(Get-AppxPackage -AllUsers -ErrorAction Stop)){if($a.Name -like '*MicrosoftEdge*'){$left++}};$files=0;$pf=[Environment]::GetEnvironmentVariable('ProgramFiles');$pfx=[Environment]::GetEnvironmentVariable('ProgramFiles(x86)');foreach($d in @($pf,$pfx)){if($d){$f=Join-Path $d 'Microsoft\Edge\Application\msedge.exe';if(Test-Path -LiteralPath $f){$files++}}};if($left -eq 0 -and $files -eq 0){exit 0};exit 1}catch{exit 2}"
 set "VERIFY_RC=!errorlevel!"
 call :Log "VERIFY | Edge absent | rc=!VERIFY_RC!"
 if "!VERIFY_RC!"=="0" (call :Ok "Microsoft Edge отсутствует после удаления" & exit /b 0)
@@ -1501,7 +1530,7 @@ goto BloatMenu
 :RemoveApp
 echo. & echo  %Red%Удаление %~1...%Reset%
 if not exist "%SCRIPT_PS%" (call :Err "SCU.ps1 не найден — удаление запрещено" & exit /b 2)
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action AppxRemove -Names "%~1"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action AppxRemove -Names "%~1"
 set "APPXRC=!errorlevel!"
 call :Log "APPX-REMOVE | %~1 | rc=!APPXRC!"
 if "!APPXRC!"=="0" (call :Ok "%~1: пакет отсутствует после проверки" & exit /b 0)
@@ -1517,7 +1546,7 @@ set "_Store=0" & set "_Xbox=0" & set "_Edge=0" & set "_EdgeScan=0"
 set "APPX_FILE=%TEMP%\appx_scan.tsv"
 if exist "%APPX_FILE%" del /f /q "%APPX_FILE%" >nul 2>&1
 if not exist "%SCRIPT_PS%" exit /b 1
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action AppxScan -OutFile "%APPX_FILE%" >nul 2>&1
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action AppxScan -OutFile "%APPX_FILE%" >nul 2>&1
 set "APPXRC=!errorlevel!"
 if not "!APPXRC!"=="0" exit /b 1
 if not exist "%APPX_FILE%" exit /b 1
@@ -1542,7 +1571,7 @@ for /f "usebackq tokens=1,2 delims==" %%a in ("%APPX_FILE%") do (
     if /i "%%a"=="Xbox" set "_Xbox=%%b"
 )
 if not "!_Scan!"=="1" exit /b 1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$pf=[Environment]::GetEnvironmentVariable('ProgramFiles');$pfx=[Environment]::GetEnvironmentVariable('ProgramFiles(x86)');$found=0;foreach($f in @($pf,$pfx)){if($f){$p=Join-Path $f 'Microsoft\Edge\Application\msedge.exe';if(Test-Path -LiteralPath $p){$found=1}}};if($found -eq 1){exit 0}else{exit 1}"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -Command "$pf=[Environment]::GetEnvironmentVariable('ProgramFiles');$pfx=[Environment]::GetEnvironmentVariable('ProgramFiles(x86)');$found=0;foreach($f in @($pf,$pfx)){if($f){$p=Join-Path $f 'Microsoft\Edge\Application\msedge.exe';if(Test-Path -LiteralPath $p){$found=1}}};if($found -eq 1){exit 0}else{exit 1}"
 if errorlevel 1 (set "_Edge=0") else (set "_Edge=1")
 set "_EdgeScan=1"
 exit /b 0
@@ -1912,7 +1941,7 @@ if not exist "%SCRIPT_PS%" (
 )
 if not exist "%BAK_TASKS%" mkdir "%BAK_TASKS%" >nul 2>&1
 set "TSAVEFILE=%BAK_TASKS%\tasks_state_%STAMP%.txt"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action TasksBackup -Tasks "%TASKLIST%" -OutFile "!TSAVEFILE!"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action TasksBackup -Tasks "%TASKLIST%" -OutFile "!TSAVEFILE!"
 set "TSRC=!errorlevel!"
 echo.
 if "!TSRC!"=="0" (call :Ok "Сохранено: !TSAVEFILE!") else (call :Err "Не удалось сохранить состояние задач (код !TSRC!)")
@@ -1930,9 +1959,9 @@ if not exist "%SCRIPT_PS%" (
 echo  %Yellow%Бэкап и отключение задач...%Reset%
 echo.
 if exist "%BACKUP_TASKS%" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action TasksDisable -Tasks "!TLIST!"
+    %PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action TasksDisable -Tasks "!TLIST!"
 ) else (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action TasksDisable -Tasks "!TLIST!" -OutFile "%BACKUP_TASKS%"
+    %PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action TasksDisable -Tasks "!TLIST!" -OutFile "%BACKUP_TASKS%"
 )
 set "TRC=!errorlevel!"
 echo.
@@ -1955,7 +1984,7 @@ if not exist "%SCRIPT_PS%" (
 )
 echo  %Yellow%Восстанавливаю исходное состояние задач...%Reset%
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action TasksRestore -InFile "%BACKUP_TASKS%"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action TasksRestore -InFile "%BACKUP_TASKS%"
 set "TRRC=!errorlevel!"
 echo.
 if "!TRRC!"=="0" (call :Ok "Задачи возвращены в исходное состояние") else (call :Warn "Часть задач не удалось вернуть (код !TRRC!) — см. вывод выше.")
@@ -2195,7 +2224,7 @@ if not exist "%SCRIPT_PS%" (
     call :Err "SCU.ps1 не найден — восстановление из бэкапа недоступно"
     exit /b 1
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BACKUP_SVC%" -Services "%SVC%" >nul 2>&1
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BACKUP_SVC%" -Services "%SVC%" >nul 2>&1
 set "ONERC=!errorlevel!"
 if "!ONERC!"=="0" (
     echo  %Green%[вкл]%Reset%  %SVC%
@@ -2234,7 +2263,7 @@ if exist "%BACKUP_SVC%" (
         call :PauseBack
         goto SvcMenu
     )
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BACKUP_SVC%"
+    %PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BACKUP_SVC%"
     set "SVERC=!errorlevel!"
     echo.
     if "!SVERC!"=="0" (call :Ok "Службы возвращены в исходное состояние") else (call :Warn "Часть служб не удалось вернуть (код !SVERC!) — см. лог.")
@@ -2335,7 +2364,7 @@ if not exist "%SCRIPT_PS%" (
     call :Err "SCU.ps1 не найден — бэкап служб невозможен."
     exit /b 1
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesBackup -Services "%SVCCSV%" -OutFile "%BACKUP_SVC%" >nul 2>&1
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesBackup -Services "%SVCCSV%" -OutFile "%BACKUP_SVC%" >nul 2>&1
 set "BKRC=!errorlevel!"
 if not "!BKRC!"=="0" (
     call :Err "Не удалось сохранить состояние служб (код !BKRC!)."
@@ -2365,7 +2394,7 @@ if not exist "%SCRIPT_PS%" (
     call :PauseBack
     goto SvcMenu
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BACKUP_SVC%"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action ServicesRestore -InFile "%BACKUP_SVC%"
 set "SVRRC=!errorlevel!"
 echo.
 if "!SVRRC!"=="0" (
@@ -2410,7 +2439,7 @@ if not exist "%SCRIPT_PS%" (
 )
 echo  %Yellow%Сканирую реестр и папки Startup...%Reset%
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action StartupList -OutFile "%LIST_STARTUP%"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action StartupList -OutFile "%LIST_STARTUP%"
 if errorlevel 1 (
     echo.
     call :Err "Не удалось получить список автозагрузки."
@@ -2448,7 +2477,7 @@ if errorlevel 1 (
     goto StartUpMenu
 )
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action StartupDisable -ListFile "%LIST_STARTUP%" -Index %num% -BackupDir "%BACKUP_STARTUP%"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action StartupDisable -ListFile "%LIST_STARTUP%" -Index %num% -BackupDir "%BACKUP_STARTUP%"
 set "SURC=!errorlevel!"
 echo.
 if "!SURC!"=="0" (
@@ -2474,7 +2503,7 @@ if not exist "%BACKUP_STARTUP%\manifest.json" (
 )
 echo  %Yellow%Восстанавливаю элементы автозагрузки...%Reset%
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action StartupRestore -BackupDir "%BACKUP_STARTUP%"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PS%" -Action StartupRestore -BackupDir "%BACKUP_STARTUP%"
 set "SURC=!errorlevel!"
 echo.
 if "!SURC!"=="0" (
@@ -2530,21 +2559,21 @@ if "%choice%"=="0" goto PerfMenu
 if "%choice%"=="1" (
     echo.
     echo  %Yellow%Включение плана "Высокая производительность"...%Reset%
-    powershell -NoProfile -Command "$schemes = powercfg /l | Where-Object { $_ -match '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c|High|\u0412\u044b\u0441\u043e\u043a\u0430\u044f' }; if (-not $schemes) { $new = powercfg -duplicatescheme 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c; $guid = $new -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid } else { $keep = $schemes | Select-Object -First 1; $guid = $keep -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid; $remove = $schemes | Select-Object -Skip 1; if ($remove) { foreach ($s in $remove) { $delGuid = $s -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /delete $delGuid } } ; if ($LASTEXITCODE -eq 0) { exit 0 } else { exit 1 } }" >nul 2>&1
+    %PSXE% -NoProfile -Command "$schemes = powercfg /l | Where-Object { $_ -match '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c|High|\u0412\u044b\u0441\u043e\u043a\u0430\u044f' }; if (-not $schemes) { $new = powercfg -duplicatescheme 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c; $guid = $new -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid } else { $keep = $schemes | Select-Object -First 1; $guid = $keep -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid; $remove = $schemes | Select-Object -Skip 1; if ($remove) { foreach ($s in $remove) { $delGuid = $s -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /delete $delGuid } } ; if ($LASTEXITCODE -eq 0) { exit 0 } else { exit 1 } }" >nul 2>&1
     set "PWR_RC=!errorlevel!"
     if "!PWR_RC!"=="0" (call :Ok "План установлен") else (call :Err "План не установлен (код !PWR_RC!)")
 )
 if "%choice%"=="2" (
     echo.
     echo  %Yellow%Включение плана "Максимальная производительность"...%Reset%
-    powershell -NoProfile -Command "$schemes = powercfg /l | Where-Object { $_ -match 'e9a42b02-d5df-448d-aa00-03f14749eb61|Ultimate|\u041c\u0430\u043a\u0441\u0438\u043c\u0430\u043b\u044c\u043d\u0430\u044f' }; if (-not $schemes) { $new = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; $guid = $new -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid } else { $keep = $schemes | Select-Object -First 1; $guid = $keep -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid; $remove = $schemes | Select-Object -Skip 1; if ($remove) { foreach ($s in $remove) { $delGuid = $s -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /delete $delGuid } } ; if ($LASTEXITCODE -eq 0) { exit 0 } else { exit 1 } }" >nul 2>&1
+    %PSXE% -NoProfile -Command "$schemes = powercfg /l | Where-Object { $_ -match 'e9a42b02-d5df-448d-aa00-03f14749eb61|Ultimate|\u041c\u0430\u043a\u0441\u0438\u043c\u0430\u043b\u044c\u043d\u0430\u044f' }; if (-not $schemes) { $new = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; $guid = $new -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid } else { $keep = $schemes | Select-Object -First 1; $guid = $keep -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid; $remove = $schemes | Select-Object -Skip 1; if ($remove) { foreach ($s in $remove) { $delGuid = $s -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /delete $delGuid } } ; if ($LASTEXITCODE -eq 0) { exit 0 } else { exit 1 } }" >nul 2>&1
     set "PWR_RC=!errorlevel!"
     if "!PWR_RC!"=="0" (call :Ok "План установлен") else (call :Err "План не установлен (код !PWR_RC!)")
 )
 if "%choice%"=="3" (
     echo.
     echo  %Yellow%Включение плана "Сбалансированный"...%Reset%
-    powershell -NoProfile -Command "$schemes = powercfg /l | Where-Object { $_ -match '381b4222-f694-41f0-9685-ff5bb260df2e|Balanced|\u0421\u0431\u0430\u043b\u0430\u043d\u0441\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u0430\u044f' }; if (-not $schemes) { $new = powercfg -duplicatescheme 381b4222-f694-41f0-9685-ff5bb260df2e; $guid = $new -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid } else { $keep = $schemes | Select-Object -First 1; $guid = $keep -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid; $remove = $schemes | Select-Object -Skip 1; if ($remove) { foreach ($s in $remove) { $delGuid = $s -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /delete $delGuid } } ; if ($LASTEXITCODE -eq 0) { exit 0 } else { exit 1 } }" >nul 2>&1
+    %PSXE% -NoProfile -Command "$schemes = powercfg /l | Where-Object { $_ -match '381b4222-f694-41f0-9685-ff5bb260df2e|Balanced|\u0421\u0431\u0430\u043b\u0430\u043d\u0441\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u0430\u044f' }; if (-not $schemes) { $new = powercfg -duplicatescheme 381b4222-f694-41f0-9685-ff5bb260df2e; $guid = $new -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid } else { $keep = $schemes | Select-Object -First 1; $guid = $keep -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /setactive $guid; $remove = $schemes | Select-Object -Skip 1; if ($remove) { foreach ($s in $remove) { $delGuid = $s -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'; powercfg /delete $delGuid } } ; if ($LASTEXITCODE -eq 0) { exit 0 } else { exit 1 } }" >nul 2>&1
     set "PWR_RC=!errorlevel!"
     if "!PWR_RC!"=="0" (call :Ok "План установлен") else (call :Err "План не установлен (код !PWR_RC!)")
 )
@@ -2615,7 +2644,7 @@ goto PFMenu
 
 :PFShow
 call :Hdr "ТЕКУЩИЕ НАСТРОЙКИ ПОДКАЧКИ"
-powershell -NoProfile -Command "try { $pf = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -ErrorAction Stop).PagingFiles; Write-Host ('  PagingFiles : ' + $pf) } catch { Write-Host '  PagingFiles : (не задано)' }; $auto = (Get-CimInstance Win32_ComputerSystem).AutomaticManagedPagefile; Write-Host ('  Automatic   : ' + $auto)"
+%PSXE% -NoProfile -Command "try { $pf = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -ErrorAction Stop).PagingFiles; Write-Host ('  PagingFiles : ' + $pf) } catch { Write-Host '  PagingFiles : (не задано)' }; $auto = (Get-CimInstance Win32_ComputerSystem).AutomaticManagedPagefile; Write-Host ('  Automatic   : ' + $auto)"
 echo.
 echo  %Yellow%Изменения вступают в силу после перезагрузки.%Reset%
 call :PauseBack
@@ -2652,7 +2681,7 @@ echo.
 >> "%PS1%" echo   Write-Host ('  ОШИБКА: ' + $_.Exception.Message) -ForegroundColor Red
 >> "%PS1%" echo   exit 1
 >> "%PS1%" echo }
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%"
+%PSXE% -NoProfile -ExecutionPolicy Bypass -File "%PS1%"
 set "ERR=!errorlevel!"
 del "%PS1%" >nul 2>&1
 if !ERR! NEQ 0 (
@@ -2749,7 +2778,7 @@ if not "!QRYRC!"=="0" (
 )
 echo.
 echo  %Bold%Температура (ACPI thermal zone, если датчик доступен):%Reset%
-powershell -NoProfile -Command "try { $z = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop); if ($z.Count -eq 0) { '  (датчики не найдены)'; exit 0 }; foreach ($x in $z) { Write-Host ('  ' + $x.InstanceName + ': ' + ('{0:N1}' -f (($x.CurrentTemperature / 10) - 273.15)) + ' C') }; exit 0 } catch { '  (датчик температуры недоступен)'; exit 0 }"
+%PSXE% -NoProfile -Command "try { $z = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop); if ($z.Count -eq 0) { '  (датчики не найдены)'; exit 0 }; foreach ($x in $z) { Write-Host ('  ' + $x.InstanceName + ': ' + ('{0:N1}' -f (($x.CurrentTemperature / 10) - 273.15)) + ' C') }; exit 0 } catch { '  (датчик температуры недоступен)'; exit 0 }"
 echo.
 echo  %Gray%Раздел только читает параметры; изменения не выполняются.%Reset%
 if exist "!PWRQUERY!" del /f /q "!PWRQUERY!" >nul 2>&1
@@ -2895,7 +2924,7 @@ goto NetMenu
 
 :NetTCPGlobalSave
 if exist "%NET_TCP_BAK%" exit /b 0
-powershell -NoProfile -Command "$file=$env:NET_TCP_BAK;try{$lines=@(netsh int tcp show global);$auto='';$ecn='';foreach($l in $lines){$s=[string]$l;if($s -match '(?i)(?:Auto.?Tuning|автонастр\w*|автоматичес\w*).{0,100}:\s*(disabled|highlyrestricted|restricted|normal|experimental)\s*$'){$auto=$Matches[1]};if($s -match '(?i)ECN[^:]*:\s*(enabled|disabled|default)\s*$'){$ecn=$Matches[1]}};if(-not $auto -or -not $ecn){throw 'Не удалось разобрать TCP Global параметры из netsh'};Set-Content -LiteralPath $file -Value @('autotuning='+$auto,'ecn='+$ecn) -Encoding UTF8 -ErrorAction Stop;exit 0}catch{exit 1}"
+%PSXE% -NoProfile -Command "$file=$env:NET_TCP_BAK;try{$lines=@(netsh int tcp show global);$auto='';$ecn='';foreach($l in $lines){$s=[string]$l;if($s -match '(?i)(?:Auto.?Tuning|автонастр\w*|автоматичес\w*).{0,100}:\s*(disabled|highlyrestricted|restricted|normal|experimental)\s*$'){$auto=$Matches[1]};if($s -match '(?i)ECN[^:]*:\s*(enabled|disabled|default)\s*$'){$ecn=$Matches[1]}};if(-not $auto -or -not $ecn){throw 'Не удалось разобрать TCP Global параметры из netsh'};Set-Content -LiteralPath $file -Value @('autotuning='+$auto,'ecn='+$ecn) -Encoding UTF8 -ErrorAction Stop;exit 0}catch{exit 1}"
 set "RC=!errorlevel!"
 call :Log "NET-BACKUP | TCP Global | rc=!RC! | file=%NET_TCP_BAK%"
 exit /b !RC!
@@ -2929,7 +2958,7 @@ if not "!RC!"=="0" (
     call :Err "TCP Global параметры не восстановлены; backup сохранён"
     exit /b 1
 )
-powershell -NoProfile -Command "$file=$env:NET_TCP_BAK;try{$lines=@(netsh int tcp show global);$auto='';$ecn='';foreach($l in $lines){$s=[string]$l;if($s -match '(?i)(?:Auto.?Tuning|автонастр\w*|автоматичес\w*).{0,100}:\s*(disabled|highlyrestricted|restricted|normal|experimental)\s*$'){$auto=$Matches[1]};if($s -match '(?i)ECN[^:]*:\s*(enabled|disabled|default)\s*$'){$ecn=$Matches[1]}};$rows=@(Get-Content -LiteralPath $file -Encoding UTF8);$ba=($rows|Where-Object{$_ -like 'autotuning=*'}|Select-Object -First 1);$be=($rows|Where-Object{$_ -like 'ecn=*'}|Select-Object -First 1);if(-not $ba -or -not $be){exit 1};$ba=$ba.Substring(11);$be=$be.Substring(4);if($auto -ne $ba -or $ecn -ne $be){exit 1};exit 0}catch{exit 1}"
+%PSXE% -NoProfile -Command "$file=$env:NET_TCP_BAK;try{$lines=@(netsh int tcp show global);$auto='';$ecn='';foreach($l in $lines){$s=[string]$l;if($s -match '(?i)(?:Auto.?Tuning|автонастр\w*|автоматичес\w*).{0,100}:\s*(disabled|highlyrestricted|restricted|normal|experimental)\s*$'){$auto=$Matches[1]};if($s -match '(?i)ECN[^:]*:\s*(enabled|disabled|default)\s*$'){$ecn=$Matches[1]}};$rows=@(Get-Content -LiteralPath $file -Encoding UTF8);$ba=($rows|Where-Object{$_ -like 'autotuning=*'}|Select-Object -First 1);$be=($rows|Where-Object{$_ -like 'ecn=*'}|Select-Object -First 1);if(-not $ba -or -not $be){exit 1};$ba=$ba.Substring(11);$be=$be.Substring(4);if($auto -ne $ba -or $ecn -ne $be){exit 1};exit 0}catch{exit 1}"
 set "RC=!errorlevel!"
 call :Log "NET-RESTORE | TCP Global verify | rc=!RC!"
 if "!RC!"=="0" (del /f /q "%NET_TCP_BAK%" >nul 2>&1 & exit /b 0)
@@ -2938,14 +2967,14 @@ exit /b 1
 
 :NetBIOSSave
 if exist "%NET_NB_BAK%" exit /b 0
-powershell -NoProfile -Command "$file=$env:NET_NB_BAK;try{$rows=@();$ifs=@(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE' -ErrorAction Stop);if($ifs.Count -eq 0){throw 'активные IPv4-интерфейсы не найдены'};foreach($i in $ifs){$rows += ([string]$i.Index+'`t'+[string]$i.TcpipNetbiosOptions)};Set-Content -LiteralPath $file -Value $rows -Encoding UTF8 -ErrorAction Stop;exit 0}catch{exit 1}"
+%PSXE% -NoProfile -Command "$file=$env:NET_NB_BAK;try{$rows=@();$ifs=@(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE' -ErrorAction Stop);if($ifs.Count -eq 0){throw 'активные IPv4-интерфейсы не найдены'};foreach($i in $ifs){$rows += ([string]$i.Index+'`t'+[string]$i.TcpipNetbiosOptions)};Set-Content -LiteralPath $file -Value $rows -Encoding UTF8 -ErrorAction Stop;exit 0}catch{exit 1}"
 set "RC=!errorlevel!"
 call :Log "NET-BACKUP | NetBIOS | rc=!RC! | file=%NET_NB_BAK%"
 exit /b !RC!
 
 :NetBIOSRestore
 if not exist "%NET_NB_BAK%" (call :Log "NET-RESTORE | NetBIOS | no backup" & exit /b 0)
-powershell -NoProfile -Command "$file=$env:NET_NB_BAK;try{$ifs=@(Get-CimInstance Win32_NetworkAdapterConfiguration -ErrorAction Stop);$bad=0;foreach($r in @(Get-Content -LiteralPath $file -Encoding UTF8)){if($r -notmatch '^(\d+)\t([012])$'){$bad++;continue};$idx=[int]$Matches[1];$mode=[int]$Matches[2];$i=$ifs|Where-Object{$_.Index -eq $idx}|Select-Object -First 1;if(-not $i){$bad++;continue};$ret=$i.SetTcpipNetbios($mode);if($ret.ReturnValue -ne 0){$bad++;continue};$check=(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter ('Index='+$idx) -ErrorAction Stop).TcpipNetbiosOptions;if($check -ne $mode){$bad++}};if($bad -gt 0){exit 1}else{exit 0}}catch{exit 1}"
+%PSXE% -NoProfile -Command "$file=$env:NET_NB_BAK;try{$ifs=@(Get-CimInstance Win32_NetworkAdapterConfiguration -ErrorAction Stop);$bad=0;foreach($r in @(Get-Content -LiteralPath $file -Encoding UTF8)){if($r -notmatch '^(\d+)\t([012])$'){$bad++;continue};$idx=[int]$Matches[1];$mode=[int]$Matches[2];$i=$ifs|Where-Object{$_.Index -eq $idx}|Select-Object -First 1;if(-not $i){$bad++;continue};$ret=$i.SetTcpipNetbios($mode);if($ret.ReturnValue -ne 0){$bad++;continue};$check=(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter ('Index='+$idx) -ErrorAction Stop).TcpipNetbiosOptions;if($check -ne $mode){$bad++}};if($bad -gt 0){exit 1}else{exit 0}}catch{exit 1}"
 set "RC=!errorlevel!"
 call :Log "NET-RESTORE | NetBIOS | rc=!RC!"
 if "!RC!"=="0" (del /f /q "%NET_NB_BAK%" >nul 2>&1 & exit /b 0)
@@ -3008,7 +3037,7 @@ if not defined NBMODE goto NetMenu
 set "NETNBMODE=!NBMODE!"
 call :NetBIOSSave
 if errorlevel 1 (call :Err "Не удалось сохранить исходный NetBIOS — изменение отменено" & goto NetMenu)
-powershell -NoProfile -Command "$mode=[int]$env:NETNBMODE;$bad=0;$n=0;foreach($i in @(Get-CimInstance Win32_NetworkAdapterConfiguration -ErrorAction Stop)){if($i.IPEnabled){$n++;$r=$i.SetTcpipNetbios($mode);if($r.ReturnValue -ne 0){$bad++}}};if($n -eq 0 -or $bad -gt 0){exit 1};exit 0"
+%PSXE% -NoProfile -Command "$mode=[int]$env:NETNBMODE;$bad=0;$n=0;foreach($i in @(Get-CimInstance Win32_NetworkAdapterConfiguration -ErrorAction Stop)){if($i.IPEnabled){$n++;$r=$i.SetTcpipNetbios($mode);if($r.ReturnValue -ne 0){$bad++}}};if($n -eq 0 -or $bad -gt 0){exit 1};exit 0"
 set "RC=!errorlevel!"
 call :Log "NET | NetBIOS mode=!NBMODE! | rc=!RC!"
 if "!RC!"=="0" call :Ok "NetBIOS mode !NBMODE! применён ко всем активным интерфейсам" else call :Err "NetBIOS: один или несколько интерфейсов не изменены"
@@ -3066,7 +3095,7 @@ goto NetMenu
 
 :NetQoSSave
 if exist "%NET_QOS_BAK%" exit /b 0
-powershell -NoProfile -Command "$path='HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched';$file=$env:NET_QOS_BAK;try{$o=Get-ItemProperty -LiteralPath $path -Name NonBestEffortLimit -ErrorAction SilentlyContinue;$out=@();if($o -and ($o.PSObject.Properties.Name -contains 'NonBestEffortLimit')){$out+='present=1';$out+=('value='+[string]$o.NonBestEffortLimit)}else{$out+='present=0'};Set-Content -LiteralPath $file -Value $out -Encoding UTF8 -ErrorAction Stop;exit 0}catch{exit 1}"
+%PSXE% -NoProfile -Command "$path='HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched';$file=$env:NET_QOS_BAK;try{$o=Get-ItemProperty -LiteralPath $path -Name NonBestEffortLimit -ErrorAction SilentlyContinue;$out=@();if($o -and ($o.PSObject.Properties.Name -contains 'NonBestEffortLimit')){$out+='present=1';$out+=('value='+[string]$o.NonBestEffortLimit)}else{$out+='present=0'};Set-Content -LiteralPath $file -Value $out -Encoding UTF8 -ErrorAction Stop;exit 0}catch{exit 1}"
 set "RC=!errorlevel!"
 call :Log "NET-BACKUP | QoS | rc=!RC! | file=%NET_QOS_BAK%"
 exit /b !RC!
@@ -3095,14 +3124,14 @@ call :Err "QoS не восстановлен; backup сохранён"
 exit /b 1
 
 :NetMTUSave
-powershell -NoProfile -Command "$file=$env:NET_MTU_BAK;$name=$env:NET_IFACE;try{if(-not $name){exit 2};$ifs=@(Get-NetIPInterface -AddressFamily IPv4 -ErrorAction Stop);$hit=$null;foreach($i in $ifs){if($i.InterfaceAlias -eq $name){$hit=$i;break}};if(-not $hit){exit 3};$line=$name+'`t'+[string]$hit.NlMtu;$rows=@();if(Test-Path -LiteralPath $file){$rows=@(Get-Content -LiteralPath $file -Encoding UTF8)};$exists=$false;foreach($r in $rows){if($r -eq $line){$exists=$true}};if(-not $exists){Add-Content -LiteralPath $file -Value $line -Encoding UTF8 -ErrorAction Stop};exit 0}catch{exit 1}"
+%PSXE% -NoProfile -Command "$file=$env:NET_MTU_BAK;$name=$env:NET_IFACE;try{if(-not $name){exit 2};$ifs=@(Get-NetIPInterface -AddressFamily IPv4 -ErrorAction Stop);$hit=$null;foreach($i in $ifs){if($i.InterfaceAlias -eq $name){$hit=$i;break}};if(-not $hit){exit 3};$line=$name+'`t'+[string]$hit.NlMtu;$rows=@();if(Test-Path -LiteralPath $file){$rows=@(Get-Content -LiteralPath $file -Encoding UTF8)};$exists=$false;foreach($r in $rows){if($r -eq $line){$exists=$true}};if(-not $exists){Add-Content -LiteralPath $file -Value $line -Encoding UTF8 -ErrorAction Stop};exit 0}catch{exit 1}"
 set "RC=!errorlevel!"
 call :Log "NET-BACKUP | MTU !NET_IFACE! | rc=!RC! | file=%NET_MTU_BAK%"
 exit /b !RC!
 
 :NetMTURestore
 if not exist "%NET_MTU_BAK%" (call :Log "NET-RESTORE | MTU | no backup" & exit /b 0)
-powershell -NoProfile -Command "$file=$env:NET_MTU_BAK;try{$rows=@(Get-Content -LiteralPath $file -Encoding UTF8);$bad=0;foreach($r in $rows){$parts=$r -split "`t",2;if($parts.Count -ne 2){$bad++;continue};try{Set-NetIPInterface -InterfaceAlias $parts[0] -AddressFamily IPv4 -NlMtu ([int]$parts[1]) -ErrorAction Stop}catch{$bad++}};if($bad -gt 0){exit 1}else{exit 0}}catch{exit 1}"
+%PSXE% -NoProfile -Command "$file=$env:NET_MTU_BAK;try{$rows=@(Get-Content -LiteralPath $file -Encoding UTF8);$bad=0;foreach($r in $rows){$parts=$r -split "`t",2;if($parts.Count -ne 2){$bad++;continue};try{Set-NetIPInterface -InterfaceAlias $parts[0] -AddressFamily IPv4 -NlMtu ([int]$parts[1]) -ErrorAction Stop}catch{$bad++}};if($bad -gt 0){exit 1}else{exit 0}}catch{exit 1}"
 set "RC=!errorlevel!"
 call :Log "NET-RESTORE | MTU | rc=!RC!"
 if "!RC!"=="0" (del /f /q "%NET_MTU_BAK%" >nul 2>&1 & exit /b 0)
@@ -3692,7 +3721,7 @@ if "%choice%"=="1" (
     call :FailIf
     reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul
     call :FailIf
-    powershell -NoProfile -Command "$code='using System.Runtime.InteropServices; public class W32 { [DllImport(\"user32.dll\")] public static extern bool SystemParametersInfo(uint a, uint b, int[] c, uint d); }'; Add-Type -TypeDefinition $code; $p=[int[]]@(0,0,0); [W32]::SystemParametersInfo(4,0,$p,3)" >nul 2>&1
+    %PSXE% -NoProfile -Command "$code='using System.Runtime.InteropServices; public class W32 { [DllImport(\"user32.dll\")] public static extern bool SystemParametersInfo(uint a, uint b, int[] c, uint d); }'; Add-Type -TypeDefinition $code; $p=[int[]]@(0,0,0); [W32]::SystemParametersInfo(4,0,$p,3)" >nul 2>&1
     call :FailIf
     if "!OPFAIL!"=="0" (call :Ok "Ускорение мыши отключено") else (call :Err "Не удалось полностью отключить ускорение мыши")
 )
@@ -3706,7 +3735,7 @@ if "%choice%"=="2" (
     call :FailIf
     reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 10 /f >nul
     call :FailIf
-    powershell -NoProfile -Command "$code='using System.Runtime.InteropServices; public class W32 { [DllImport(\"user32.dll\")] public static extern bool SystemParametersInfo(uint a, uint b, int[] c, uint d); }'; Add-Type -TypeDefinition $code; $p=[int[]]@(6,10,1); [W32]::SystemParametersInfo(4,0,$p,3)" >nul 2>&1
+    %PSXE% -NoProfile -Command "$code='using System.Runtime.InteropServices; public class W32 { [DllImport(\"user32.dll\")] public static extern bool SystemParametersInfo(uint a, uint b, int[] c, uint d); }'; Add-Type -TypeDefinition $code; $p=[int[]]@(6,10,1); [W32]::SystemParametersInfo(4,0,$p,3)" >nul 2>&1
     call :FailIf
     if "!OPFAIL!"=="0" (call :Ok "Ускорение мыши включено") else (call :Err "Не удалось полностью включить ускорение мыши")
 )

@@ -39,7 +39,13 @@ function Find-Tool {
 Write-Host '=== 1. ScannerCore (CMake, с тест-хуками для гейта) ==='
 # Фаза тестов собирается С хуками (SCU_TEST_*): часть интеграционных тестов
 # ими управляется. Перед publish фаза 2a пересобирает бинарник БЕЗ них.
-cmake -S (Join-Path $root 'SecurityScanner') -B (Join-Path $root 'SecurityScanner\build') -A x64 -DSCU_ENABLE_TEST_HOOKS=ON | Out-Null
+# -SkipSign отключает пин и в движке (SCU_SKIP_SIGN), а не только в SCU.dll —
+# иначе unsigned ScannerCore блокирует собственный запуск (OBS-05 п. 2).
+# Значение передаётся ВСЕГДА (не только при SkipSign): CMake кэширует опции, и
+# после одного skip-прогона обычная сборка молча осталась бы с пустым пином.
+$skipSignCmake = @('-DSCU_SKIP_SIGN=OFF')
+if ($SkipSign) { $skipSignCmake = @('-DSCU_SKIP_SIGN=ON') }
+cmake -S (Join-Path $root 'SecurityScanner') -B (Join-Path $root 'SecurityScanner\build') -A x64 -DSCU_ENABLE_TEST_HOOKS=ON @skipSignCmake | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed' }
 cmake --build (Join-Path $root 'SecurityScanner\build') --config Release | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'cmake build failed' }
@@ -92,7 +98,7 @@ Write-Host '=== 2a. ScannerCore без тест-хуков (production) ==='
 # Релизится ровно hooks-free бинарник: SCU_TEST_CANCEL_AFTER / SCU_TEST_RUN_KEY
 # читают переменные окружения пользовательской сессии — hook в production-движке
 # стал бы рычагом отказа в обслуживании без прав администратора (аудит).
-cmake -S (Join-Path $root 'SecurityScanner') -B (Join-Path $root 'SecurityScanner\build') -A x64 -DSCU_ENABLE_TEST_HOOKS=OFF | Out-Null
+cmake -S (Join-Path $root 'SecurityScanner') -B (Join-Path $root 'SecurityScanner\build') -A x64 -DSCU_ENABLE_TEST_HOOKS=OFF @skipSignCmake | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'cmake reconfigure failed' }
 cmake --build (Join-Path $root 'SecurityScanner\build') --config Release --clean-first | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'cmake rebuild failed' }

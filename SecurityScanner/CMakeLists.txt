@@ -31,15 +31,27 @@ add_custom_target(allowlist_header DEPENDS "${GENERATED_DIR}/component_allowlist
 
 # Пиннинг сертификата подписи (free self-signed path): отпечаток из
 # signing/thumbprint.txt вшивается в ScannerCore; отсутствие файла = dev-режим.
+# SCU_SKIP_SIGN=ON (build-release.ps1 -SkipSign) отключает пин и в движке —
+# иначе unsigned dev-ScannerCore блокировал собственный запуск при существующем
+# thumbprint.txt: -SkipSign раньше действовал только на SCU.dll (OBS-05 п. 2,
+# аудит 2026-11-04).
+option(SCU_SKIP_SIGN "Не вшивать пин сертификата подписи (dev-сборки)" OFF)
 set(SCU_SIGNING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/signing")
+# Stamp со значением SCU_SKIP_SIGN: перезаписывается на каждом configure, поэтому
+# custom command перегенерирует заголовок и при ПЕРЕКЛЮЧЕНИИ опции (иначе
+# переключение SkipSign туда-обратно молча оставляло бы старый пин).
+set(SCU_SKIP_SIGN_STAMP "${GENERATED_DIR}/signing_pin_skip.stamp")
+file(WRITE "${SCU_SKIP_SIGN_STAMP}" "${SCU_SKIP_SIGN}\n")
 add_custom_command(
     OUTPUT "${GENERATED_DIR}/signing_pin.h"
     COMMAND ${CMAKE_COMMAND}
         -DPIN_FILE=${SCU_SIGNING_DIR}/thumbprint.txt
+        -DSCU_SKIP_SIGN=${SCU_SKIP_SIGN}
         -DOUT_FILE=${GENERATED_DIR}/signing_pin.h
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/signing_pin.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/cmake/signing_pin.cmake
             ${SCU_SIGNING_DIR}/thumbprint.txt
+            ${SCU_SKIP_SIGN_STAMP}
     COMMENT "Generating signing_pin.h (certificate thumbprint pin)"
 )
 add_custom_target(signing_pin_header DEPENDS "${GENERATED_DIR}/signing_pin.h")

@@ -930,7 +930,17 @@ public sealed class NetworkService
             var tcpRollback = await RestoreTcpGlobalAsync(ct).ConfigureAwait(false);
             var qosRollback = RestoreQosOverride();
             _logger.Warn($"NET | gaming profile rollback | tcp={tcpRollback.Message} qos={(qosRollback.IsSuccess ? "ok" : qosRollback.Message)}");
-            return Result.Failure("Профиль не применён, изменения откатаны: " + string.Join("; ", failures));
+            // OBS-03 (аудит 2026-11-04): сообщение об откате обязано отражать фактический
+            // результат — «изменения откатаны» без анализа IsSuccess вводило пользователя
+            // в заблуждение при неудачном откате.
+            var rollbackProblems = new[] { tcpRollback, qosRollback }
+                .Where(result => !result.IsSuccess)
+                .Select(result => result.Message)
+                .ToList();
+            var rollbackText = rollbackProblems.Count == 0
+                ? "изменения откатаны"
+                : "откат выполнен не полностью: " + string.Join("; ", rollbackProblems);
+            return Result.Failure("Профиль не применён, " + rollbackText + ": " + string.Join("; ", failures));
         }
 
         _logger.Info("NET | gaming profile applied");

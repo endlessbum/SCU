@@ -73,6 +73,60 @@ function Get-TaskObject([string]$Full) {
     return Get-ScheduledTask -TaskPath $tPath -TaskName $tName -ErrorAction SilentlyContinue
 }
 
+# ==== OBS-01 (аудит 2026-11-04): границы доверия автозагрузки =====================
+# startupdisable/startuprestore применяют значения из списка автозагрузки и
+# манифеста бэкапа. Оба источника лежат в каталогах, доступных процессам того же
+# пользователя, поэтому перед мутацией каждая запись обязана попасть в allowlist
+# ключей/папок, которыми скрипт фактически управляет (см. startuplist). Всё, что
+# за пределами allowlist, — отказ по записи: никакой записи в реестр и никаких
+# Remove/Move по произвольным путям.
+
+$script:TrustedStartupSubkeys = @(
+    'Software\Microsoft\Windows\CurrentVersion\Run',
+    'Software\Microsoft\Windows\CurrentVersion\RunOnce',
+    'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run',
+    'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce'
+)
+$script:TrustedStartupValueKinds = @('String', 'ExpandString', 'DWord', 'QWord', 'MultiString', 'Binary')
+
+function Test-TrustedStartupSubkey([string]$Hive, [string]$Subkey) {
+    if ($Hive -ne 'HKCU' -and $Hive -ne 'HKLM') { return $false }
+    if ([string]::IsNullOrWhiteSpace($Subkey) -or $Subkey -match '\.\.') { return $false }
+    foreach ($t in $script:TrustedStartupSubkeys) {
+        if ($Subkey -ieq $t) { return $true }
+    }
+    # Упакованные StartupTask: строго под SystemAppData (имя пакета из списка автозагрузки).
+    return $Subkey -ilike 'Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\*'
+}
+
+function Test-TrustedStartupValueName([string]$Name) {
+    return (-not [string]::IsNullOrWhiteSpace($Name)) -and $Name.Length -le 512 -and -not $Name.Contains('\')
+}
+
+# Файл автозагрузки обязан лежать в папке Startup пользователя или общей
+# (только там startuplist перечисляет файлы) — как allowedPrefixes в UIService.
+function Test-TrustedStartupFolderFile([string]$FullPath) {
+    if ([string]::IsNullOrWhiteSpace($FullPath)) { return $false }
+    try { $FullPath = [System.IO.Path]::GetFullPath($FullPath) } catch { return $false }
+    foreach ($root in @([Environment]::GetFolderPath('Startup'), [Environment]::GetFolderPath('CommonStartup'))) {
+        if (-not $root) { continue }
+        $rootFull = [System.IO.Path]::GetFullPath($root + [IO.Path]::DirectorySeparatorChar)
+        if ($FullPath.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
+
+# Копия из манифеста обязана лежать в каталоге бэкапа — иначе подменённая запись
+# могла бы Move-Item из произвольного места.
+function Test-TrustedStartupBackupFile([string]$FullPath, [string]$BackupRoot) {
+    if ([string]::IsNullOrWhiteSpace($FullPath) -or [string]::IsNullOrWhiteSpace($BackupRoot)) { return $false }
+    try {
+        $full = [System.IO.Path]::GetFullPath($FullPath)
+        $rootFull = [System.IO.Path]::GetFullPath($BackupRoot + [IO.Path]::DirectorySeparatorChar)
+    } catch { return $false }
+    return $full.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 switch ($Action.ToLowerInvariant()) {
 
     'servicesbackup' {
@@ -403,6 +457,13 @@ switch ($Action.ToLowerInvariant()) {
                 throw ('Некорректный путь автозагрузки: ' + [string]$cmd)
             }
 
+            # OBS-01: отключать (и удалять) можно только файлы в папках Startup —
+            # список автозагрузки (%TEMP%) доступен процессам того же пользователя.
+            if (-not (Test-TrustedStartupFolderFile $sourcePath)) {
+                Write-Line ('ERR: путь вне доверенных папок автозагрузки: ' + $sourcePath)
+                Finish-Action 5 'completed'
+            }
+
             if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
                 Write-Line ('ERR: file not found: ' + $sourcePath)
                 Finish-Action 4 'completed'
@@ -444,10 +505,22 @@ switch ($Action.ToLowerInvariant()) {
         foreach ($e in $items) {
             $itemOk = $false
             try {
-                # Путь и имя значения берутся из манифеста бэкапа — пишем через
-                # -LiteralPath: wildcard-символы ([ ]) в подключе не должны
-                # трактоваться как маска пути.
-                if ($e.type -eq 'reg') {$psPath = $e.hive + ':\' +$e.subkey
+                # OBS-01: записи манифеста валидируются по allowlist до любой мутации —
+                # доверять путям/разделам из незащищённого manifest.json нельзя.
+                if ($e.type -eq 'reg') {
+                    if (-not (Test-TrustedStartupSubkey ([string]$e.hive) ([string]$e.subkey))) {
+                        throw ('entry outside trusted startup scope: ' + [string]$e.hive + '\' + [string]$e.subkey)
+                    }
+                    if (-not (Test-TrustedStartupValueName ([string]$e.name))) {
+                        throw ('entry value name outside trusted scope: ' + [string]$e.name)
+                    }
+                    if ($script:TrustedStartupValueKinds -inotcontains [string]$e.kind) {
+                        throw ('unsupported value kind: ' + [string]$e.kind)
+                    }
+                    # Путь и имя значения берутся из манифеста бэкапа — пишем через
+                    # -LiteralPath: wildcard-символы ([ ]) в подключе не должны
+                    # трактоваться как маска пути.
+                    $psPath = $e.hive + ':\' + $e.subkey
                     if (-not (Test-Path -LiteralPath $psPath)) { New-Item -LiteralPath $psPath -Force -ErrorAction Stop | Out-Null }$pt = 'String'
                     switch ($e.kind) {
                         'String' { $pt = 'String' }
@@ -466,6 +539,14 @@ switch ($Action.ToLowerInvariant()) {
                     New-ItemProperty -LiteralPath $psPath -Name $e.name -Value $v -PropertyType $pt -Force -ErrorAction Stop | Out-Null
                     Write-Line ('OK  : ' + $e.src + ': ' +$e.name); $itemOk = $true
                 } elseif ($e.type -eq 'file') {
+                    # OBS-01: восстановление файла — только в папки автозагрузки,
+                    # а копия — только из каталога бэкапа.
+                    if (-not (Test-TrustedStartupFolderFile ([string]$e.original))) {
+                        throw ('entry outside trusted startup scope: ' + [string]$e.original)
+                    }
+                    if (-not (Test-TrustedStartupBackupFile ([string]$e.stored) $BackupDir)) {
+                        throw 'backup file outside backup directory'
+                    }
                     if (-not (Test-Path -LiteralPath $e.stored)) { throw 'backup file missing' }
                     if (Test-Path -LiteralPath $e.original) { throw 'target file exists' }
                     $parent = Split-Path -Parent $e.original
@@ -529,7 +610,14 @@ switch ($Action.ToLowerInvariant()) {
             $subj = [string]$sig.SignerCertificate.Subject
             try { $simple = [string]$sig.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false) } catch {}
         }
-        if ($subj -notmatch '(?i)O=Microsoft Corporation' -and $simple -notmatch '(?i)^Microsoft Corporation$') {
+        # OBS-07 (аудит 2026-11-04): точное сравнение имени подписанта вместо подстроки
+        # 'O=Microsoft Corporation' — сертификат с подложным O=«...Microsoft Corporation Ltd»
+        # больше не проходит. Allowlist — реальные подписанты устанавливаемых продуктов
+        # (DirectX web setup / VC++ redistributable / .NET Desktop Runtime): подписи
+        # Microsoft Corporation и Microsoft Windows; ротация сертификата не меняет
+        # SimpleName, поэтому список стабилен.
+        $allowedPublishers = @('Microsoft Corporation', 'Microsoft Windows')
+        if ($allowedPublishers -inotcontains $simple) {
             Write-Line ('BAD_PUBLISHER: ' + $subj); Finish-Action 5 'completed'
         }
         Write-Line ('Microsoft Corporation; size=' + $fi.Length); Finish-Action 0 'completed'

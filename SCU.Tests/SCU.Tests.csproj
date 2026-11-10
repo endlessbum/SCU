@@ -28,12 +28,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SCU.App\SCU.App.csproj" />
-    <None Include="..\SCU.App\Assets\Dictionaries\en.txt" Link="Assets\Dictionaries\en.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="..\SCU.App\Assets\Dictionaries\ru.txt" Link="Assets\Dictionaries\ru.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 </Project>

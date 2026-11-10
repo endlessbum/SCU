@@ -1,8 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using SCU.Common;
-using SCU.Infrastructure.Storage;
-using SCU.Models;
 
 namespace SCU.Infrastructure.Windows.Tweaks;
 
@@ -44,14 +42,11 @@ public sealed class InputService
     private readonly Logger _logger;
     private readonly RegistryHelper _registry;
     private readonly string _backupDirectory;
-    private readonly ProfileStateStore _profileStateStore;
-    private readonly SemaphoreSlim _translatorSettingsGate = new(1, 1);
 
     public InputService(Logger logger, RegistryHelper registry)
     {
         _logger = logger;
         _registry = registry;
-        _profileStateStore = new ProfileStateStore(logger);
         _backupDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "SCU", "backup", "input");
@@ -60,78 +55,6 @@ public sealed class InputService
     }
 
     public IReadOnlyList<InputSwitchOption> Switches { get; }
-
-    // Настройки переводчика — часть profile.json. Читаем текущее состояние,
-    // чтобы при обновлении параметров ввода не перезаписать выбранный профиль.
-    public async Task<LayoutTranslatorProfileSettings> LoadLayoutTranslatorSettingsAsync(CancellationToken ct = default)
-    {
-        await _translatorSettingsGate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var state = await _profileStateStore.LoadAsync(ct).ConfigureAwait(false);
-            var settings = state.LayoutTranslator ?? new LayoutTranslatorProfileSettings();
-            settings.ManualHotKey = NormalizeManualHotKey(settings.ManualHotKey);
-            settings.CustomExceptions ??= [];
-            settings.CustomExceptions = settings.CustomExceptions
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Select(x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Take(200)
-                .ToList();
-            state.LayoutTranslator = settings;
-            return CloneLayoutTranslatorSettings(settings);
-        }
-        finally
-        {
-            _translatorSettingsGate.Release();
-        }
-    }
-
-    public async Task<bool> SaveLayoutTranslatorSettingsAsync(LayoutTranslatorProfileSettings settings, CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(settings);
-        await _translatorSettingsGate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var state = await _profileStateStore.LoadAsync(ct).ConfigureAwait(false);
-            state.LayoutTranslator = CloneLayoutTranslatorSettings(settings);
-            state.LayoutTranslator.ManualHotKey = NormalizeManualHotKey(state.LayoutTranslator.ManualHotKey);
-            state.LayoutTranslator.CustomExceptions = state.LayoutTranslator.CustomExceptions
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Select(x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Take(200)
-                .ToList();
-            state.LayoutTranslator.IsConfigured = true;
-            var saved = await _profileStateStore.SaveAsync(state, ct).ConfigureAwait(false);
-            if (!saved)
-            {
-                _logger.Warn("INPUT | не удалось сохранить настройки переводчика раскладки");
-            }
-            return saved;
-        }
-        finally
-        {
-            _translatorSettingsGate.Release();
-        }
-    }
-
-    private static LayoutTranslatorProfileSettings CloneLayoutTranslatorSettings(LayoutTranslatorProfileSettings source) => new()
-    {
-        AutoCorrectEnabled = source.AutoCorrectEnabled,
-        ManualHotKey = source.ManualHotKey,
-        CustomExceptions = source.CustomExceptions?.ToList() ?? [],
-        IsConfigured = source.IsConfigured,
-        ShowCorrectionToast = source.ShowCorrectionToast,
-        AutorunConsent = source.AutorunConsent,
-    };
-
-    private static string NormalizeManualHotKey(string? hotKey) => hotKey switch
-    {
-        "Ctrl+Alt+P" => "Ctrl+Alt+P",
-        _ => "Pause",
-    };
-
 
     private InputSwitchOption[] BuildSwitches()
     {

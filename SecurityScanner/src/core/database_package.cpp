@@ -433,6 +433,26 @@ void TryRemoveGeneration(const std::wstring& dir)
 
 } // namespace
 
+// Верификация подписи базы — общая для Apply (пакет) и HashDatabase (файлы
+// активной базы на диске). Хелперы (HashBuffer/VerifyEcdsa/ключ) — выше,
+// в анонимном пространстве.
+bool VerifyDatabaseSignature(const unsigned char* hashes, size_t hashesSize,
+                             const unsigned char* version, size_t versionSize,
+                             const unsigned char* signature, size_t signatureSize)
+{
+    if (hashes == nullptr || version == nullptr || signature == nullptr
+        || hashesSize == 0 || versionSize == 0 || signatureSize != 64) {
+        return false;
+    }
+
+    std::vector<unsigned char> digest;
+    if (!HashBuffer(hashes, hashesSize, version, versionSize, digest)) {
+        return false;
+    }
+    return VerifyEcdsa(Unhex(kDatabasePublicKeyXYHex, 64), digest,
+                       std::vector<unsigned char>(signature, signature + signatureSize));
+}
+
 void DatabasePackage::Apply(const std::wstring& packageZip,
                             const std::wstring& databaseDir,
                             DatabaseUpdateResult& result)
@@ -587,6 +607,7 @@ void DatabasePackage::Apply(const std::wstring& packageZip,
     }
 
     if (!AtomicWrite(generationDir + L"\\hashes.txt", hashes)
+        || !AtomicWrite(generationDir + L"\\hashes.txt.sig", signature)
         || !AtomicWrite(generationDir + L"\\db-version.json", version)) {
         TryRemoveGeneration(generationDir);
         result.error = L"failed to write generation files";
@@ -611,8 +632,11 @@ void DatabasePackage::Apply(const std::wstring& packageZip,
     }
 
     // Легаси-зеркало (best-effort): ручные проверки и внешние инструменты
-    // читают hashes.txt/db-version.json по классическим путям.
+    // читают hashes.txt/db-version.json по классическим путям. Зеркало подписи
+    // тоже: HashDatabase (OBS-05 п. 3) проверяет подпись по лежащим рядом
+    // файлам, раскладка должна быть идентична активной генерации.
     AtomicWrite(databaseDir + L"\\hashes.txt", hashes);
+    AtomicWrite(databaseDir + L"\\hashes.txt.sig", signature);
     AtomicWrite(databaseDir + L"\\db-version.json", version);
 
     // Уборка чужих генераций (best-effort): активная остаётся.
